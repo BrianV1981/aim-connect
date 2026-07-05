@@ -30,8 +30,16 @@ async def websocket_endpoint(websocket: WebSocket):
     # The user can run `tmux attach -t aim` from the UI to hook into the agent.
     pid, fd = pty.fork()
     if pid == 0:
-        # Child process
-        os.execvp("bash", ["bash"])
+        import subprocess
+        # Check if tmux is running
+        if subprocess.run(["tmux", "ls"], capture_output=True).returncode == 0:
+            # We must unset TMUX if we are running the server inside a tmux session, 
+            # otherwise tmux refuses to attach with 'sessions should be nested with care'.
+            if "TMUX" in os.environ:
+                del os.environ["TMUX"]
+            os.execvp("tmux", ["tmux", "attach"])
+        else:
+            os.execvp("bash", ["bash"])
     
     # Parent process
     loop = asyncio.get_event_loop()
