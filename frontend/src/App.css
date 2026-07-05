@@ -1,0 +1,67 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #11111b;
+  color: #cdd6f4;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.app-header {
+  height: 50px;
+  background-color: rgba(30, 30, 46, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #313244;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.app-header h1 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #cba6f7;
+  letter-spacing: 0.5px;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #a6e3a1; /* green for connected */
+  box-shadow: 0 0 8px #a6e3a1;
+}
+
+.terminal-container {
+  flex-grow: 1;
+  width: 100%;
+  background-color: #1e1e2e;
+  padding: 8px;
+  overflow: hidden; /* xterm.js handles its own scrolling */
+}
+
+/* xterm overrides for a cleaner look */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}
