@@ -33,9 +33,9 @@ function App() {
     }
 
     // Connect WebSocket
-    // Default to localhost:8000 for the FastAPI backend
+    // Route through the Vite proxy to avoid CORS/Firewall issues
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
     
     ws.current = new WebSocket(wsUrl);
     ws.current.binaryType = 'arraybuffer';
