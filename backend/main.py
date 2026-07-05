@@ -31,6 +31,10 @@ async def websocket_endpoint(websocket: WebSocket):
     pid, fd = pty.fork()
     if pid == 0:
         import subprocess
+        
+        # Ensure a valid terminal type for tmux
+        os.environ["TERM"] = "xterm-256color"
+        
         # Check if tmux is running
         if subprocess.run(["tmux", "ls"], capture_output=True).returncode == 0:
             # We must unset TMUX if we are running the server inside a tmux session, 
