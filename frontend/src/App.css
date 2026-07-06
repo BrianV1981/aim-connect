@@ -334,3 +334,69 @@ body {
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+
+/* Sovereign HTML Keyboard */
+.sovereign-keyboard {
+  background-color: #11111b;
+  border-top: 1px solid #313244;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.kb-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.kb-key {
+  background-color: #313244;
+  color: #cdd6f4;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 16px;
+  flex: 1;
+  max-width: 40px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.1s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.kb-key:active {
+  background-color: #cba6f7;
+  color: #11111b;
+  transform: scale(0.95);
+}
+
+.kb-shift, .kb-backspace, .kb-ctrl {
+  background-color: #45475a;
+  flex: 1.5;
+  max-width: 60px;
+  font-size: 14px;
+}
+
+.kb-shift.active {
+  background-color: #f38ba8;
+  color: #11111b;
+}
+
+.kb-space {
+  flex: 4;
+  max-width: 200px;
+}
+
+.kb-enter {
+  background-color: #89b4fa;
+  color: #11111b;
+  flex: 2;
+  max-width: 80px;
+  font-weight: bold;
+}
