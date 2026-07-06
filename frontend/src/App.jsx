@@ -328,48 +328,46 @@ function App() {
         <div className="status-indicator"></div>
       </header>
       
-      {showFiles ? (
-        <div className="file-explorer">
-          <div className="file-toolbar">
-            <button className="macro-btn" onClick={() => loadFiles(currentPath.split('/').slice(0, -1).join('/') || '/')}>
-              ← Back
-            </button>
-            <span className="file-path">{currentPath}</span>
+      <div className="file-explorer" style={{ display: showFiles ? 'flex' : 'none' }}>
+        <div className="file-toolbar">
+          <button className="macro-btn" onClick={() => loadFiles(currentPath.split('/').slice(0, -1).join('/') || '/')}>
+            ← Back
+          </button>
+          <span className="file-path">{currentPath}</span>
+        </div>
+        <div className="file-content-area">
+          {openFileContent !== '' ? (
+            <pre className="file-viewer">{openFileContent}</pre>
+          ) : (
+            <ul className="file-list">
+              {fileItems.map((item, idx) => (
+                <li key={idx} className="file-item" onClick={() => item.is_dir ? loadFiles(item.path) : loadFileContent(item.path)}>
+                  <span className="file-icon">{item.is_dir ? '📁' : '📄'}</span>
+                  <span className="file-name">{item.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: showFiles ? 'none' : 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <div className="commander-toolbar">
+          <div className="macro-group">
+            <button className="macro-btn" onClick={() => sendCommand('\x03')}>^C</button>
+            <button className="macro-btn" onClick={() => sendCommand('\x1b')}>Esc</button>
+            <button className="macro-btn" onClick={() => sendCommand('\x09')}>Tab</button>
+            <button className="macro-btn" onClick={() => sendCommand('\x1b[A')}>↑</button>
+            <button className="macro-btn" onClick={() => sendCommand('\x1b[B')}>↓</button>
           </div>
-          <div className="file-content-area">
-            {openFileContent !== '' ? (
-              <pre className="file-viewer">{openFileContent}</pre>
-            ) : (
-              <ul className="file-list">
-                {fileItems.map((item, idx) => (
-                  <li key={idx} className="file-item" onClick={() => item.is_dir ? loadFiles(item.path) : loadFileContent(item.path)}>
-                    <span className="file-icon">{item.is_dir ? '📁' : '📄'}</span>
-                    <span className="file-name">{item.name}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="macro-group">
+            <button className="macro-btn action" onClick={() => sendCommand('clear\r')}>Clear</button>
+            <button className="macro-btn action" onClick={() => sendCommand('top\r')}>top</button>
+            <button className="macro-btn action" onClick={() => sendCommand('ls -la\r')}>ls</button>
           </div>
         </div>
-      ) : (
-        <>
-          <div className="commander-toolbar">
-            <div className="macro-group">
-              <button className="macro-btn" onClick={() => sendCommand('\x03')}>^C</button>
-              <button className="macro-btn" onClick={() => sendCommand('\x1b')}>Esc</button>
-              <button className="macro-btn" onClick={() => sendCommand('\x09')}>Tab</button>
-              <button className="macro-btn" onClick={() => sendCommand('\x1b[A')}>↑</button>
-              <button className="macro-btn" onClick={() => sendCommand('\x1b[B')}>↓</button>
-            </div>
-            <div className="macro-group">
-              <button className="macro-btn action" onClick={() => sendCommand('clear\r')}>Clear</button>
-              <button className="macro-btn action" onClick={() => sendCommand('top\r')}>top</button>
-              <button className="macro-btn action" onClick={() => sendCommand('ls -la\r')}>ls</button>
-            </div>
-          </div>
-          <div className="terminal-container" ref={terminalRef}></div>
-        </>
-      )}
+        <div className="terminal-container" ref={terminalRef}></div>
+      </div>
     </div>
   );
 }
