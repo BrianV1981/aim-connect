@@ -62,6 +62,45 @@ function App() {
     return () => clearInterval(interval);
   }, [isAuthenticated, activeSession]);
 
+  const createSession = async () => {
+    const name = window.prompt("New Session Name:");
+    if (!name) return;
+    try {
+      await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      // Force fetch to update dropdown
+      const res = await fetch('/api/sessions');
+      const data = await res.json();
+      setSessions(data.sessions);
+      setActiveSession(name);
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: 'switch_session', session: name }));
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const killSession = async () => {
+    if (!activeSession) return;
+    if (!window.confirm(`Kill session ${activeSession}?`)) return;
+    try {
+      await fetch(`/api/sessions/${activeSession}`, { method: 'DELETE' });
+      const res = await fetch('/api/sessions');
+      const data = await res.json();
+      setSessions(data.sessions);
+      if (data.sessions.length > 0) {
+        setActiveSession(data.sessions[0]);
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({ type: 'switch_session', session: data.sessions[0] }));
+        }
+      } else {
+        setActiveSession('');
+      }
+    } catch (e) { console.error(e); }
+  };
+
   const handleSessionSwitch = (e) => {
     const newSession = e.target.value;
     setActiveSession(newSession);
@@ -385,13 +424,20 @@ function App() {
       <header className="app-header">
         <h1>aim-connect</h1>
         {sessions.length > 0 && (
-          <select 
-            className="session-select" 
-            value={activeSession} 
-            onChange={handleSessionSwitch}
-          >
-            {sessions.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <select 
+              className="session-select" 
+              value={activeSession} 
+              onChange={handleSessionSwitch}
+            >
+              {sessions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button className="macro-btn" onClick={createSession}>+</button>
+            <button className="macro-btn" onClick={killSession}>🗑️</button>
+          </div>
+        )}
+        {sessions.length === 0 && (
+          <button className="macro-btn" onClick={createSession}>+ New Session</button>
         )}
         <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
           {showFiles ? 'Terminal' : 'Files'}

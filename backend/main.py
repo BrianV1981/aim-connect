@@ -7,6 +7,7 @@ import json
 import asyncio
 import pyotp
 import qrcode
+from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -61,6 +62,25 @@ def get_sessions():
             if line and not line.startswith("aim-"):
                 sessions.append(line)
     return {"sessions": sessions}
+
+class SessionRequest(BaseModel):
+    name: str
+
+@app.post("/api/sessions")
+def create_session(req: SessionRequest):
+    import subprocess
+    result = subprocess.run(["tmux", "new-session", "-d", "-s", req.name], capture_output=True, text=True)
+    if result.returncode == 0:
+        return {"status": "success"}
+    return {"error": result.stderr}
+
+@app.delete("/api/sessions/{name}")
+def kill_session(name: str):
+    import subprocess
+    result = subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True, text=True)
+    if result.returncode == 0:
+        return {"status": "success"}
+    return {"error": result.stderr}
 
 @app.get("/api/files")
 def list_files(path: str = "/home/kingb/aim-connect"):
