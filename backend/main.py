@@ -107,6 +107,47 @@ def read_file(path: str):
     except Exception as e:
         return {"error": str(e)}
 
+class FileSaveRequest(BaseModel):
+    path: str
+    content: str
+
+@app.put("/api/file")
+def save_file(req: FileSaveRequest):
+    try:
+        with open(req.path, "w", encoding="utf-8") as f:
+            f.write(req.content)
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}
+
+class FileCreateRequest(BaseModel):
+    path: str
+    is_dir: bool
+
+@app.post("/api/file")
+def create_file_or_dir(req: FileCreateRequest):
+    try:
+        if req.is_dir:
+            os.makedirs(req.path, exist_ok=True)
+        else:
+            with open(req.path, "w", encoding="utf-8") as f:
+                pass
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.delete("/api/file")
+def delete_file(path: str):
+    import shutil
+    try:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()

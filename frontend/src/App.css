@@ -327,10 +327,16 @@ body {
   color: #cdd6f4;
 }
 
-.file-viewer {
+.file-editor {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
   font-family: 'Fira Code', monospace;
   font-size: 13px;
   color: #cdd6f4;
+  resize: none;
+  outline: none;
   white-space: pre-wrap;
   word-wrap: break-word;
 }

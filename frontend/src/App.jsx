@@ -16,6 +16,8 @@ function App() {
   const [currentPath, setCurrentPath] = useState('/home/kingb');
   const [fileItems, setFileItems] = useState([]);
   const [openFileContent, setOpenFileContent] = useState('');
+  const [isEditingFile, setIsEditingFile] = useState(false);
+  const [openFilePath, setOpenFilePath] = useState('');
   
   const defaultMacros = [
     { label: 'Clear', cmd: '\x0c' },
@@ -133,6 +135,8 @@ function App() {
         setFileItems(data.items);
         setCurrentPath(data.path);
         setOpenFileContent('');
+        setIsEditingFile(false);
+        setOpenFilePath('');
       }
     } catch (e) { console.error(e); }
   };
@@ -143,9 +147,49 @@ function App() {
       const data = await res.json();
       if (data.content !== undefined) {
         setOpenFileContent(data.content);
+        setOpenFilePath(path);
+        setIsEditingFile(true);
       } else {
         setOpenFileContent(data.error || 'Failed to read file');
       }
+    } catch (e) { console.error(e); }
+  };
+
+  const saveFile = async () => {
+    try {
+      await fetch('/api/file', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: openFilePath, content: openFileContent })
+      });
+      // flash visual feedback
+      const btn = document.getElementById('save-btn');
+      if (btn) {
+        btn.innerText = 'Saved!';
+        setTimeout(() => btn.innerText = 'Save', 2000);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const createItem = async (isDir) => {
+    const name = window.prompt(`New ${isDir ? 'Folder' : 'File'} Name:`);
+    if (!name) return;
+    try {
+      await fetch('/api/file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: `${currentPath}/${name}`, is_dir: isDir })
+      });
+      loadFiles(currentPath);
+    } catch (e) { console.error(e); }
+  };
+
+  const deleteItem = async (path, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete ${path.split('/').pop()}?`)) return;
+    try {
+      await fetch(`/api/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+      loadFiles(currentPath);
     } catch (e) { console.error(e); }
   };
 
@@ -472,20 +516,40 @@ function App() {
       
       <div className="file-explorer" style={{ display: showFiles ? 'flex' : 'none' }}>
         <div className="file-toolbar">
-          <button className="macro-btn" onClick={() => loadFiles(currentPath.split('/').slice(0, -1).join('/') || '/')}>
-            ← Back
-          </button>
-          <span className="file-path">{currentPath}</span>
+          {isEditingFile ? (
+            <>
+              <button className="macro-btn" onClick={() => { setIsEditingFile(false); setOpenFileContent(''); }}>← Back</button>
+              <span className="file-path">{openFilePath.split('/').pop()}</span>
+              <button id="save-btn" className="macro-btn action" onClick={saveFile}>Save</button>
+            </>
+          ) : (
+            <>
+              <button className="macro-btn" onClick={() => loadFiles(currentPath.split('/').slice(0, -1).join('/') || '/')}>
+                ← Back
+              </button>
+              <span className="file-path">{currentPath}</span>
+              <button className="macro-btn" onClick={() => createItem(false)}>+ File</button>
+              <button className="macro-btn" onClick={() => createItem(true)}>+ Dir</button>
+            </>
+          )}
         </div>
         <div className="file-content-area">
-          {openFileContent !== '' ? (
-            <pre className="file-viewer">{openFileContent}</pre>
+          {isEditingFile ? (
+            <textarea 
+              className="file-editor" 
+              value={openFileContent} 
+              onChange={e => setOpenFileContent(e.target.value)} 
+              spellCheck="false"
+            />
           ) : (
             <ul className="file-list">
               {fileItems.map((item, idx) => (
                 <li key={idx} className="file-item" onClick={() => item.is_dir ? loadFiles(item.path) : loadFileContent(item.path)}>
-                  <span className="file-icon">{item.is_dir ? '📁' : '📄'}</span>
-                  <span className="file-name">{item.name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                    <span className="file-icon">{item.is_dir ? '📁' : '📄'}</span>
+                    <span className="file-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                  </div>
+                  <button className="macro-btn" style={{ padding: '4px 8px', fontSize: '12px', background: 'transparent' }} onClick={(e) => deleteItem(item.path, e)}>🗑️</button>
                 </li>
               ))}
             </ul>
