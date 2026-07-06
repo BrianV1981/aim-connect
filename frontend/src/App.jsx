@@ -249,8 +249,18 @@ function App() {
       termEl.addEventListener('touchmove', handleTouchMove, { passive: false });
     }
 
+    // CRITICAL MOBILE FIX: Prevent browser from scrolling the toolbar off-screen 
+    // when xterm's hidden textarea receives focus at the bottom of the screen.
+    const handleScroll = () => {
+      if (window.scrollY > 0 || window.scrollX > 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll);
       if (termEl) {
         termEl.removeEventListener('touchstart', handleTouchStart);
         termEl.removeEventListener('touchmove', handleTouchMove);
