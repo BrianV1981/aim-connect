@@ -81,6 +81,30 @@ You must run the startup script directly in your terminal the very first time to
 
 ---
 
+## 🛠️ Development & Hacking Setup
+
+If you want to actively modify the UI or prefer using **Cloudflare Tunnels** over Ngrok, use this split-terminal setup:
+
+1. **Terminal 1 (Backend):**
+   ```bash
+   cd backend
+   source venv/bin/activate
+   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+2. **Terminal 2 (Frontend Dev Server):**
+   ```bash
+   cd frontend
+   npm run dev -- --host
+   ```
+3. **Terminal 3 (Cloudflare Tunnel):**
+   No Cloudflare account needed for a quick tunnel! Just run:
+   ```bash
+   npx -y cloudflared tunnel --url http://localhost:5173
+   ```
+   *(Look for the `trycloudflare.com` link in the output to access your dev server securely over HTTPS!)*
+
+---
+
 ## 🐳 Deployment (Docker)
 
 AIM-Connect is fully containerized. For a production deployment on a VPS:
