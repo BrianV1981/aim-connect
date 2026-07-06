@@ -1,5 +1,7 @@
 # 🛸 AIM-Connect
 
+[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/brianv1981)
+
 **A Clientless, Sovereign, Web-Based Terminal Multiplexer.**
 
 AIM-Connect transforms any web browser on any device into a secure, root-level control panel for your Linux server. No SSH keys to carry, no terminal apps to download, and no corporate bouncers. Just raw, unrestricted access to your machine from anywhere on Earth.
@@ -81,3 +83,5 @@ AIM-Connect is fully containerized. For a production deployment on a VPS:
 
 ---
 *Built with sovereignty in mind.*
+
+☕ **Support the project:** [Buy Me a Coffee](https://buymeacoffee.com/brianv1981)
