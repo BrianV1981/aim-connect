@@ -62,6 +62,31 @@ def get_sessions():
                 sessions.append(line)
     return {"sessions": sessions}
 
+@app.get("/api/files")
+def list_files(path: str = "/home/kingb/aim-connect"):
+    try:
+        items = []
+        for entry in os.scandir(path):
+            items.append({
+                "name": entry.name,
+                "is_dir": entry.is_dir(),
+                "path": entry.path
+            })
+        # Sort directories first, then files
+        items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+        return {"path": path, "items": items}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/file")
+def read_file(path: str):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return {"content": content}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()

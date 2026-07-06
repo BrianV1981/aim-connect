@@ -10,6 +10,10 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
+  const [showFiles, setShowFiles] = useState(false);
+  const [currentPath, setCurrentPath] = useState('/home/kingb');
+  const [fileItems, setFileItems] = useState([]);
+  const [openFileContent, setOpenFileContent] = useState('');
   
   const terminalRef = useRef(null);
   const term = useRef(null);
@@ -49,6 +53,36 @@ function App() {
       ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
     }
   };
+
+  const loadFiles = async (path) => {
+    try {
+      const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
+      const data = await res.json();
+      if (data.items) {
+        setFileItems(data.items);
+        setCurrentPath(data.path);
+        setOpenFileContent('');
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const loadFileContent = async (path) => {
+    try {
+      const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+      const data = await res.json();
+      if (data.content !== undefined) {
+        setOpenFileContent(data.content);
+      } else {
+        setOpenFileContent(data.error || 'Failed to read file');
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    if (showFiles) {
+      loadFiles(currentPath);
+    }
+  }, [showFiles]);
 
   // Handle PIN input
   const handlePinInput = (digit) => {
@@ -278,25 +312,54 @@ function App() {
             {sessions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         )}
+        <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
+          {showFiles ? 'Terminal' : 'Files'}
+        </button>
         <div className="status-indicator"></div>
       </header>
       
-      <div className="commander-toolbar">
-        <div className="macro-group">
-          <button className="macro-btn" onClick={() => sendCommand('\x03')}>^C</button>
-          <button className="macro-btn" onClick={() => sendCommand('\x1b')}>Esc</button>
-          <button className="macro-btn" onClick={() => sendCommand('\x09')}>Tab</button>
-          <button className="macro-btn" onClick={() => sendCommand('\x1b[A')}>↑</button>
-          <button className="macro-btn" onClick={() => sendCommand('\x1b[B')}>↓</button>
+      {showFiles ? (
+        <div className="file-explorer">
+          <div className="file-toolbar">
+            <button className="macro-btn" onClick={() => loadFiles(currentPath.split('/').slice(0, -1).join('/') || '/')}>
+              ← Back
+            </button>
+            <span className="file-path">{currentPath}</span>
+          </div>
+          <div className="file-content-area">
+            {openFileContent !== '' ? (
+              <pre className="file-viewer">{openFileContent}</pre>
+            ) : (
+              <ul className="file-list">
+                {fileItems.map((item, idx) => (
+                  <li key={idx} className="file-item" onClick={() => item.is_dir ? loadFiles(item.path) : loadFileContent(item.path)}>
+                    <span className="file-icon">{item.is_dir ? '📁' : '📄'}</span>
+                    <span className="file-name">{item.name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
-        <div className="macro-group">
-          <button className="macro-btn action" onClick={() => sendCommand('clear\r')}>Clear</button>
-          <button className="macro-btn action" onClick={() => sendCommand('top\r')}>top</button>
-          <button className="macro-btn action" onClick={() => sendCommand('ls -la\r')}>ls</button>
-        </div>
-      </div>
-
-      <div className="terminal-container" ref={terminalRef}></div>
+      ) : (
+        <>
+          <div className="commander-toolbar">
+            <div className="macro-group">
+              <button className="macro-btn" onClick={() => sendCommand('\x03')}>^C</button>
+              <button className="macro-btn" onClick={() => sendCommand('\x1b')}>Esc</button>
+              <button className="macro-btn" onClick={() => sendCommand('\x09')}>Tab</button>
+              <button className="macro-btn" onClick={() => sendCommand('\x1b[A')}>↑</button>
+              <button className="macro-btn" onClick={() => sendCommand('\x1b[B')}>↓</button>
+            </div>
+            <div className="macro-group">
+              <button className="macro-btn action" onClick={() => sendCommand('clear\r')}>Clear</button>
+              <button className="macro-btn action" onClick={() => sendCommand('top\r')}>top</button>
+              <button className="macro-btn action" onClick={() => sendCommand('ls -la\r')}>ls</button>
+            </div>
+          </div>
+          <div className="terminal-container" ref={terminalRef}></div>
+        </>
+      )}
     </div>
   );
 }

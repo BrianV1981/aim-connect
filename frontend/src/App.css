@@ -242,3 +242,73 @@ body {
   font-size: 12px;
   outline: none;
 }
+
+/* File Explorer */
+.file-explorer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #1e1e2e;
+  overflow: hidden;
+}
+
+.file-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(49, 50, 68, 0.5);
+  border-bottom: 1px solid #313244;
+  gap: 12px;
+}
+
+.file-path {
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  color: #a6adc8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.file-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.file-icon {
+  margin-right: 12px;
+  font-size: 18px;
+}
+
+.file-name {
+  font-size: 14px;
+  color: #cdd6f4;
+}
+
+.file-viewer {
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  color: #cdd6f4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
