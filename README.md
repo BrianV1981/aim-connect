@@ -54,8 +54,16 @@ AIM-Connect is built for speed and simplicity:
    ./startup.sh
    ```
 
-## 🛡️ Security Warning
-AIM-Connect grants full, unbridled terminal access to the user executing the backend script. It is **highly recommended** to route AIM-Connect through a secure tunnel (like Ngrok or Cloudflare Tunnels) with HTTPS enabled, and ensure your TOTP secret is kept strictly confidential.
+## 🚨 CRITICAL SECURITY WARNING 🚨
+
+> [!CAUTION]
+> **FULL ROOT-LEVEL TERMINAL ACCESS**
+> AIM-Connect grants full, unbridled terminal execution rights to whatever user executes the backend script. This is the equivalent of exposing SSH to the web.
+> 
+> **MANDATORY SECURITY PROTOCOLS:**
+> 1. **HTTPS IS STRICTLY REQUIRED:** You must ALWAYS run this application behind a secure SSL/TLS tunnel (like Ngrok, Cloudflare Tunnels, or an Nginx Reverse Proxy). If you run this over raw HTTP, your keystrokes (and TOTP codes) can be trivially intercepted.
+> 2. **Basic Path Traversal Protection:** While the web-UI file endpoints have basic path-traversal blocks to keep navigation scoped, the terminal itself has no such restrictions. 
+> 3. **Protect Your Keys:** The `.env` file containing your Ngrok auth tokens and backend secrets must never be committed to source control.
 
 ---
 *Built with sovereignty in mind.*
