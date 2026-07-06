@@ -56,20 +56,17 @@ Many of these ideas are inspired by analyzing cutting-edge remote mirroring tool
 
 ---
 
-## 💎 Enterprise & Sovereign Pro (Monetization Strategy)
+## 💎 Monetization Strategy (Sovereignty First)
 
-AIM-Connect is built on the philosophy of absolute sovereignty. The core application will always remain free, open-source, and self-hosted with zero microtransactions or paywalls. 
+AIM-Connect is built on the absolute philosophy of zero paywalls. Every feature, including the advanced server dashboard, metrics, and IDE, will always remain 100% free and open-source. We will never lock core functionality behind a subscription.
 
-However, to build a sustainable project, we plan to offer **"Sovereign Pro"** and **"Enterprise"** tiers targeted at power-users and corporations who need managed infrastructure and advanced analytics:
+To build a sustainable project without compromising these ideals, our monetization strategy focuses strictly on convenience and enterprise-level consulting:
 
-### 1. Sovereign Pro: The Advanced Server Dashboard
-*   **The Concept:** While the free version gives you the core Stats Panel (CPU/RAM gauges), the Pro version provides a massive, multi-server dashboard. It tracks historical metrics over months, provides visual parsed server logs, and allows you to manage fleets of AIM-Connect servers from a single pane of glass.
+### 1. Managed Zero-Config Tunnels
+*   **The Concept:** Setting up secure remote access (like Cloudflare Tunnels, Ngrok, or Reverse Proxies) requires technical know-how and maintenance. We plan to offer an official, lightning-fast, highly secure relay hosting service. Users simply pay a small subscription for the absolute convenience of a secure, instant URL without ever touching DNS records or configuring their router. 
 
-### 2. Managed Zero-Config Tunnels
-*   **The Concept:** Setting up Cloudflare Tunnels or Ngrok requires some technical know-how. We can offer an official, lightning-fast relay service for a small monthly fee. Users simply pay for the convenience of instantly securely exposing their server to the internet without touching DNS records.
-
-### 3. Enterprise Team Management (SSO & RBAC)
-*   **The Concept:** Corporations love the idea of AIM-Connect but require strict compliance. The Enterprise tier would introduce Single Sign-On (SSO) integrations, Role-Based Access Controls (RBAC), and full audit logging so teams can securely manage who has root terminal access.
+### 2. Consulting & Custom Development
+*   **The Concept:** As adoption grows, businesses and power-users will inevitably require bespoke integrations or custom deployments tailored to their specific infrastructure. We will leave the door open to be hired as lead advisors or developers to implement and support custom, enterprise-scale features on an independent contract basis.
 
 ---
 *Note: This roadmap is a living document. Ideas may be re-prioritized, dropped, or expanded upon as the project evolves.*
