@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  aim-connect:
+    build: .
+    container_name: aim-connect
+    ports:
+      - "8000:8000"
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+      - NGROK_DOMAIN=${NGROK_DOMAIN}
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
