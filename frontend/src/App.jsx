@@ -17,6 +17,20 @@ function App() {
   const [fileItems, setFileItems] = useState([]);
   const [openFileContent, setOpenFileContent] = useState('');
   
+  const defaultMacros = [
+    { label: 'Clear', cmd: '\x0c' },
+    { label: 'top', cmd: 'top\r' },
+    { label: 'ls', cmd: 'ls -la\r' }
+  ];
+  const [customMacros, setCustomMacros] = useState(() => {
+    const saved = localStorage.getItem('aim-macros');
+    return saved ? JSON.parse(saved) : defaultMacros;
+  });
+  
+  const [showMacroModal, setShowMacroModal] = useState(false);
+  const [newMacroLabel, setNewMacroLabel] = useState('');
+  const [newMacroCmd, setNewMacroCmd] = useState('');
+  
   const terminalRef = useRef(null);
   const term = useRef(null);
   const ws = useRef(null);
@@ -114,7 +128,6 @@ function App() {
     socket.binaryType = 'arraybuffer';
     
     socket.onopen = () => {
-      // Send auth token immediately
       socket.send(JSON.stringify({ type: 'auth', token: token }));
     };
 
@@ -134,14 +147,12 @@ function App() {
             return;
           }
         } catch (e) {
-          // Normal terminal string output if not JSON
           if (authRef.current && term.current) {
             term.current.write(event.data);
           }
         }
       } 
       
-      // Handle raw terminal bytes
       if (event.data instanceof ArrayBuffer) {
         if (term.current) {
           term.current.write(new Uint8Array(event.data));
@@ -157,6 +168,23 @@ function App() {
         setPin('');
       }
     };
+  };
+
+  const saveMacro = () => {
+    if (!newMacroLabel || !newMacroCmd) return;
+    const updated = [...customMacros, { label: newMacroLabel, cmd: newMacroCmd }];
+    setCustomMacros(updated);
+    localStorage.setItem('aim-macros', JSON.stringify(updated));
+    setShowMacroModal(false);
+    setNewMacroLabel('');
+    setNewMacroCmd('');
+  };
+
+  const deleteMacro = (index) => {
+    if (!window.confirm('Delete this macro?')) return;
+    const updated = customMacros.filter((_, i) => i !== index);
+    setCustomMacros(updated);
+    localStorage.setItem('aim-macros', JSON.stringify(updated));
   };
 
   // Initialize terminal once authenticated
@@ -406,9 +434,17 @@ function App() {
             <button className="macro-btn" onClick={() => sendCommand('\x1b[B')}>↓</button>
           </div>
           <div className="macro-group">
-            <button className="macro-btn action" onClick={() => sendCommand('\x0c')}>Clear</button>
-            <button className="macro-btn action" onClick={() => sendCommand('top\r')}>top</button>
-            <button className="macro-btn action" onClick={() => sendCommand('ls -la\r')}>ls</button>
+            {customMacros.map((macro, idx) => (
+              <button 
+                key={idx} 
+                className="macro-btn action" 
+                onClick={() => sendCommand(macro.cmd)}
+                onContextMenu={(e) => { e.preventDefault(); deleteMacro(idx); }}
+              >
+                {macro.label}
+              </button>
+            ))}
+            <button className="macro-btn action add-macro" onClick={() => setShowMacroModal(true)}>+</button>
           </div>
         </div>
         <div className="terminal-container" ref={terminalRef}></div>
@@ -416,6 +452,33 @@ function App() {
           <Keyboard onKeyPress={(key) => sendCommand(key)} />
         )}
       </div>
+
+      {showMacroModal && (
+        <div className="modal-overlay" onClick={() => setShowMacroModal(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <h3 style={{ color: '#cdd6f4', marginBottom: '16px' }}>Add Custom Macro</h3>
+            <input 
+              className="modal-input" 
+              placeholder="Button Label (e.g. logs)" 
+              value={newMacroLabel} 
+              onChange={e => setNewMacroLabel(e.target.value)} 
+            />
+            <input 
+              className="modal-input" 
+              placeholder="Bash Command (e.g. pm2 logs\r)" 
+              value={newMacroCmd} 
+              onChange={e => setNewMacroCmd(e.target.value)} 
+            />
+            <p style={{ color: '#a6adc8', fontSize: '12px', marginBottom: '20px' }}>
+              Hint: Add \r to the end to auto-press Enter. Long-press a macro to delete it.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button className="macro-btn" onClick={() => setShowMacroModal(false)}>Cancel</button>
+              <button className="macro-btn action" onClick={saveMacro}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
