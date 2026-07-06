@@ -50,6 +50,10 @@ Many of these ideas are inspired by analyzing cutting-edge remote mirroring tool
 *   **The Problem:** Running `git diff` in a mobile terminal emulator is visually noisy and difficult to read when reviewing large files.
 *   **The Vision:** In our upcoming Git GUI panel, integrate a dedicated Code Review modal. This view will render syntax-highlighted, unified diffs (with green additions and red deletions) mimicking the beautiful UI of a GitHub Pull Request, directly on your phone.
 
+### 12. WebAuthn (FaceID/TouchID) Integration
+*   **The Problem:** Manually copy-pasting a 6-digit TOTP code every time the mobile browser sleeps and disconnects the WebSocket is secure, but adds heavy friction to the workflow.
+*   **The Vision:** Implement standard WebAuthn/Passkey support. Instead of relying on vulnerable session cookies, the browser will instantly prompt the user for FaceID/TouchID when waking up, providing seamless, zero-friction re-authentication that remains cryptographically secure against XSS and stolen, unlocked devices.
+
 ---
 
 ## 💎 Monetization Strategy (Sovereignty First)
