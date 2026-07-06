@@ -51,6 +51,17 @@ def set_pty_size(fd, rows, cols):
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
+@app.get("/api/sessions")
+def get_sessions():
+    import subprocess
+    result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
+    sessions = []
+    if result.returncode == 0:
+        for line in result.stdout.splitlines():
+            if line and not line.startswith("aim-"):
+                sessions.append(line)
+    return {"sessions": sessions}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -121,6 +132,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         os.write(fd, data["payload"].encode("utf-8"))
                     elif data.get("type") == "resize":
                         set_pty_size(fd, data["rows"], data["cols"])
+                    elif data.get("type") == "switch_session":
+                        import subprocess
+                        tty_name = os.ttyname(fd)
+                        subprocess.run(["tmux", "switch-client", "-c", tty_name, "-t", data["session"]])
                 except json.JSONDecodeError:
                     os.write(fd, message.encode("utf-8"))
         except WebSocketDisconnect:

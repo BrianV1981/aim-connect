@@ -227,3 +227,14 @@ body {
   color: #f38ba8;
   border-color: rgba(243, 139, 168, 0.3);
 }
+
+.session-select {
+  background: rgba(30, 30, 46, 0.8);
+  color: #cdd6f4;
+  border: 1px solid #313244;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  outline: none;
+}

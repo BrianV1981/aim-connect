@@ -6,14 +6,49 @@ import './App.css';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const authRef = useRef(false);
   const [pin, setPin] = useState('');
   const [authError, setAuthError] = useState('');
+  const [sessions, setSessions] = useState([]);
+  const [activeSession, setActiveSession] = useState('');
   
   const terminalRef = useRef(null);
   const term = useRef(null);
   const ws = useRef(null);
   const fitAddon = useRef(null);
+  const authRef = useRef(false);
+
+  // Keep ref in sync
+  useEffect(() => {
+    authRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  // Fetch tmux sessions
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchSessions = async () => {
+      try {
+        const res = await fetch('/api/sessions');
+        const data = await res.json();
+        setSessions(data.sessions);
+        if (data.sessions.length > 0 && !activeSession) {
+          setActiveSession(data.sessions[0]);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchSessions();
+    const interval = setInterval(fetchSessions, 5000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, activeSession]);
+
+  const handleSessionSwitch = (e) => {
+    const newSession = e.target.value;
+    setActiveSession(newSession);
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
+    }
+  };
 
   // Handle PIN input
   const handlePinInput = (digit) => {
@@ -178,6 +213,7 @@ function App() {
         termEl.removeEventListener('touchmove', handleTouchMove);
       }
       if (term.current) term.current.dispose();
+      // DO NOT close ws.current here, otherwise it closes on re-renders
     };
   }, [isAuthenticated]);
 
@@ -224,6 +260,15 @@ function App() {
     <div className="app-container">
       <header className="app-header">
         <h1>aim-connect</h1>
+        {sessions.length > 0 && (
+          <select 
+            className="session-select" 
+            value={activeSession} 
+            onChange={handleSessionSwitch}
+          >
+            {sessions.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
         <div className="status-indicator"></div>
       </header>
       
