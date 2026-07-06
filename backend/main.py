@@ -5,6 +5,8 @@ import termios
 import struct
 import json
 import asyncio
+import pyotp
+import qrcode
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,6 +20,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SECRET_FILE = "totp.secret"
+
+def get_or_create_totp():
+    if os.path.exists(SECRET_FILE):
+        with open(SECRET_FILE, "r") as f:
+            secret = f.read().strip()
+    else:
+        secret = pyotp.random_base32()
+        with open(SECRET_FILE, "w") as f:
+            f.write(secret)
+        
+        # Print QR Code to console for setup
+        print("\n\033[92m=== aim-connect TOTP SETUP ===\033[0m")
+        print("Scan this QR code with Google Authenticator or Authy:\n")
+        uri = pyotp.totp.TOTP(secret).provisioning_uri(name="aim-agy", issuer_name="aim-connect")
+        qr = qrcode.QRCode(version=1, box_size=2, border=1)
+        qr.add_data(uri)
+        qr.make(fit=True)
+        # Use invert=True for dark terminals
+        qr.print_ascii(invert=True)
+        print("\nIf you can't scan the QR code, manually enter this secret: \033[93m" + secret + "\033[0m\n")
+    
+    return pyotp.TOTP(secret)
+
+# Initialize TOTP on startup
+totp_instance = get_or_create_totp()
+
 def set_pty_size(fd, rows, cols):
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
@@ -26,8 +55,23 @@ def set_pty_size(fd, rows, cols):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    # For the bridge, we'll spawn a bash shell by default.
-    # The user can run `tmux attach -t aim` from the UI to hook into the agent.
+    # Step 1: Enforce authentication
+    try:
+        # Wait for the first message, which must be the auth token
+        auth_msg = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        auth_data = json.loads(auth_msg)
+        if auth_data.get("type") != "auth" or not totp_instance.verify(auth_data.get("token")):
+            await websocket.send_text(json.dumps({"type": "auth_failed"}))
+            await websocket.close(code=1008, reason="Unauthorized")
+            return
+        
+        await websocket.send_text(json.dumps({"type": "auth_success"}))
+    except Exception as e:
+        print(f"Auth failed: {e}")
+        await websocket.close(code=1008, reason="Auth Timeout or Error")
+        return
+
+    # For the bridge, we'll try to hook into tmux
     pid, fd = pty.fork()
     if pid == 0:
         import subprocess
@@ -37,8 +81,6 @@ async def websocket_endpoint(websocket: WebSocket):
         
         # Check if tmux is running
         if subprocess.run(["tmux", "ls"], capture_output=True).returncode == 0:
-            # We must unset TMUX if we are running the server inside a tmux session, 
-            # otherwise tmux refuses to attach with 'sessions should be nested with care'.
             if "TMUX" in os.environ:
                 del os.environ["TMUX"]
             os.execvp("tmux", ["tmux", "attach"])
@@ -51,7 +93,6 @@ async def websocket_endpoint(websocket: WebSocket):
     async def read_from_pty():
         while True:
             try:
-                # Read raw output from the pseudo-terminal
                 data = await loop.run_in_executor(None, os.read, fd, 1024 * 10)
                 if not data:
                     break
@@ -71,7 +112,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     elif data.get("type") == "resize":
                         set_pty_size(fd, data["rows"], data["cols"])
                 except json.JSONDecodeError:
-                    # Fallback to raw string if not JSON
                     os.write(fd, message.encode("utf-8"))
         except WebSocketDisconnect:
             print("WebSocket disconnected")
