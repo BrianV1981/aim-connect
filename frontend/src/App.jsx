@@ -137,8 +137,46 @@ function App() {
 
     window.addEventListener('resize', handleResize);
 
+    // Mobile touch-to-scroll adapter
+    let lastTouchY = 0;
+    const handleTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        lastTouchY = e.touches[0].clientY;
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (e.touches.length === 1) {
+        e.preventDefault(); // Stop browser pull-to-refresh / scrolling
+        const currentY = e.touches[0].clientY;
+        const deltaY = lastTouchY - currentY;
+        
+        // Dispatch synthetic wheel event so xterm translates it to tmux mouse scrolls
+        if (Math.abs(deltaY) > 5) {
+          const wheelEvent = new WheelEvent('wheel', {
+            deltaY: deltaY * 2, // Multiplier for scroll speed
+            bubbles: true,
+            cancelable: true
+          });
+          const target = terminalRef.current.querySelector('.xterm-screen') || terminalRef.current;
+          target.dispatchEvent(wheelEvent);
+          lastTouchY = currentY;
+        }
+      }
+    };
+
+    const termEl = terminalRef.current;
+    if (termEl) {
+      termEl.addEventListener('touchstart', handleTouchStart, { passive: false });
+      termEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+    }
+
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (termEl) {
+        termEl.removeEventListener('touchstart', handleTouchStart);
+        termEl.removeEventListener('touchmove', handleTouchMove);
+      }
       if (term.current) term.current.dispose();
     };
   }, [isAuthenticated]);
