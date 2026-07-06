@@ -32,6 +32,8 @@ function App() {
   const [showMacroModal, setShowMacroModal] = useState(false);
   const [newMacroLabel, setNewMacroLabel] = useState('');
   const [newMacroCmd, setNewMacroCmd] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [theme, setTheme] = useState('dark');
   
   const terminalRef = useRef(null);
   const term = useRef(null);
@@ -542,6 +544,9 @@ function App() {
         >
           ⌨️ {showKeyboard ? 'ON' : 'OFF'}
         </button>
+        <button className="macro-btn" onClick={() => setShowSettings(true)}>
+          ⚙️ Settings
+        </button>
         <div className="status-indicator"></div>
       </header>
       
@@ -639,6 +644,28 @@ function App() {
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button className="macro-btn" onClick={() => setShowMacroModal(false)}>Cancel</button>
               <button className="macro-btn action" onClick={saveMacro}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <h3 style={{color: '#c83803', marginBottom: '16px'}}>Settings</h3>
+            <div style={{marginBottom: '16px'}}>
+              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Theme</label>
+              <select 
+                className="modal-input" 
+                value={theme}
+                onChange={e => setTheme(e.target.value)}
+              >
+                <option value="dark">Dark</option>
+                <option value="light">Light (Coming Soon)</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button className="macro-btn action" onClick={() => setShowSettings(false)}>Close</button>
             </div>
           </div>
         </div>
