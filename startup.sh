@@ -14,8 +14,16 @@ tmux kill-session -t aim-frontend 2>/dev/null
 tmux kill-session -t aim-ngrok 2>/dev/null
 pkill -f "./ngrok" 2>/dev/null
 
-echo -e "\n\033[36m[1/4] Configuring Ngrok Auth...\033[0m"
-./ngrok config add-authtoken 3G6lVXsU8x6aBG4jN49BgAMC0oh_4QNSHqfREPtW4PPevce1f
+if [ -f ".env" ]; then
+    source .env
+fi
+
+if [ -n "$NGROK_AUTHTOKEN" ]; then
+    echo -e "\n\033[36m[1/4] Configuring Ngrok Auth from .env...\033[0m"
+    ./ngrok config add-authtoken $NGROK_AUTHTOKEN
+else
+    echo -e "\n\033[33m[1/4] Skipping Ngrok Auth (NGROK_AUTHTOKEN not set in .env)...\033[0m"
+fi
 
 echo -e "\033[36m[2/4] Starting FastAPI Backend (Port 8000)...\033[0m"
 cd /home/kingb/aim-connect/backend

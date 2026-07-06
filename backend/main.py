@@ -83,11 +83,18 @@ def kill_session(name: str):
         return {"status": "success"}
     return {"error": result.stderr}
 
+def secure_path(p: str, base_dir: str = "/home/kingb") -> str:
+    abs_path = os.path.abspath(p)
+    if not abs_path.startswith(os.path.abspath(base_dir)):
+        raise ValueError("Access denied: Path traversal detected outside of home directory.")
+    return abs_path
+
 @app.get("/api/files")
 def list_files(path: str = "/home/kingb/aim-connect"):
     try:
+        safe_path = secure_path(path)
         items = []
-        for entry in os.scandir(path):
+        for entry in os.scandir(safe_path):
             items.append({
                 "name": entry.name,
                 "is_dir": entry.is_dir(),
@@ -102,7 +109,8 @@ def list_files(path: str = "/home/kingb/aim-connect"):
 @app.get("/api/file")
 def read_file(path: str):
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        safe_path = secure_path(path)
+        with open(safe_path, "r", encoding="utf-8") as f:
             content = f.read()
         return {"content": content}
     except Exception as e:
@@ -115,7 +123,8 @@ class FileSaveRequest(BaseModel):
 @app.put("/api/file")
 def save_file(req: FileSaveRequest):
     try:
-        with open(req.path, "w", encoding="utf-8") as f:
+        safe_path = secure_path(req.path)
+        with open(safe_path, "w", encoding="utf-8") as f:
             f.write(req.content)
         return {"status": "success"}
     except Exception as e:
@@ -128,10 +137,11 @@ class FileCreateRequest(BaseModel):
 @app.post("/api/file")
 def create_file_or_dir(req: FileCreateRequest):
     try:
+        safe_path = secure_path(req.path)
         if req.is_dir:
-            os.makedirs(req.path, exist_ok=True)
+            os.makedirs(safe_path, exist_ok=True)
         else:
-            with open(req.path, "w", encoding="utf-8") as f:
+            with open(safe_path, "w", encoding="utf-8") as f:
                 pass
         return {"status": "success"}
     except Exception as e:
@@ -141,10 +151,11 @@ def create_file_or_dir(req: FileCreateRequest):
 def delete_file(path: str):
     import shutil
     try:
-        if os.path.isdir(path):
-            shutil.rmtree(path)
+        safe_path = secure_path(path)
+        if os.path.isdir(safe_path):
+            shutil.rmtree(safe_path)
         else:
-            os.remove(path)
+            os.remove(safe_path)
         return {"status": "success"}
     except Exception as e:
         return {"error": str(e)}
