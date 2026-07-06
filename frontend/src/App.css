@@ -27,6 +27,7 @@ body {
   flex-direction: column;
   height: 100%;
   width: 100%;
+  min-height: 0;
 }
 
 .app-header {
@@ -64,11 +65,20 @@ body {
   padding: 8px;
   overflow: hidden; /* xterm.js handles its own scrolling */
   touch-action: none;
+  min-height: 0;
 }
 
 /* xterm overrides for a cleaner look */
 .xterm .xterm-viewport {
   background-color: transparent !important;
+}
+
+/* CRITICAL MOBILE FIX: Force the hidden textarea to the top of the screen
+   so the browser never tries to scroll the viewport down when it gets focus! */
+.xterm .xterm-helper-textarea {
+  position: fixed !important;
+  top: 0 !important;
+  left: -9999px !important;
 }
 
 /* Auth Screen Styles */
