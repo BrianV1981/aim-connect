@@ -54,11 +54,12 @@ body {
 }
 
 .terminal-container {
-  flex-grow: 1;
+  flex: 1;
   width: 100%;
   background-color: #1e1e2e;
   padding: 8px;
   overflow: hidden; /* xterm.js handles its own scrolling */
+  touch-action: none;
 }
 
 /* xterm overrides for a cleaner look */
@@ -187,4 +188,42 @@ body {
   color: #f38ba8;
   background: transparent;
   border: none;
+}
+
+/* Commander Toolbar */
+.commander-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(30, 30, 46, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.macro-group {
+  display: flex;
+  gap: 8px;
+}
+
+.macro-btn {
+  background: rgba(49, 50, 68, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cdd6f4;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: 'Fira Code', monospace;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.macro-btn:active {
+  background: rgba(203, 166, 247, 0.4);
+  transform: scale(0.95);
+}
+
+.macro-btn.action {
+  color: #f38ba8;
+  border-color: rgba(243, 139, 168, 0.3);
 }
