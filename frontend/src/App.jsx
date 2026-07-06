@@ -36,11 +36,16 @@ function App() {
   const ws = useRef(null);
   const fitAddon = useRef(null);
   const authRef = useRef(false);
+  const pinRef = useRef('');
 
   // Keep ref in sync
   useEffect(() => {
     authRef.current = isAuthenticated;
   }, [isAuthenticated]);
+  
+  useEffect(() => {
+    pinRef.current = pin;
+  }, [pin]);
 
   // Fetch tmux sessions
   useEffect(() => {
@@ -86,18 +91,29 @@ function App() {
     if (!activeSession) return;
     if (!window.confirm(`Kill session ${activeSession}?`)) return;
     try {
-      await fetch(`/api/sessions/${activeSession}`, { method: 'DELETE' });
+      // Find another session to switch to FIRST to prevent PTY crash
       const res = await fetch('/api/sessions');
       const data = await res.json();
-      setSessions(data.sessions);
-      if (data.sessions.length > 0) {
-        setActiveSession(data.sessions[0]);
+      const otherSessions = data.sessions.filter(s => s !== activeSession);
+      
+      if (otherSessions.length > 0) {
+        const nextSession = otherSessions[0];
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({ type: 'switch_session', session: data.sessions[0] }));
+          ws.current.send(JSON.stringify({ type: 'switch_session', session: nextSession }));
         }
+        setActiveSession(nextSession);
       } else {
         setActiveSession('');
       }
+      
+      // Give tmux a millisecond to switch clients, then kill the original session
+      setTimeout(async () => {
+        await fetch(`/api/sessions/${activeSession}`, { method: 'DELETE' });
+        const finalRes = await fetch('/api/sessions');
+        const finalData = await finalRes.json();
+        setSessions(finalData.sessions);
+      }, 100);
+      
     } catch (e) { console.error(e); }
   };
 
@@ -201,7 +217,10 @@ function App() {
 
     socket.onclose = () => {
       if (authRef.current) {
-        if (term.current) term.current.writeln('\x1b[31m\n[Connection lost]\x1b[0m');
+        if (term.current) term.current.writeln('\x1b[31m\n[Connection lost. Reconnecting...]\x1b[0m');
+        setTimeout(() => {
+          if (pinRef.current) authenticate(pinRef.current);
+        }, 1000);
       } else {
         setAuthError('Connection failed');
         setPin('');
