@@ -17,9 +17,11 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 
 *   **Clientless SSH Alternative:** Access your terminal from Safari, Chrome, or Firefox. No App Store downloads required.
 *   **The "Immortality" Protocol:** Built on top of `tmux`. Close your browser, put your phone in your pocket, and your scripts keep running. Log back in and instantly re-attach to the live terminal stream.
-*   **Visual File Explorer:** Don't just type `ls`. AIM-Connect features a touch-friendly, graphical file explorer. Tap folders to navigate, tap files to view them with syntax highlighting.
+*   **The Web IDE (Full File Management):** The visual file explorer isn't just read-only. It is a fully functional Sovereign Web IDE. Tap a script to edit its code in a full-screen text area, then hit "Save" to instantly overwrite the file on your Linux server. You can visually create, rename, and delete files/folders right from your phone.
 *   **Zero-Trust Security:** Secured by a hardened Google Authenticator (TOTP) pin-pad. No passwords to brute-force.
-*   **Sovereign Commander Toolbar:** Custom on-screen macro buttons (`^C`, `Esc`, `Tab`, `Clear`) designed specifically to make mobile coding actually enjoyable.
+*   **Dynamic Custom Macros:** Build your own interface. Using the "Commander Toolbar", you can add custom macro buttons (e.g. `pm2 logs\r`) on the fly. The app persists your macros securely in your browser's local storage so your personal toolbelt is always ready.
+*   **Sovereign Mobile Keyboard:** Native iOS and Android keyboards notoriously ruin mobile coding by hijacking the viewport and inserting ghost characters via predictive text. AIM-Connect features a custom, on-screen HTML keyboard with specialized developer keys (`[`, `]`, `|`, `\`) that automatically shrinks the terminal to fit, completely bypassing mobile keyboard bugs.
+*   **Tmux GUI Session Control:** Never lose your place. AIM-Connect features a built-in session manager. Use the native UI dropdown to create new isolated `tmux` workspaces, instantly teleport between running tasks, or permanently destroy environments when you are finished.
 
 ## 🏗️ Architecture
 
