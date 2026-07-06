@@ -71,7 +71,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1008, reason="Auth Timeout or Error")
         return
 
-    # For the bridge, we'll try to hook into tmux
+    # For the bridge, we'll try to hook into the user's tmux session
     pid, fd = pty.fork()
     if pid == 0:
         import subprocess
@@ -79,11 +79,21 @@ async def websocket_endpoint(websocket: WebSocket):
         # Ensure a valid terminal type for tmux
         os.environ["TERM"] = "xterm-256color"
         
-        # Check if tmux is running
-        if subprocess.run(["tmux", "ls"], capture_output=True).returncode == 0:
-            if "TMUX" in os.environ:
-                del os.environ["TMUX"]
-            os.execvp("tmux", ["tmux", "attach"])
+        # Unset TMUX to avoid nesting errors
+        if "TMUX" in os.environ:
+            del os.environ["TMUX"]
+            
+        # Find a tmux session that isn't one of our internal aim-* services
+        result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
+        target_session = None
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line and not line.startswith("aim-"):
+                    target_session = line
+                    break
+                    
+        if target_session:
+            os.execvp("tmux", ["tmux", "attach", "-t", target_session])
         else:
             os.execvp("bash", ["bash"])
     
