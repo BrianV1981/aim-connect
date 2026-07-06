@@ -71,6 +71,7 @@ def create_session(req: SessionRequest):
     import subprocess
     result = subprocess.run(["tmux", "new-session", "-d", "-s", req.name], capture_output=True, text=True)
     if result.returncode == 0:
+        subprocess.run(["tmux", "set-option", "-g", "mouse", "on"])
         return {"status": "success"}
     return {"error": result.stderr}
 
@@ -179,6 +180,9 @@ async def websocket_endpoint(websocket: WebSocket):
         # Unset TMUX to avoid nesting errors
         if "TMUX" in os.environ:
             del os.environ["TMUX"]
+            
+        # Ensure mouse support is enabled globally for mobile scroll sync
+        subprocess.run(["tmux", "set-option", "-g", "mouse", "on"])
             
         # Find a tmux session that isn't one of our internal aim-* services
         result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
