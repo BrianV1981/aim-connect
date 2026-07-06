@@ -143,6 +143,12 @@ function App() {
     };
   }, [isAuthenticated]);
 
+  const sendCommand = (cmd) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'input', payload: cmd }));
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="auth-container">
@@ -182,6 +188,22 @@ function App() {
         <h1>aim-connect</h1>
         <div className="status-indicator"></div>
       </header>
+      
+      <div className="commander-toolbar">
+        <div className="macro-group">
+          <button className="macro-btn" onClick={() => sendCommand('\x03')}>^C</button>
+          <button className="macro-btn" onClick={() => sendCommand('\x1b')}>Esc</button>
+          <button className="macro-btn" onClick={() => sendCommand('\x09')}>Tab</button>
+          <button className="macro-btn" onClick={() => sendCommand('\x1b[A')}>↑</button>
+          <button className="macro-btn" onClick={() => sendCommand('\x1b[B')}>↓</button>
+        </div>
+        <div className="macro-group">
+          <button className="macro-btn action" onClick={() => sendCommand('clear\r')}>Clear</button>
+          <button className="macro-btn action" onClick={() => sendCommand('htop\r')}>htop</button>
+          <button className="macro-btn action" onClick={() => sendCommand('ls -la\r')}>ls</button>
+        </div>
+      </div>
+
       <div className="terminal-container" ref={terminalRef}></div>
     </div>
   );
