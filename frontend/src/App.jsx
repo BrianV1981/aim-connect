@@ -212,6 +212,19 @@ function App() {
     setAuthError('');
   };
 
+  const handlePasteClick = async () => {
+    try {
+      const pastedText = await navigator.clipboard.readText();
+      const digits = pastedText.replace(/\D/g, '').slice(0, 6);
+      if (digits.length > 0) {
+        setPin(digits);
+        setAuthError('');
+      }
+    } catch (err) {
+      console.error('Failed to read clipboard:', err);
+    }
+  };
+
   // Trigger auth when 6 digits are reached
   useEffect(() => {
     if (pin.length === 6) {
@@ -491,7 +504,7 @@ function App() {
                 {num}
               </button>
             ))}
-            <button className="key empty"></button>
+            <button className="key action" style={{ fontSize: '24px' }} onClick={handlePasteClick}>📋</button>
             <button className="key" onClick={() => handlePinInput('0')}>0</button>
             <button className="key action" onClick={handleBackspace}>⌫</button>
           </div>
