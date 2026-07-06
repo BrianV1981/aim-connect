@@ -134,8 +134,18 @@ async def websocket_endpoint(websocket: WebSocket):
                         set_pty_size(fd, data["rows"], data["cols"])
                     elif data.get("type") == "switch_session":
                         import subprocess
-                        tty_name = os.ttyname(fd)
-                        subprocess.run(["tmux", "switch-client", "-c", tty_name, "-t", data["session"]])
+                        client_tty = None
+                        res = subprocess.run(["tmux", "list-clients", "-F", "#{client_pid} #{client_tty}"], capture_output=True, text=True)
+                        for line in res.stdout.splitlines():
+                            parts = line.split()
+                            if len(parts) >= 2 and parts[0] == str(pid):
+                                client_tty = parts[1]
+                                break
+                        
+                        if client_tty:
+                            subprocess.run(["tmux", "switch-client", "-c", client_tty, "-t", data["session"]])
+                        else:
+                            print(f"Could not find tmux client for pid {pid}")
                 except json.JSONDecodeError:
                     os.write(fd, message.encode("utf-8"))
         except WebSocketDisconnect:
