@@ -55,4 +55,21 @@ Many of these ideas are inspired by analyzing cutting-edge remote mirroring tool
 *   **The Vision:** In our upcoming Git GUI panel, integrate a dedicated Code Review modal. This view will render syntax-highlighted, unified diffs (with green additions and red deletions) mimicking the beautiful UI of a GitHub Pull Request, directly on your phone.
 
 ---
+
+## 💎 Enterprise & Sovereign Pro (Monetization Strategy)
+
+AIM-Connect is built on the philosophy of absolute sovereignty. The core application will always remain free, open-source, and self-hosted with zero microtransactions or paywalls. 
+
+However, to build a sustainable project, we plan to offer **"Sovereign Pro"** and **"Enterprise"** tiers targeted at power-users and corporations who need managed infrastructure and advanced analytics:
+
+### 1. Sovereign Pro: The Advanced Server Dashboard
+*   **The Concept:** While the free version gives you the core Stats Panel (CPU/RAM gauges), the Pro version provides a massive, multi-server dashboard. It tracks historical metrics over months, provides visual parsed server logs, and allows you to manage fleets of AIM-Connect servers from a single pane of glass.
+
+### 2. Managed Zero-Config Tunnels
+*   **The Concept:** Setting up Cloudflare Tunnels or Ngrok requires some technical know-how. We can offer an official, lightning-fast relay service for a small monthly fee. Users simply pay for the convenience of instantly securely exposing their server to the internet without touching DNS records.
+
+### 3. Enterprise Team Management (SSO & RBAC)
+*   **The Concept:** Corporations love the idea of AIM-Connect but require strict compliance. The Enterprise tier would introduce Single Sign-On (SSO) integrations, Role-Based Access Controls (RBAC), and full audit logging so teams can securely manage who has root terminal access.
+
+---
 *Note: This roadmap is a living document. Ideas may be re-prioritized, dropped, or expanded upon as the project evolves.*
