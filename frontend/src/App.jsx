@@ -172,7 +172,11 @@ function App() {
 
   const saveMacro = () => {
     if (!newMacroLabel || !newMacroCmd) return;
-    const updated = [...customMacros, { label: newMacroLabel, cmd: newMacroCmd }];
+    
+    // Convert literal "\r" or "\n" typed by the user into actual carriage returns
+    const processedCmd = newMacroCmd.replace(/\\r/g, '\r').replace(/\\n/g, '\n');
+    
+    const updated = [...customMacros, { label: newMacroLabel, cmd: processedCmd }];
     setCustomMacros(updated);
     localStorage.setItem('aim-macros', JSON.stringify(updated));
     setShowMacroModal(false);
