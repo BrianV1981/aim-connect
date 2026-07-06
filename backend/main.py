@@ -13,11 +13,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import logging
+import time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("aim-connect")
 
 app = FastAPI()
+
+ALLOWED_IPS = os.environ.get("ALLOWED_IPS", "")
+auth_attempts = {}
+MAX_AUTH_ATTEMPTS = 5
+LOCKOUT_TIME = 300 # 5 minutes
 
 app.add_middleware(
     CORSMiddleware,
@@ -183,16 +189,44 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     Spawns a PTY (pseudo-terminal) via os.fork() to bridge the WebSocket 
     into a native tmux session, allowing persistent background execution.
     """
+    client_ip = websocket.client.host
+    if ALLOWED_IPS:
+        allowed = [ip.strip() for ip in ALLOWED_IPS.split(",")]
+        if client_ip not in allowed:
+            logger.warning(f"Rejected connection from unauthorized IP: {client_ip}")
+            await websocket.close(code=1008, reason="IP not allowed")
+            return
+
+    # Rate limiting check
+    now = time.time()
+    if client_ip in auth_attempts:
+        attempts, lock_time = auth_attempts[client_ip]
+        if lock_time and now < lock_time:
+            logger.warning(f"Rate limited IP: {client_ip}")
+            await websocket.close(code=1008, reason="Too many attempts. Try again later.")
+            return
+        elif lock_time and now >= lock_time:
+            auth_attempts[client_ip] = (0, None)
+
     await websocket.accept()
 
     # Step 1: Enforce authentication
+    authenticated = False
     try:
-        # Wait for the first message, which must be the auth token
-        auth_msg = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
-        auth_data = json.loads(auth_msg)
-        if auth_data.get("type") != "auth" or not totp_instance.verify(auth_data.get("token")):
-            await websocket.send_text(json.dumps({"type": "auth_failed"}))
-            await websocket.close(code=1008, reason="Unauthorized")
+        auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        data = json.loads(auth_message)
+        if data.get("type") == "auth":
+            if totp_instance.verify(data.get("token", "")):
+                authenticated = True
+                auth_attempts[client_ip] = (0, None)
+            else:
+                attempts, _ = auth_attempts.get(client_ip, (0, None))
+                attempts += 1
+                lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
+                auth_attempts[client_ip] = (attempts, lock)
+                
+        if not authenticated:
+            await websocket.close(code=1008, reason="Invalid TOTP")
             return
         
         await websocket.send_text(json.dumps({"type": "auth_success"}))
@@ -233,21 +267,29 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     # Parent process
     loop = asyncio.get_event_loop()
     
+    last_activity = time.time()
+    INACTIVITY_TIMEOUT = 900 # 15 minutes
+
     async def read_from_pty():
+        nonlocal last_activity
+        loop = asyncio.get_running_loop()
         while True:
             try:
-                data = await loop.run_in_executor(None, os.read, fd, 1024 * 10)
+                data = await loop.run_in_executor(None, os.read, fd, 1024)
                 if not data:
                     break
                 await websocket.send_bytes(data)
+                last_activity = time.time()
             except Exception as e:
                 logger.error(f"PTY read error: {e}")
                 break
 
     async def write_to_pty():
-        try:
-            while True:
+        nonlocal last_activity
+        while True:
+            try:
                 message = await websocket.receive_text()
+                last_activity = time.time()
                 try:
                     data = json.loads(message)
                     if data.get("type") == "input":
@@ -255,13 +297,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     elif data.get("type") == "resize":
                         set_pty_size(fd, data["rows"], data["cols"])
                     elif data.get("type") == "switch_session":
+                        # We must find the client tty attached to this specific pid
                         import subprocess
+                        result = subprocess.run(["tmux", "list-clients", "-F", "#{client_tty} #{client_pid}"], capture_output=True, text=True)
                         client_tty = None
-                        res = subprocess.run(["tmux", "list-clients", "-F", "#{client_pid} #{client_tty}"], capture_output=True, text=True)
-                        for line in res.stdout.splitlines():
-                            parts = line.split()
-                            if len(parts) >= 2 and parts[0] == str(pid):
-                                client_tty = parts[1]
+                        for line in result.stdout.strip().split('\n'):
+                            if line and str(pid) in line:
+                                client_tty = line.split()[0]
                                 break
                         
                         if client_tty:
@@ -270,15 +312,30 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             logger.warning(f"Could not find tmux client for pid {pid}")
                 except json.JSONDecodeError:
                     os.write(fd, message.encode("utf-8"))
-        except WebSocketDisconnect:
-            logger.info("WebSocket disconnected")
-        except Exception as e:
-            logger.error(f"PTY write error: {e}")
+            except WebSocketDisconnect:
+                logger.info("WebSocket disconnected")
+                break
+            except Exception as e:
+                logger.error(f"PTY write error: {e}")
+                break
+
+    async def inactivity_monitor():
+        while True:
+            await asyncio.sleep(10)
+            if time.time() - last_activity > INACTIVITY_TIMEOUT:
+                logger.warning(f"Closing websocket due to inactivity timeout ({INACTIVITY_TIMEOUT}s)")
+                await websocket.close(code=1008, reason="Inactivity timeout")
+                break
 
     task1 = asyncio.create_task(read_from_pty())
     task2 = asyncio.create_task(write_to_pty())
+    task3 = asyncio.create_task(inactivity_monitor())
+
+    done, pending = await asyncio.wait(
+        [task1, task2, task3],
+        return_when=asyncio.FIRST_COMPLETED
+    )
     
-    done, pending = await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
     for task in pending:
         task.cancel()
 
