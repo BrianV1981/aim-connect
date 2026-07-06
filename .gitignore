@@ -8,3 +8,5 @@ dist/
 ngrok
 *.log
 totp.secret
+totp.secret
+logs/
