@@ -301,9 +301,9 @@ function App() {
       cursorBlink: true,
       disableStdin: showKeyboard,
       theme: {
-        background: '#1e1e2e',
-        foreground: '#cdd6f4',
-        cursor: '#f38ba8',
+        background: '#0B162C',
+        foreground: '#e2e8f0',
+        cursor: '#ff5722',
       },
       fontFamily: '"Fira Code", monospace',
       fontSize: 14,
@@ -589,7 +589,7 @@ function App() {
       {showMacroModal && (
         <div className="modal-overlay" onClick={() => setShowMacroModal(false)}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3 style={{ color: '#cdd6f4', marginBottom: '16px' }}>Add Custom Macro</h3>
+            <h3 style={{ color: '#e2e8f0', marginBottom: '16px' }}>Add Custom Macro</h3>
             <input 
               className="modal-input" 
               placeholder="Button Label (e.g. logs)" 
@@ -602,7 +602,7 @@ function App() {
               value={newMacroCmd} 
               onChange={e => setNewMacroCmd(e.target.value)} 
             />
-            <p style={{ color: '#a6adc8', fontSize: '12px', marginBottom: '20px' }}>
+            <p style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '20px' }}>
               Hint: Add \r to the end to auto-press Enter. Long-press a macro to delete it.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
