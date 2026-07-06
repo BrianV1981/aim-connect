@@ -199,7 +199,7 @@ function App() {
         </div>
         <div className="macro-group">
           <button className="macro-btn action" onClick={() => sendCommand('clear\r')}>Clear</button>
-          <button className="macro-btn action" onClick={() => sendCommand('htop\r')}>htop</button>
+          <button className="macro-btn action" onClick={() => sendCommand('top\r')}>top</button>
           <button className="macro-btn action" onClick={() => sendCommand('ls -la\r')}>ls</button>
         </div>
       </div>
