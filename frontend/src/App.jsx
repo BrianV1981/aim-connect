@@ -534,7 +534,7 @@ function App() {
           <button className="macro-btn" onClick={createSession}>+ New Session</button>
         )}
         <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
-          {showFiles ? 'Terminal' : 'Files'}
+          {showFiles ? '💻 Terminal' : '📁 Files'}
         </button>
         <button 
           className={`macro-btn ${showKeyboard ? 'active' : ''}`} 
