@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './App.css';
+import Keyboard from './Keyboard';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -11,6 +12,7 @@ function App() {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
   const [showFiles, setShowFiles] = useState(false);
+  const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('/home/kingb');
   const [fileItems, setFileItems] = useState([]);
   const [openFileContent, setOpenFileContent] = useState('');
@@ -163,6 +165,7 @@ function App() {
 
     term.current = new Terminal({
       cursorBlink: true,
+      disableStdin: showKeyboard,
       theme: {
         background: '#1e1e2e',
         foreground: '#cdd6f4',
@@ -270,6 +273,18 @@ function App() {
     };
   }, [isAuthenticated]);
 
+  // Dynamically disable native keyboard when our custom one is open
+  useEffect(() => {
+    if (term.current) {
+      term.current.options.disableStdin = showKeyboard;
+      if (showKeyboard) {
+        // Force blur the hidden textarea just in case it's currently focused
+        const textarea = terminalRef.current?.querySelector('textarea');
+        if (textarea) textarea.blur();
+      }
+    }
+  }, [showKeyboard]);
+
   const sendCommand = (cmd) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'input', payload: cmd }));
@@ -325,6 +340,12 @@ function App() {
         <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
           {showFiles ? 'Terminal' : 'Files'}
         </button>
+        <button 
+          className={`macro-btn ${showKeyboard ? 'active' : ''}`} 
+          onClick={() => setShowKeyboard(!showKeyboard)}
+        >
+          ⌨️ {showKeyboard ? 'ON' : 'OFF'}
+        </button>
         <div className="status-indicator"></div>
       </header>
       
@@ -367,6 +388,9 @@ function App() {
           </div>
         </div>
         <div className="terminal-container" ref={terminalRef}></div>
+        {showKeyboard && (
+          <Keyboard onKeyPress={(key) => sendCommand(key)} />
+        )}
       </div>
     </div>
   );
