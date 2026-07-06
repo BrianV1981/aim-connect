@@ -24,6 +24,7 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 *   **Dynamic Custom Macros:** Build your own interface. Using the "Commander Toolbar", you can add custom macro buttons (e.g. `pm2 logs\r`) on the fly. The app persists your macros securely in your browser's local storage.
 *   **Sovereign Mobile Keyboard:** Native iOS and Android keyboards notoriously ruin mobile coding by hijacking the viewport and inserting ghost characters via predictive text. AIM-Connect features a custom, on-screen HTML keyboard with specialized developer keys (`[`, `]`, `|`, `\`) that automatically shrinks the terminal to fit.
 *   **Tmux GUI Session Control:** Never lose your place. AIM-Connect features a built-in session manager. Use the native UI dropdown to create new isolated `tmux` workspaces, instantly teleport between running tasks, or permanently destroy environments when you are finished.
+*   **Collaborative Sovereignty (Multi-User):** Stop paying for arbitrary "seat licenses" just to share your own hardware. Because `aim-connect` relies on raw OS-level `pty` forks, it natively supports isolated, simultaneous multi-user environments. Share your secure URL and TOTP with a collaborator, and you can both work on the same machine—in the same session or entirely different background sessions—without relying on any third-party account systems or corporate gatekeepers.
 
 ---
 
