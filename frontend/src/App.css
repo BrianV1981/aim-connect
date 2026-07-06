@@ -207,12 +207,24 @@ body {
 /* Commander Toolbar */
 .commander-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   padding: 8px 12px;
   background: rgba(30, 30, 46, 0.8);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  overflow-x: auto;
+  white-space: nowrap;
+  gap: 16px;
+}
+
+/* Hide scrollbar for a cleaner look */
+.commander-toolbar::-webkit-scrollbar {
+  display: none;
+}
+.commander-toolbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .macro-group {
