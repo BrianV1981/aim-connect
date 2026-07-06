@@ -10,6 +10,8 @@ import qrcode
 from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 app = FastAPI()
 
@@ -261,6 +263,19 @@ async def websocket_endpoint(websocket: WebSocket):
     for task in pending:
         task.cancel()
 
-@app.get("/")
-def read_root():
-    return {"status": "aim-connect backend running!"}
+frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+if os.path.exists(frontend_path):
+    # Mount Vite static assets
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
+    
+    # Catch-all for SPA routing
+    @app.get("/{catchall:path}")
+    def serve_frontend(catchall: str):
+        file_path = os.path.join(frontend_path, catchall)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_path, "index.html"))
+else:
+    @app.get("/")
+    def read_root():
+        return {"status": "aim-connect backend running! (Frontend not built in ../frontend/dist)"}
