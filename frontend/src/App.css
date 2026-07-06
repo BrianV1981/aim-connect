@@ -65,3 +65,126 @@ body {
 .xterm .xterm-viewport {
   background-color: transparent !important;
 }
+
+/* Auth Screen Styles */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100vw;
+  background: radial-gradient(circle at center, #1e1e2e 0%, #11111b 100%);
+}
+
+.auth-card {
+  background: rgba(30, 30, 46, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 40px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.auth-logo {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #cba6f7, #f38ba8);
+  border-radius: 12px;
+  margin: 0 auto 16px auto;
+  box-shadow: 0 4px 12px rgba(203, 166, 247, 0.4);
+}
+
+.auth-header h2 {
+  color: #cdd6f4;
+  font-size: 20px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.auth-header p {
+  color: #a6adc8;
+  font-size: 14px;
+}
+
+.pin-display {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.pin-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #585b70;
+  transition: all 0.2s ease;
+}
+
+.pin-dot.filled {
+  background-color: #cba6f7;
+  border-color: #cba6f7;
+  box-shadow: 0 0 10px rgba(203, 166, 247, 0.6);
+}
+
+.auth-error {
+  color: #f38ba8;
+  font-size: 14px;
+  margin-bottom: 20px;
+  animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+.key {
+  background: rgba(49, 50, 68, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 50%;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+  color: #cdd6f4;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin: 0 auto;
+}
+
+.key:active {
+  transform: scale(0.9);
+  background: rgba(203, 166, 247, 0.3);
+}
+
+.key.empty {
+  visibility: hidden;
+}
+
+.key.action {
+  font-size: 20px;
+  color: #f38ba8;
+  background: transparent;
+  border: none;
+}
