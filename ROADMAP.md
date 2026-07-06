@@ -30,5 +30,17 @@ Many of these ideas are inspired by analyzing cutting-edge remote mirroring tool
 *   **The Problem:** If the WebSocket connection drops, or if the user scrolls too far up, mobile terminal interfaces can struggle with infinite scrollback history.
 *   **The Vision:** Implement an intelligent buffer that allows users to seamlessly scroll back through thousands of lines of previous Tmux output without bogging down the DOM.
 
+### 7. "Quick-Action" Prompt Pills
+*   **The Problem:** While the Commander Toolbar provides single-character macros (like `^C`), users still have to type out long, repetitive commands like `git status` or `npm run dev` on a mobile keyboard.
+*   **The Vision:** Add a horizontally scrolling drawer of sleek "Pills" at the bottom of the screen. These would be fully customizable, allowing users to tap a pill to instantly execute full string commands.
+
+### 8. OS-Level Context Menus
+*   **The Problem:** To launch the server, a user must open a terminal, CD into the project folder, and run `./startup.sh`.
+*   **The Vision:** Include an installation script that adds an OS-level right-click context menu (e.g., for Nautilus on Linux or Explorer on Windows). A user can simply right-click any folder on their machine and select "Start AIM-Connect Here" to instantly spawn a session in that directory.
+
+### 9. Bi-Directional Scroll Sync
+*   **The Problem:** When running a program that implements its own scrolling pager (like `less`, `nano`, or `vim`) inside `tmux`, native mobile touch-scrolling doesn't always translate perfectly to arrow-key or page-down events inside the terminal app.
+*   **The Vision:** Intercept native mobile touch/scroll events and mathematically translate them into precise WebSocket inputs (like mouse-scroll wheel events) so that programs like `vim` or `htop` scroll fluidly exactly as your finger moves.
+
 ---
 *Note: This roadmap is a living document. Ideas may be re-prioritized, dropped, or expanded upon as the project evolves.*
