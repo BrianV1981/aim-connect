@@ -8,5 +8,7 @@ dist/
 ngrok
 *.log
 totp.secret
-totp.secret
 logs/
+
+# Agent Specific
+aim-connect-agent-sop.md
