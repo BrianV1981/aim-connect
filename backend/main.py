@@ -12,6 +12,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("aim-connect")
 
 app = FastAPI()
 
@@ -50,12 +54,18 @@ def get_or_create_totp():
 # Initialize TOTP on startup
 totp_instance = get_or_create_totp()
 
-def set_pty_size(fd, rows, cols):
+def set_pty_size(fd: int, rows: int, cols: int) -> None:
+    """Resizes the underlying pseudo-terminal using an ioctl syscall."""
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
+@app.get("/api/health")
+def health_check() -> dict:
+    """Health check endpoint for Docker and monitoring watchdogs."""
+    return {"status": "ok", "service": "aim-connect"}
+
 @app.get("/api/sessions")
-def get_sessions():
+def get_sessions() -> dict:
     import subprocess
     result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
     sessions = []
@@ -69,7 +79,8 @@ class SessionRequest(BaseModel):
     name: str
 
 @app.post("/api/sessions")
-def create_session(req: SessionRequest):
+def create_session(req: SessionRequest) -> dict:
+    """Spawns a new detached tmux session and enables global mouse support."""
     import subprocess
     result = subprocess.run(["tmux", "new-session", "-d", "-s", req.name], capture_output=True, text=True)
     if result.returncode == 0:
@@ -163,7 +174,13 @@ def delete_file(path: str):
         return {"error": str(e)}
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """
+    Primary WebSocket handler for streaming terminal I/O.
+    Enforces a strict 10-second TOTP authentication window on connection.
+    Spawns a PTY (pseudo-terminal) via os.fork() to bridge the WebSocket 
+    into a native tmux session, allowing persistent background execution.
+    """
     await websocket.accept()
 
     # Step 1: Enforce authentication
@@ -178,7 +195,7 @@ async def websocket_endpoint(websocket: WebSocket):
         
         await websocket.send_text(json.dumps({"type": "auth_success"}))
     except Exception as e:
-        print(f"Auth failed: {e}")
+        logger.error(f"Auth failed: {e}")
         await websocket.close(code=1008, reason="Auth Timeout or Error")
         return
 
@@ -222,7 +239,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     break
                 await websocket.send_bytes(data)
             except Exception as e:
-                print(f"PTY read error: {e}")
+                logger.error(f"PTY read error: {e}")
                 break
 
     async def write_to_pty():
@@ -248,13 +265,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         if client_tty:
                             subprocess.run(["tmux", "switch-client", "-c", client_tty, "-t", data["session"]])
                         else:
-                            print(f"Could not find tmux client for pid {pid}")
+                            logger.warning(f"Could not find tmux client for pid {pid}")
                 except json.JSONDecodeError:
                     os.write(fd, message.encode("utf-8"))
         except WebSocketDisconnect:
-            print("WebSocket disconnected")
+            logger.info("WebSocket disconnected")
         except Exception as e:
-            print(f"PTY write error: {e}")
+            logger.error(f"PTY write error: {e}")
 
     task1 = asyncio.create_task(read_from_pty())
     task2 = asyncio.create_task(write_to_pty())
