@@ -27,7 +27,7 @@ nohup npm run dev -- --host > frontend.log 2>&1 &
 
 echo -e "\033[36m[4/4] Opening Secure Ngrok Tunnel...\033[0m"
 cd /home/kingb/aim-connect
-nohup ./ngrok http --url=pox-repulsive-veggie.ngrok-free.dev 5173 > ngrok.log 2>&1 &
+nohup ./ngrok http --url=pox-repulsive-veggie.ngrok-free.dev 5173 --log=stdout > ngrok.log 2>&1 &
 
 echo -e "\n\033[92m==========================================\033[0m"
 echo -e "\033[92m🚀 SYSTEM ONLINE & SECURE!\033[0m"
