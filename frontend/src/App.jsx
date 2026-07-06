@@ -282,6 +282,18 @@ function App() {
         const textarea = terminalRef.current?.querySelector('textarea');
         if (textarea) textarea.blur();
       }
+      
+      // Give React a few milliseconds to render the keyboard DOM, then resize the terminal
+      // so it shrinks and the cursor stays visible above the keyboard!
+      setTimeout(() => {
+        if (fitAddon.current) {
+          fitAddon.current.fit();
+          const dims = fitAddon.current.proposeDimensions();
+          if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+          }
+        }
+      }, 50);
     }
   }, [showKeyboard]);
 
