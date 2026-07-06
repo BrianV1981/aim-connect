@@ -9,8 +9,8 @@ html {
 }
 
 body {
-  background-color: #11111b;
-  color: #cdd6f4;
+  background-color: #050a14;
+  color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   height: 100dvh;
   width: 100vw;
@@ -32,9 +32,9 @@ body {
 
 .app-header {
   height: 50px;
-  background-color: rgba(30, 30, 46, 0.8);
+  background-color: rgba(11, 22, 44, 0.8);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid #1c305c;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -46,7 +46,7 @@ body {
 .app-header h1 {
   font-size: 16px;
   font-weight: 600;
-  color: #cba6f7;
+  color: #c83803;
   letter-spacing: 0.5px;
 }
 
@@ -61,7 +61,7 @@ body {
 .terminal-container {
   flex: 1;
   width: 100%;
-  background-color: #1e1e2e;
+  background-color: #0B162C;
   padding: 8px;
   overflow: hidden; /* xterm.js handles its own scrolling */
   touch-action: none;
@@ -88,11 +88,11 @@ body {
   align-items: center;
   height: 100vh;
   width: 100vw;
-  background: radial-gradient(circle at center, #1e1e2e 0%, #11111b 100%);
+  background: radial-gradient(circle at center, #0B162C 0%, #050a14 100%);
 }
 
 .auth-card {
-  background: rgba(30, 30, 46, 0.6);
+  background: rgba(11, 22, 44, 0.6);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -113,14 +113,14 @@ body {
 .auth-logo {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #cba6f7, #f38ba8);
+  background: linear-gradient(135deg, #c83803, #ff5722);
   border-radius: 12px;
   margin: 0 auto 16px auto;
-  box-shadow: 0 4px 12px rgba(203, 166, 247, 0.4);
+  box-shadow: 0 4px 12px rgba(200, 56, 3, 0.4);
 }
 
 .auth-header h2 {
-  color: #cdd6f4;
+  color: #e2e8f0;
   font-size: 20px;
   margin-bottom: 8px;
   font-weight: 600;
@@ -128,7 +128,7 @@ body {
 }
 
 .auth-header p {
-  color: #a6adc8;
+  color: #94a3b8;
   font-size: 14px;
 }
 
@@ -142,18 +142,18 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid #585b70;
+  border: 2px solid #2a437c;
   transition: all 0.2s ease;
 }
 
 .pin-dot.filled {
-  background-color: #cba6f7;
-  border-color: #cba6f7;
+  background-color: #c83803;
+  border-color: #c83803;
   box-shadow: 0 0 10px rgba(203, 166, 247, 0.6);
 }
 
 .auth-error {
-  color: #f38ba8;
+  color: #ff5722;
   font-size: 14px;
   margin-bottom: 20px;
   animation: shake 0.4s ease-in-out;
@@ -173,7 +173,7 @@ body {
 }
 
 .key {
-  background: rgba(49, 50, 68, 0.4);
+  background: rgba(28, 48, 92, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 50%;
   width: 64px;
@@ -182,7 +182,7 @@ body {
   justify-content: center;
   align-items: center;
   font-size: 24px;
-  color: #cdd6f4;
+  color: #e2e8f0;
   cursor: pointer;
   transition: all 0.15s ease;
   margin: 0 auto;
@@ -190,7 +190,7 @@ body {
 
 .key:active {
   transform: scale(0.9);
-  background: rgba(203, 166, 247, 0.3);
+  background: rgba(200, 56, 3, 0.3);
 }
 
 .key.empty {
@@ -199,7 +199,7 @@ body {
 
 .key.action {
   font-size: 20px;
-  color: #f38ba8;
+  color: #ff5722;
   background: transparent;
   border: none;
 }
@@ -210,7 +210,7 @@ body {
   justify-content: flex-start;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(30, 30, 46, 0.8);
+  background: rgba(11, 22, 44, 0.8);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   overflow-x: auto;
@@ -233,9 +233,9 @@ body {
 }
 
 .macro-btn {
-  background: rgba(49, 50, 68, 0.6);
+  background: rgba(28, 48, 92, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #cdd6f4;
+  color: #e2e8f0;
   border-radius: 6px;
   padding: 6px 12px;
   font-size: 12px;
@@ -245,19 +245,19 @@ body {
 }
 
 .macro-btn:active {
-  background: rgba(203, 166, 247, 0.4);
+  background: rgba(200, 56, 3, 0.4);
   transform: scale(0.95);
 }
 
 .macro-btn.action {
-  color: #f38ba8;
-  border-color: rgba(243, 139, 168, 0.3);
+  color: #ff5722;
+  border-color: rgba(255, 87, 34, 0.3);
 }
 
 .session-select {
-  background: rgba(30, 30, 46, 0.8);
-  color: #cdd6f4;
-  border: 1px solid #313244;
+  background: rgba(11, 22, 44, 0.8);
+  color: #e2e8f0;
+  border: 1px solid #1c305c;
   border-radius: 4px;
   padding: 4px 8px;
   font-family: 'Fira Code', monospace;
@@ -270,7 +270,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #1e1e2e;
+  background-color: #0B162C;
   overflow: hidden;
 }
 
@@ -278,15 +278,15 @@ body {
   display: flex;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(49, 50, 68, 0.5);
-  border-bottom: 1px solid #313244;
+  background: rgba(28, 48, 92, 0.5);
+  border-bottom: 1px solid #1c305c;
   gap: 12px;
 }
 
 .file-path {
   font-family: 'Fira Code', monospace;
   font-size: 13px;
-  color: #a6adc8;
+  color: #94a3b8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -324,7 +324,7 @@ body {
 
 .file-name {
   font-size: 14px;
-  color: #cdd6f4;
+  color: #e2e8f0;
 }
 
 .file-editor {
@@ -334,7 +334,7 @@ body {
   border: none;
   font-family: 'Fira Code', monospace;
   font-size: 13px;
-  color: #cdd6f4;
+  color: #e2e8f0;
   resize: none;
   outline: none;
   white-space: pre-wrap;
@@ -343,8 +343,8 @@ body {
 
 /* Sovereign HTML Keyboard */
 .sovereign-keyboard {
-  background-color: #11111b;
-  border-top: 1px solid #313244;
+  background-color: #050a14;
+  border-top: 1px solid #1c305c;
   padding: 8px 4px;
   display: flex;
   flex-direction: column;
@@ -360,8 +360,8 @@ body {
 }
 
 .kb-key {
-  background-color: #313244;
-  color: #cdd6f4;
+  background-color: #1c305c;
+  color: #e2e8f0;
   border: none;
   border-radius: 4px;
   padding: 10px 0;
@@ -377,8 +377,8 @@ body {
 }
 
 .kb-key:active {
-  background-color: #cba6f7;
-  color: #11111b;
+  background-color: #c83803;
+  color: #050a14;
   transform: scale(0.95);
 }
 
@@ -390,8 +390,8 @@ body {
 }
 
 .kb-shift.active {
-  background-color: #f38ba8;
-  color: #11111b;
+  background-color: #ff5722;
+  color: #050a14;
 }
 
 .kb-space {
@@ -401,7 +401,7 @@ body {
 
 .kb-enter {
   background-color: #89b4fa;
-  color: #11111b;
+  color: #050a14;
   flex: 2;
   max-width: 80px;
   font-weight: bold;
@@ -411,7 +411,7 @@ body {
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(17, 17, 27, 0.8);
+  background: rgba(5, 10, 20, 0.8);
   backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
@@ -420,8 +420,8 @@ body {
 }
 
 .modal-card {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: #0B162C;
+  border: 1px solid #1c305c;
   border-radius: 12px;
   padding: 24px;
   width: 90%;
@@ -431,9 +431,9 @@ body {
 
 .modal-input {
   width: 100%;
-  background: #11111b;
-  border: 1px solid #313244;
-  color: #cdd6f4;
+  background: #050a14;
+  border: 1px solid #1c305c;
+  color: #e2e8f0;
   padding: 10px 12px;
   border-radius: 6px;
   margin-bottom: 12px;
@@ -443,5 +443,5 @@ body {
 }
 
 .modal-input:focus {
-  border-color: #cba6f7;
+  border-color: #c83803;
 }
