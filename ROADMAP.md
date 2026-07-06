@@ -38,19 +38,15 @@ Many of these ideas are inspired by analyzing cutting-edge remote mirroring tool
 *   **The Problem:** To launch the server, a user must open a terminal, CD into the project folder, and run `./startup.sh`.
 *   **The Vision:** Include an installation script that adds an OS-level right-click context menu (e.g., for Nautilus on Linux or Explorer on Windows). A user can simply right-click any folder on their machine and select "Start AIM-Connect Here" to instantly spawn a session in that directory.
 
-### 9. Bi-Directional Scroll Sync
-*   **The Problem:** When running a program that implements its own scrolling pager (like `less`, `nano`, or `vim`) inside `tmux`, native mobile touch-scrolling doesn't always translate perfectly to arrow-key or page-down events inside the terminal app.
-*   **The Vision:** Intercept native mobile touch/scroll events and mathematically translate them into precise WebSocket inputs (like mouse-scroll wheel events) so that programs like `vim` or `htop` scroll fluidly exactly as your finger moves.
-
-### 10. The Unkillable Watchdog (Auto-Recovery & Updates)
+### 9. The Unkillable Watchdog (Auto-Recovery & Updates)
 *   **The Problem:** If the server crashes, or if the user pushes new code from their phone, they have to manually restart the backend or run `git pull`.
 *   **The Vision:** Provide a background daemon (cron job) that acts as a watchdog. Every 5 minutes, it checks if the server is running. If it crashed, it resurrects it. Furthermore, if it detects a new git commit on the active branch, it automatically pulls the code and gracefully restarts the server, enabling self-healing deployments.
 
-### 11. Auto-Generated SSL for Progressive Web App (PWA) Support
+### 10. Auto-Generated SSL for Progressive Web App (PWA) Support
 *   **The Problem:** Mobile browsers like Safari enforce strict security restrictions. Without `https://`, we cannot utilize advanced mobile features like Push Notifications, Voice Dictation, or adding the web app to the home screen.
 *   **The Vision:** The backend will automatically generate self-signed SSL certificates on its very first run. This allows the user to tap "Add to Home Screen" on iOS/Android, turning AIM-Connect into a full-screen, native-feeling app that bypasses the App Store entirely.
 
-### 12. Visual "Unified Diffs" for Code Review
+### 11. Visual "Unified Diffs" for Code Review
 *   **The Problem:** Running `git diff` in a mobile terminal emulator is visually noisy and difficult to read when reviewing large files.
 *   **The Vision:** In our upcoming Git GUI panel, integrate a dedicated Code Review modal. This view will render syntax-highlighted, unified diffs (with green additions and red deletions) mimicking the beautiful UI of a GitHub Pull Request, directly on your phone.
 
