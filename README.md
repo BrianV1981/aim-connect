@@ -37,24 +37,38 @@ AIM-Connect is built for speed and simplicity:
    git clone https://github.com/BrianV1981/aim-connect.git
    cd aim-connect
    ```
-2. **Install Backend Dependencies:**
+2. **Configure your Environment:**
    ```bash
-   cd backend
-   pip install -r requirements.txt
+   cp .env.example .env
+   # Edit .env to add your Ngrok Authtoken
    ```
-3. **Install Frontend Dependencies:**
+3. **Build the Frontend:**
    ```bash
    cd frontend
    npm install
+   npm run build
+   cd ..
    ```
-4. **Generate your Secret Key & Setup TOTP:**
-   (Run the setup script to generate your QR code for Google Authenticator)
-5. **Launch the Bridge:**
+4. **Install Backend Dependencies:**
+   ```bash
+   cd backend
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   cd ..
+   ```
+5. **Launch the Bridge (and generate TOTP secret):**
    ```bash
    ./startup.sh
    ```
+   *Note: On the very first run, the backend will print a massive QR Code to your terminal. Scan it with Google Authenticator or Authy to set up your lock screen PIN!*
 
-## 🚨 CRITICAL SECURITY WARNING 🚨
+## 🐳 Deployment (Docker)
+
+AIM-Connect is fully containerized. For a production deployment on a VPS:
+1. `cp .env.example .env` and fill in your `NGROK_AUTHTOKEN`.
+2. Run `docker-compose up -d --build`.
+3. Check the logs (`docker logs aim-connect -f`) to scan your initial TOTP QR Code!
 
 > [!CAUTION]
 > **FULL ROOT-LEVEL TERMINAL ACCESS**
