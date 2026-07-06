@@ -62,9 +62,12 @@ body {
 .status-indicator {
   width: 10px;
   height: 10px;
+  min-width: 10px;
+  min-height: 10px;
   border-radius: 50%;
   background-color: #a6e3a1; /* green for connected */
   box-shadow: 0 0 8px #a6e3a1;
+  flex-shrink: 0;
 }
 
 .terminal-container {
