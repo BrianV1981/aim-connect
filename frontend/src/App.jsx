@@ -6,6 +6,7 @@ import './App.css';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const authRef = useRef(false);
   const [pin, setPin] = useState('');
   const [authError, setAuthError] = useState('');
   
@@ -52,6 +53,7 @@ function App() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'auth_success') {
             ws.current = socket;
+            authRef.current = true;
             setIsAuthenticated(true);
             return;
           } else if (msg.type === 'auth_failed') {
@@ -62,14 +64,14 @@ function App() {
           }
         } catch (e) {
           // Normal terminal string output if not JSON
-          if (isAuthenticated && term.current) {
+          if (authRef.current && term.current) {
             term.current.write(event.data);
           }
         }
       } 
       
-      // Handle raw terminal bytes if authenticated
-      if (isAuthenticated && event.data instanceof ArrayBuffer) {
+      // Handle raw terminal bytes
+      if (event.data instanceof ArrayBuffer) {
         if (term.current) {
           term.current.write(new Uint8Array(event.data));
         }
@@ -77,9 +79,9 @@ function App() {
     };
 
     socket.onclose = () => {
-      if (isAuthenticated) {
+      if (authRef.current) {
         if (term.current) term.current.writeln('\x1b[31m\n[Connection lost]\x1b[0m');
-      } else if (!authError) {
+      } else {
         setAuthError('Connection failed');
         setPin('');
       }
