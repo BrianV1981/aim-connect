@@ -144,6 +144,15 @@ function App() {
     if (terminalRef.current) {
       term.current.open(terminalRef.current);
       fitAddon.current.fit();
+      
+      // Aggressively disable mobile predictive text to prevent duplication glitches
+      const textarea = terminalRef.current.querySelector('textarea');
+      if (textarea) {
+        textarea.setAttribute('autocorrect', 'off');
+        textarea.setAttribute('autocapitalize', 'off');
+        textarea.setAttribute('autocomplete', 'off');
+        textarea.setAttribute('spellcheck', 'false');
+      }
     }
 
     term.current.writeln('\x1b[32m[Access Granted - aim-connect]\x1b[0m');
