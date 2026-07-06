@@ -207,6 +207,11 @@ function App() {
     });
 
     const handleResize = () => {
+      // Force the body to match the visual viewport (which shrinks when native keyboard opens)
+      if (window.visualViewport) {
+        document.body.style.height = `${window.visualViewport.height}px`;
+      }
+      
       if (fitAddon.current) {
         fitAddon.current.fit();
         const dims = fitAddon.current.proposeDimensions();
@@ -217,6 +222,9 @@ function App() {
     };
 
     window.addEventListener('resize', handleResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+    }
 
     // Mobile touch-to-scroll adapter
     let lastTouchY = 0;
@@ -263,6 +271,10 @@ function App() {
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+        document.body.style.height = ''; // reset on unmount
+      }
       window.removeEventListener('scroll', handleScroll);
       if (termEl) {
         termEl.removeEventListener('touchstart', handleTouchStart);
