@@ -21,11 +21,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+DEFAULT_WORKSPACE = os.environ.get("AIM_WORKSPACE", os.path.expanduser("~"))
 
 SECRET_FILE = "totp.secret"
 
@@ -96,14 +98,14 @@ def kill_session(name: str):
         return {"status": "success"}
     return {"error": result.stderr}
 
-def secure_path(p: str, base_dir: str = "/home/kingb") -> str:
+def secure_path(p: str, base_dir: str = DEFAULT_WORKSPACE) -> str:
     abs_path = os.path.abspath(p)
     if not abs_path.startswith(os.path.abspath(base_dir)):
-        raise ValueError("Access denied: Path traversal detected outside of home directory.")
+        raise ValueError(f"Access denied: Path traversal detected outside of workspace ({base_dir}).")
     return abs_path
 
 @app.get("/api/files")
-def list_files(path: str = "/home/kingb/aim-connect"):
+def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
     try:
         safe_path = secure_path(path)
         items = []
