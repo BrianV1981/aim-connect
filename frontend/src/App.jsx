@@ -219,6 +219,24 @@ function App() {
     }
   }, [pin]);
 
+  // Support pasting TOTP codes directly
+  useEffect(() => {
+    if (isAuthenticated) return;
+    
+    const handlePaste = (e) => {
+      e.preventDefault();
+      const pastedText = e.clipboardData.getData('text');
+      const digits = pastedText.replace(/\D/g, '').slice(0, 6);
+      if (digits.length > 0) {
+        setPin(digits);
+        setAuthError('');
+      }
+    };
+    
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isAuthenticated]);
+
   const authenticate = (token) => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
