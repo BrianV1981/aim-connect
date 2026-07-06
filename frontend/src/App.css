@@ -400,3 +400,42 @@ body {
   max-width: 80px;
   font-weight: bold;
 }
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(17, 17, 27, 0.8);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.modal-input {
+  width: 100%;
+  background: #11111b;
+  border: 1px solid #313244;
+  color: #cdd6f4;
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  outline: none;
+}
+
+.modal-input:focus {
+  border-color: #cba6f7;
+}
