@@ -14,10 +14,10 @@ Run this command to start the React frontend in a background session named `aim_
 tmux new-session -d -s aim_frontend "cd frontend && npm run dev -- --host"
 ```
 
-## 3. Start the Cloudflare Tunnel (Optional)
-If you need to access the app remotely over the internet, start the Cloudflare tunnel in a session named `aim_tunnel`:
+## 3. Start the Ngrok Tunnel (Static URL)
+The user relies on a permanent, static URL. **DO NOT** use Cloudflare Quick Tunnels or you will break their mobile bookmarks. Start the Ngrok tunnel using this exact command:
 ```bash
-tmux new-session -d -s aim_tunnel "npx -y cloudflared tunnel --url http://localhost:5173"
+tmux new-session -d -s aim_tunnel "cd /home/kingb/aim-connect && ./ngrok http --url=pox-repulsive-veggie.ngrok-free.dev 5173"
 ```
 
 ---

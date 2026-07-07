@@ -84,7 +84,7 @@ You must run the startup script directly in your terminal the very first time to
 
 ## 🛠️ Development & Hacking Setup
 
-If you want to actively modify the UI or prefer using **Cloudflare Tunnels** over Ngrok, use this split-terminal setup:
+If you want to actively modify the UI, use this split-terminal setup:
 
 1. **Terminal 1 (Backend):**
    ```bash
@@ -97,12 +97,11 @@ If you want to actively modify the UI or prefer using **Cloudflare Tunnels** ove
    cd frontend
    npm run dev -- --host
    ```
-3. **Terminal 3 (Cloudflare Tunnel):**
-   No Cloudflare account needed for a quick tunnel! Just run:
+3. **Terminal 3 (Ngrok Tunnel):**
+   Start the permanent Ngrok tunnel pointing to your Vite server:
    ```bash
-   npx -y cloudflared tunnel --url http://localhost:5173
+   ./ngrok http --url=pox-repulsive-veggie.ngrok-free.dev 5173
    ```
-   *(Look for the `trycloudflare.com` link in the output to access your dev server securely over HTTPS!)*
 
 ---
 
