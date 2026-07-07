@@ -19,21 +19,63 @@ function App() {
   const [isEditingFile, setIsEditingFile] = useState(false);
   const [openFilePath, setOpenFilePath] = useState('');
   
-  const defaultMacros = [
-    { label: 'Clear', cmd: '\x0c' },
-    { label: 'top', cmd: 'top\r' },
-    { label: 'ls', cmd: 'ls -la\r' }
+  const defaultLibrary = [
+    { id: 'pre-ctrlc', label: '^C', cmd: '\x03', isPinned: true },
+    { id: 'pre-esc', label: 'Esc', cmd: '\x1b', isPinned: true },
+    { id: 'pre-tab', label: 'Tab', cmd: '\x09', isPinned: true },
+    { id: 'pre-pgup', label: 'PgUp', cmd: '\x1b[5~', isPinned: true },
+    { id: 'pre-pgdn', label: 'PgDn', cmd: '\x1b[6~', isPinned: true },
+    { id: 'pre-up', label: '↑', cmd: '\x1b[A', isPinned: true },
+    { id: 'pre-down', label: '↓', cmd: '\x1b[B', isPinned: true },
+    { id: 'pre-left', label: '←', cmd: '\x1b[D', isPinned: true },
+    { id: 'pre-right', label: '→', cmd: '\x1b[C', isPinned: true },
+    { id: '1', label: 'Clear', cmd: '\x0c', isPinned: true },
+    { id: '2', label: 'top', cmd: 'top\r', isPinned: true },
+    { id: '3', label: 'ls', cmd: 'ls -la\r', isPinned: true },
+    { id: '4', label: 'Mini Mode', cmd: 'opencode --mini\r', isPinned: false },
+    { id: 'pre-mode', label: '📜 Mode', cmd: '\x02[', isPinned: true }
   ];
-  const [customMacros, setCustomMacros] = useState(() => {
-    const saved = localStorage.getItem('aim-macros');
-    return saved ? JSON.parse(saved) : defaultMacros;
+  const [macroLibrary, setMacroLibrary] = useState(() => {
+    const saved = localStorage.getItem('aim-macro-library');
+    if (saved) {
+      let parsed = JSON.parse(saved);
+      // Migrate missing hardcoded macros into existing user libraries
+      const missingDefaults = defaultLibrary.filter(def => 
+        def.id.startsWith('pre-') && !parsed.some(m => m.id === def.id)
+      );
+      if (missingDefaults.length > 0) {
+        parsed = [...missingDefaults, ...parsed];
+        localStorage.setItem('aim-macro-library', JSON.stringify(parsed));
+      }
+      return parsed;
+    }
+    const oldSaved = localStorage.getItem('aim-macros');
+    if (oldSaved) {
+      try {
+        const oldParsed = JSON.parse(oldSaved).map((m, i) => ({
+          id: `old-${i}`, label: m.label, cmd: m.cmd, isPinned: true
+        }));
+        return [...defaultLibrary, ...oldParsed];
+      } catch (e) {}
+    }
+    return defaultLibrary;
   });
   
+  const [showMacroLibrary, setShowMacroLibrary] = useState(false);
   const [showMacroModal, setShowMacroModal] = useState(false);
+  const [editingMacroId, setEditingMacroId] = useState(null);
   const [newMacroLabel, setNewMacroLabel] = useState('');
   const [newMacroCmd, setNewMacroCmd] = useState('');
+  const [newMacroIsServer, setNewMacroIsServer] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState('dark');
+  const [keyboardMode, setKeyboardMode] = useState(() => {
+    return localStorage.getItem('aim-kb-mode') || 'standard';
+  });
+  const [autoCaps, setAutoCaps] = useState(() => {
+    const val = localStorage.getItem('aim-kb-autocaps');
+    return val !== null ? JSON.parse(val) : true;
+  });
   
   const terminalRef = useRef(null);
   const term = useRef(null);
@@ -42,6 +84,16 @@ function App() {
   const authRef = useRef(false);
   const pinRef = useRef('');
   const apiTokenRef = useRef(null);
+
+  // Dynamic Viewport Height Fix for Mobile PWA
+  useEffect(() => {
+    const setHeight = () => {
+      document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+    };
+    setHeight();
+    window.addEventListener('resize', setHeight);
+    return () => window.removeEventListener('resize', setHeight);
+  }, []);
 
   // Override fetch to include token for API routes
   useEffect(() => {
@@ -66,6 +118,34 @@ function App() {
   useEffect(() => {
     pinRef.current = pin;
   }, [pin]);
+
+  // Fetch server macros
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchServerMacros = async () => {
+      try {
+        const res = await fetch('/api/macros');
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setMacroLibrary(prev => {
+            const localMacros = prev.filter(m => !m.isServer);
+            const serverMacros = data.map(m => ({ ...m, isServer: true }));
+            const merged = [...localMacros];
+            serverMacros.forEach(sm => {
+              const idx = merged.findIndex(lm => lm.id === sm.id);
+              if (idx >= 0) merged[idx] = sm;
+              else merged.push(sm);
+            });
+            localStorage.setItem('aim-macro-library', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch server macros', err);
+      }
+    };
+    fetchServerMacros();
+  }, [isAuthenticated]);
 
   // Fetch tmux sessions
   useEffect(() => {
@@ -341,25 +421,50 @@ function App() {
     };
   };
 
+  const syncMacrosToServer = async (library) => {
+    const serverMacros = library.filter(m => m.isServer).map(({ isServer, ...rest }) => rest);
+    try {
+      await fetch('/api/macros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ macros: serverMacros })
+      });
+    } catch (e) { console.error('Failed to sync macros to server', e); }
+  };
+
+  const toggleMacroPin = (id) => {
+    const updated = macroLibrary.map(m => m.id === id ? { ...m, isPinned: !m.isPinned } : m);
+    setMacroLibrary(updated);
+    localStorage.setItem('aim-macro-library', JSON.stringify(updated));
+    if (updated.find(m => m.id === id)?.isServer) syncMacrosToServer(updated);
+  };
+
   const saveMacro = () => {
     if (!newMacroLabel || !newMacroCmd) return;
-    
-    // Convert literal "\r" or "\n" typed by the user into actual carriage returns
     const processedCmd = newMacroCmd.replace(/\\r/g, '\r').replace(/\\n/g, '\n');
-    
-    const updated = [...customMacros, { label: newMacroLabel, cmd: processedCmd }];
-    setCustomMacros(updated);
-    localStorage.setItem('aim-macros', JSON.stringify(updated));
+    let updated;
+    if (editingMacroId) {
+      updated = macroLibrary.map(m => m.id === editingMacroId ? { ...m, label: newMacroLabel, cmd: processedCmd, isServer: newMacroIsServer } : m);
+    } else {
+      updated = [...macroLibrary, { id: Date.now().toString(), label: newMacroLabel, cmd: processedCmd, isPinned: true, isServer: newMacroIsServer }];
+    }
+    setMacroLibrary(updated);
+    localStorage.setItem('aim-macro-library', JSON.stringify(updated));
+    syncMacrosToServer(updated);
     setShowMacroModal(false);
     setNewMacroLabel('');
     setNewMacroCmd('');
+    setNewMacroIsServer(false);
+    setEditingMacroId(null);
   };
 
-  const deleteMacro = (index) => {
-    if (!window.confirm('Delete this macro?')) return;
-    const updated = customMacros.filter((_, i) => i !== index);
-    setCustomMacros(updated);
-    localStorage.setItem('aim-macros', JSON.stringify(updated));
+  const deleteMacro = (id) => {
+    if (!window.confirm('Delete this macro permanently?')) return;
+    const isServer = macroLibrary.find(m => m.id === id)?.isServer;
+    const updated = macroLibrary.filter(m => m.id !== id);
+    setMacroLibrary(updated);
+    localStorage.setItem('aim-macro-library', JSON.stringify(updated));
+    if (isServer) syncMacrosToServer(updated);
   };
 
   // Initialize terminal once authenticated
@@ -368,7 +473,6 @@ function App() {
 
     term.current = new Terminal({
       cursorBlink: true,
-      disableStdin: showKeyboard,
       theme: {
         background: '#0B162C',
         foreground: '#e2e8f0',
@@ -491,7 +595,13 @@ function App() {
   // Dynamically disable native keyboard when our custom one is open
   useEffect(() => {
     if (term.current) {
-      term.current.options.disableStdin = showKeyboard;
+      if (term.current && term.current.textarea) {
+        term.current.textarea.readOnly = showKeyboard;
+        // Blur the textarea if we just enabled the custom keyboard to ensure the native one drops
+        if (showKeyboard) {
+          term.current.textarea.blur();
+        }
+      }
       if (showKeyboard) {
         // Force blur the hidden textarea just in case it's currently focused
         const textarea = terminalRef.current?.querySelector('textarea');
@@ -630,38 +740,92 @@ function App() {
       </div>
 
       <div style={{ display: showFiles ? 'none' : 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <div className="commander-toolbar">
-          <div className="macro-group">
-            <button className="macro-btn" onClick={() => sendCommand('\x03')}>^C</button>
-            <button className="macro-btn" onClick={() => sendCommand('\x1b')}>Esc</button>
-            <button className="macro-btn" onClick={() => sendCommand('\x09')}>Tab</button>
-            <button className="macro-btn" onClick={() => sendCommand('\x1b[A')}>↑</button>
-            <button className="macro-btn" onClick={() => sendCommand('\x1b[B')}>↓</button>
+        {!showKeyboard && (
+          <div className="commander-toolbar">
+            <div className="macro-group">
+              {macroLibrary.filter(m => m.isPinned).map((macro) => (
+                <button 
+                  key={macro.id} 
+                  className="macro-btn action" 
+                  onClick={() => sendCommand(macro.cmd)}
+                  onContextMenu={(e) => { e.preventDefault(); toggleMacroPin(macro.id); }}
+                >
+                  {macro.isServer ? "☁️ " : "📱 "}{macro.label}
+                </button>
+              ))}
+              <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
+            </div>
           </div>
-          <div className="macro-group">
-            {customMacros.map((macro, idx) => (
-              <button 
-                key={idx} 
-                className="macro-btn action" 
-                onClick={() => sendCommand(macro.cmd)}
-                onContextMenu={(e) => { e.preventDefault(); deleteMacro(idx); }}
-              >
-                {macro.label}
-              </button>
-            ))}
-            <button className="macro-btn action add-macro" onClick={() => setShowMacroModal(true)}>+</button>
-          </div>
-        </div>
+        )}
         <div className="terminal-container" ref={terminalRef}></div>
         {showKeyboard && (
-          <Keyboard onKeyPress={(key) => sendCommand(key)} />
+          <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <div className="commander-toolbar" style={{ borderBottom: '1px solid #1c305c', borderTop: 'none', borderRadius: 0 }}>
+              <div className="macro-group">
+                {macroLibrary.filter(m => m.isPinned).map((macro) => (
+                  <button 
+                    key={macro.id} 
+                    className="macro-btn action" 
+                    onClick={() => sendCommand(macro.cmd)}
+                    onContextMenu={(e) => { e.preventDefault(); toggleMacroPin(macro.id); }}
+                  >
+                    {macro.isServer ? "☁️ " : "📱 "}{macro.label}
+                  </button>
+                ))}
+                <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
+              </div>
+            </div>
+            <Keyboard mode={keyboardMode} autoCaps={autoCaps} onKeyPress={(key) => sendCommand(key)} />
+          </div>
         )}
       </div>
+
+      {showMacroLibrary && (
+        <div className="modal-overlay" onClick={() => setShowMacroLibrary(false)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '95%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ color: '#e2e8f0', margin: 0 }}>Macro Library</h3>
+              <button className="macro-btn action add-macro" onClick={() => { setEditingMacroId(null); setNewMacroLabel(''); setNewMacroCmd(''); setNewMacroIsServer(false); setShowMacroModal(true); }}>+ New</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '60vh', overflowY: 'auto' }}>
+              {macroLibrary.map(macro => (
+                <div key={macro.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1c305c', padding: '8px 12px', borderRadius: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={macro.isPinned} 
+                      onChange={() => toggleMacroPin(macro.id)}
+                      style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+                    />
+                    <div>
+                      <div style={{ color: '#e2e8f0', fontWeight: 'bold', fontSize: '14px' }}>{macro.isServer ? "☁️ " : "📱 "}{macro.label}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '12px', fontFamily: 'monospace' }}>{macro.cmd.replace(/\r/g, '\\r').replace(/\x0c/g, '\\x0c')}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="macro-btn" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={() => {
+                      setEditingMacroId(macro.id);
+                      setNewMacroLabel(macro.label);
+                      setNewMacroCmd(macro.cmd.replace(/\r/g, '\\r').replace(/\n/g, '\\n'));
+                      setNewMacroIsServer(!!macro.isServer);
+                      setShowMacroModal(true);
+                    }}>✏️</button>
+                    <button className="macro-btn" style={{ padding: '4px 8px', fontSize: '12px', color: '#f87171' }} onClick={() => deleteMacro(macro.id)}>🗑️</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button className="macro-btn action" onClick={() => setShowMacroLibrary(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showMacroModal && (
         <div className="modal-overlay" onClick={() => setShowMacroModal(false)}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3 style={{ color: '#e2e8f0', marginBottom: '16px' }}>Add Custom Macro</h3>
+            <h3 style={{ color: '#e2e8f0', marginBottom: '16px' }}>{editingMacroId ? 'Edit Macro' : 'Add Custom Macro'}</h3>
             <input 
               className="modal-input" 
               placeholder="Button Label (e.g. logs)" 
@@ -674,9 +838,18 @@ function App() {
               value={newMacroCmd} 
               onChange={e => setNewMacroCmd(e.target.value)} 
             />
-            <p style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '20px' }}>
-              Hint: Add \r to the end to auto-press Enter. Long-press a macro to delete it.
+            <p style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '12px' }}>
+              Hint: Add \r to the end to auto-press Enter.
             </p>
+            <div style={{marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+              <input 
+                type="checkbox" 
+                checked={newMacroIsServer} 
+                onChange={e => setNewMacroIsServer(e.target.checked)}
+                style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+              />
+              <label style={{color: '#e2e8f0', margin: 0}}>☁️ Sync to Server (Global)</label>
+            </div>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button className="macro-btn" onClick={() => setShowMacroModal(false)}>Cancel</button>
               <button className="macro-btn action" onClick={saveMacro}>Save</button>
@@ -689,6 +862,32 @@ function App() {
         <div className="modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <h3 style={{color: '#c83803', marginBottom: '16px'}}>Settings</h3>
+            <div style={{marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+              <input 
+                type="checkbox" 
+                checked={autoCaps} 
+                onChange={e => {
+                  setAutoCaps(e.target.checked);
+                  localStorage.setItem('aim-kb-autocaps', JSON.stringify(e.target.checked));
+                }}
+                style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+              />
+              <label style={{color: '#e2e8f0', margin: 0}}>Auto-Capitalization</label>
+            </div>
+            <div style={{marginBottom: '16px'}}>
+              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Keyboard Layout</label>
+              <select 
+                className="modal-input" 
+                value={keyboardMode}
+                onChange={e => {
+                  setKeyboardMode(e.target.value);
+                  localStorage.setItem('aim-kb-mode', e.target.value);
+                }}
+              >
+                <option value="standard">Standard (Alpha)</option>
+                <option value="hacker">Hacker (Terminal Keys)</option>
+              </select>
+            </div>
             <div style={{marginBottom: '16px'}}>
               <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Theme</label>
               <select 

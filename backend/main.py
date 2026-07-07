@@ -95,6 +95,7 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         elif lock_time and now >= lock_time:
             auth_attempts[client_ip] = (0, None)
 
+    print(f"DEBUG: Received PIN '{req.token}' for verification. Type: {type(req.token)}. Secret loaded: {totp_instance.secret}")
     if totp_instance.verify(req.token):
         api_token = secrets.token_hex(32)
         VALID_API_TOKENS.add(api_token)
@@ -119,7 +120,7 @@ def get_sessions() -> dict:
     sessions = []
     if result.returncode == 0:
         for line in result.stdout.splitlines():
-            if line and not line.startswith("aim-"):
+            if line and not line.startswith("aim-client-"):
                 sessions.append(line)
     return {"sessions": sessions}
 
@@ -218,6 +219,30 @@ def delete_file(path: str):
             shutil.rmtree(safe_path)
         else:
             os.remove(safe_path)
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}
+
+MACROS_FILE = "macros.json"
+
+@app.get("/api/macros", dependencies=[Depends(verify_token)])
+def get_macros():
+    try:
+        if os.path.exists(MACROS_FILE):
+            with open(MACROS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return []
+    except Exception as e:
+        return {"error": str(e)}
+
+class MacroSaveRequest(BaseModel):
+    macros: list
+
+@app.post("/api/macros", dependencies=[Depends(verify_token)])
+def save_macros(req: MacroSaveRequest):
+    try:
+        with open(MACROS_FILE, "w", encoding="utf-8") as f:
+            json.dump(req.macros, f)
         return {"status": "success"}
     except Exception as e:
         return {"error": str(e)}
