@@ -97,10 +97,16 @@ If you want to actively modify the UI, use this split-terminal setup:
    cd frontend
    npm run dev -- --host
    ```
-3. **Terminal 3 (Ngrok Tunnel):**
-   Start the permanent Ngrok tunnel pointing to your Vite server:
+3. **Terminal 3 (The Tunnel):**
+   You must expose the frontend over HTTPS to use secure features. You have two options:
+   
+   **Option A (Permanent URL - Requires Ngrok Account):**
    ```bash
-   ./ngrok http --url=pox-repulsive-veggie.ngrok-free.dev 5173
+   ngrok http --url=your-static-domain.ngrok-free.dev 5173
+   ```
+   **Option B (Quick Temporary URL - No Account Needed):**
+   ```bash
+   npx -y cloudflared tunnel --url http://localhost:5173
    ```
 
 ---
