@@ -41,6 +41,22 @@ function App() {
   const fitAddon = useRef(null);
   const authRef = useRef(false);
   const pinRef = useRef('');
+  const apiTokenRef = useRef(null);
+
+  // Override fetch to include token for API routes
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (resource, config = {}) => {
+      if (typeof resource === 'string' && resource.startsWith('/api/') && resource !== '/api/auth' && apiTokenRef.current) {
+        config.headers = {
+          ...config.headers,
+          'x-api-token': apiTokenRef.current
+        };
+      }
+      return originalFetch(resource, config);
+    };
+    return () => { window.fetch = originalFetch; };
+  }, []);
 
   // Keep ref in sync
   useEffect(() => {
@@ -252,7 +268,26 @@ function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [isAuthenticated]);
 
-  const authenticate = (token) => {
+  const authenticate = async (token) => {
+    try {
+      const res = await window.fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      if (!res.ok) {
+        setAuthError('Invalid or expired PIN');
+        setPin('');
+        return;
+      }
+      const data = await res.json();
+      apiTokenRef.current = data.api_token;
+    } catch (e) {
+      setAuthError('Connection failed');
+      setPin('');
+      return;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     
@@ -260,7 +295,8 @@ function App() {
     socket.binaryType = 'arraybuffer';
     
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: 'auth', token: token }));
+      // Send the API token to WS, not the original PIN
+      socket.send(JSON.stringify({ type: 'auth', token: apiTokenRef.current }));
     };
 
     socket.onmessage = (event) => {
