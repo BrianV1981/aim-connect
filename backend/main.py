@@ -7,8 +7,10 @@ import json
 import asyncio
 import pyotp
 import qrcode
+import secrets
+import shutil
 from pydantic import BaseModel
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -27,7 +29,7 @@ LOCKOUT_TIME = 300 # 5 minutes
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else ["http://localhost:5173", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,6 +47,7 @@ def get_or_create_totp():
         secret = pyotp.random_base32()
         with open(SECRET_FILE, "w") as f:
             f.write(secret)
+        os.chmod(SECRET_FILE, 0o600)
         
         # Print QR Code to console for setup
         print("\n\033[92m=== aim-connect TOTP SETUP ===\033[0m")
@@ -67,12 +70,49 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
+VALID_API_TOKENS = set()
+
+def verify_token(x_api_token: str = Header(None)):
+    if not x_api_token or x_api_token not in VALID_API_TOKENS:
+        raise HTTPException(status_code=401, detail="Unauthorized API Access")
+
+class AuthRequest(BaseModel):
+    token: str
+
+@app.post("/api/auth")
+def auth_api(req: AuthRequest, request: Request) -> dict:
+    client_ip = request.client.host
+    if ALLOWED_IPS:
+        allowed = [ip.strip() for ip in ALLOWED_IPS.split(",")]
+        if client_ip not in allowed:
+            raise HTTPException(status_code=403, detail="IP not allowed")
+            
+    now = time.time()
+    if client_ip in auth_attempts:
+        attempts, lock_time = auth_attempts[client_ip]
+        if lock_time and now < lock_time:
+            raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
+        elif lock_time and now >= lock_time:
+            auth_attempts[client_ip] = (0, None)
+
+    if totp_instance.verify(req.token):
+        api_token = secrets.token_hex(32)
+        VALID_API_TOKENS.add(api_token)
+        auth_attempts[client_ip] = (0, None)
+        return {"api_token": api_token}
+    
+    attempts, _ = auth_attempts.get(client_ip, (0, None))
+    attempts += 1
+    lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
+    auth_attempts[client_ip] = (attempts, lock)
+    raise HTTPException(status_code=401, detail="Invalid TOTP")
+
 @app.get("/api/health")
 def health_check() -> dict:
     """Health check endpoint for Docker and monitoring watchdogs."""
     return {"status": "ok", "service": "aim-connect"}
 
-@app.get("/api/sessions")
+@app.get("/api/sessions", dependencies=[Depends(verify_token)])
 def get_sessions() -> dict:
     import subprocess
     result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
@@ -86,7 +126,7 @@ def get_sessions() -> dict:
 class SessionRequest(BaseModel):
     name: str
 
-@app.post("/api/sessions")
+@app.post("/api/sessions", dependencies=[Depends(verify_token)])
 def create_session(req: SessionRequest) -> dict:
     """Spawns a new detached tmux session and enables global mouse support."""
     import subprocess
@@ -96,7 +136,7 @@ def create_session(req: SessionRequest) -> dict:
         return {"status": "success"}
     return {"error": result.stderr}
 
-@app.delete("/api/sessions/{name}")
+@app.delete("/api/sessions/{name}", dependencies=[Depends(verify_token)])
 def kill_session(name: str):
     import subprocess
     result = subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True, text=True)
@@ -105,12 +145,13 @@ def kill_session(name: str):
     return {"error": result.stderr}
 
 def secure_path(p: str, base_dir: str = DEFAULT_WORKSPACE) -> str:
-    abs_path = os.path.abspath(p)
-    if not abs_path.startswith(os.path.abspath(base_dir)):
+    base = os.path.realpath(base_dir)
+    abs_path = os.path.realpath(os.path.join(base, p) if not os.path.isabs(p) else p)
+    if abs_path != base and not abs_path.startswith(base + os.sep):
         raise ValueError(f"Access denied: Path traversal detected outside of workspace ({base_dir}).")
     return abs_path
 
-@app.get("/api/files")
+@app.get("/api/files", dependencies=[Depends(verify_token)])
 def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
     try:
         safe_path = secure_path(path)
@@ -127,7 +168,7 @@ def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-@app.get("/api/file")
+@app.get("/api/file", dependencies=[Depends(verify_token)])
 def read_file(path: str):
     try:
         safe_path = secure_path(path)
@@ -141,7 +182,7 @@ class FileSaveRequest(BaseModel):
     path: str
     content: str
 
-@app.put("/api/file")
+@app.put("/api/file", dependencies=[Depends(verify_token)])
 def save_file(req: FileSaveRequest):
     try:
         safe_path = secure_path(req.path)
@@ -155,7 +196,7 @@ class FileCreateRequest(BaseModel):
     path: str
     is_dir: bool
 
-@app.post("/api/file")
+@app.post("/api/file", dependencies=[Depends(verify_token)])
 def create_file_or_dir(req: FileCreateRequest):
     try:
         safe_path = secure_path(req.path)
@@ -168,7 +209,7 @@ def create_file_or_dir(req: FileCreateRequest):
     except Exception as e:
         return {"error": str(e)}
 
-@app.delete("/api/file")
+@app.delete("/api/file", dependencies=[Depends(verify_token)])
 def delete_file(path: str):
     import shutil
     try:
@@ -216,7 +257,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(auth_message)
         if data.get("type") == "auth":
-            if totp_instance.verify(data.get("token", "")):
+            token = data.get("token", "")
+            if token in VALID_API_TOKENS or totp_instance.verify(token):
                 authenticated = True
                 auth_attempts[client_ip] = (0, None)
             else:
@@ -302,9 +344,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         result = subprocess.run(["tmux", "list-clients", "-F", "#{client_tty} #{client_pid}"], capture_output=True, text=True)
                         client_tty = None
                         for line in result.stdout.strip().split('\n'):
-                            if line and str(pid) in line:
-                                client_tty = line.split()[0]
-                                break
+                            if line:
+                                parts = line.split()
+                                if len(parts) >= 2 and parts[1] == str(pid):
+                                    client_tty = parts[0]
+                                    break
                         
                         if client_tty:
                             subprocess.run(["tmux", "switch-client", "-c", client_tty, "-t", data["session"]])
@@ -347,7 +391,11 @@ if os.path.exists(frontend_path):
     # Catch-all for SPA routing
     @app.get("/{catchall:path}")
     def serve_frontend(catchall: str):
-        file_path = os.path.join(frontend_path, catchall)
+        base = os.path.realpath(frontend_path)
+        file_path = os.path.realpath(os.path.join(base, catchall))
+        if file_path != base and not file_path.startswith(base + os.sep):
+            return FileResponse(os.path.join(frontend_path, "index.html"))
+            
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(frontend_path, "index.html"))
