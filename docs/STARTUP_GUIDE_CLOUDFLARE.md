@@ -1,6 +1,8 @@
-# AIM-Connect: Manual Startup Guide
+# AIM-Connect: Manual Startup Guide (Cloudflare)
 
-If `aim-connect` shuts down or you accidentally kill the background processes, you can manually spin the environment back up using detached `tmux` sessions. This ensures the servers run persistently in the background even if you close your main terminal or SSH connection.
+This guide walks you through manually starting the `aim-connect` servers in the background using **Cloudflare Quick Tunnels**. Cloudflare is great for rapid testing because it requires no account or authentication, though it will assign you a random URL every time it restarts.
+
+If the servers shut down, you can spin them back up persistently using detached `tmux` sessions:
 
 ## 1. Start the Backend API
 Run this command from the root of the `aim-connect` project to start the Python FastAPI backend in a background session named `aim_backend`:
@@ -14,18 +16,12 @@ Run this command to start the React frontend in a background session named `aim_
 tmux new-session -d -s aim_frontend "cd frontend && npm run dev -- --host"
 ```
 
-## 3. Start the Tunnel (Required for remote access)
-You must expose the frontend over HTTPS. You can use Ngrok (for a permanent URL) or Cloudflare (for a quick, account-less URL).
-
-**Option A (Ngrok - Recommended):**
-```bash
-tmux new-session -d -s aim_tunnel "ngrok http --url=your-static-domain.ngrok-free.dev 5173"
-```
-
-**Option B (Cloudflare - No Account Required):**
+## 3. Start the Cloudflare Tunnel
+To expose your frontend over HTTPS quickly without an account, run:
 ```bash
 tmux new-session -d -s aim_tunnel "npx -y cloudflared tunnel --url http://localhost:5173"
 ```
+*(You will need to check the terminal output of `tmux attach -t aim_tunnel` to find your random `trycloudflare.com` URL)*
 
 ---
 
