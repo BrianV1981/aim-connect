@@ -43,6 +43,12 @@ Tailscale is a free, zero-config Mesh VPN built on WireGuard. It creates a magic
 * **Pros:** Zero account required. Instant HTTPS access through firewalls.
 * **Cons:** The URL is randomized. If the Spoke server restarts or loses power, you will get a brand new URL and will have to manually update your Hub's UI settings. **Not recommended for permanent infrastructure.**
 
+### Option D: Dedicated Ngrok Domains (The "Solo/Spoke" Hybrid)
+* **How it works:** If you have an Ngrok paid account (or multiple free accounts), you can assign a dedicated, static Ngrok URL (e.g., `spoke1.ngrok.app`) to each remote server. 
+* **The Setup:** Run the Ngrok tunnel on the Spoke server pointing to port 8000. Add `wss://spoke1.ngrok.app/ws` to your Hub's Server Selector.
+* **Pros:** This gives you the ultimate flexibility. The Spoke can connect to the Hub seamlessly. But, if the Hub ever goes down, the Spoke is still running its own independent Ngrok URL! You can simply hit the Spoke's URL in your browser and manage it completely solo.
+* **Cons:** Requires multiple static Ngrok domains (which usually requires a paid tier on Ngrok).
+
 ---
 
 ## Summary Recommendation
