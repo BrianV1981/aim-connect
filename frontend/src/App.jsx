@@ -8,6 +8,7 @@ import Keyboard from './Keyboard';
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
+  const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
@@ -83,6 +84,7 @@ function App() {
   const fitAddon = useRef(null);
   const authRef = useRef(false);
   const pinRef = useRef('');
+  const passwordRef = useRef('');
   const apiTokenRef = useRef(null);
 
   // Dynamic Viewport Height Fix for Mobile PWA
@@ -118,6 +120,10 @@ function App() {
   useEffect(() => {
     pinRef.current = pin;
   }, [pin]);
+
+  useEffect(() => {
+    passwordRef.current = password;
+  }, [password]);
 
   // Fetch server macros
   useEffect(() => {
@@ -326,9 +332,9 @@ function App() {
   // Trigger auth when 6 digits are reached
   useEffect(() => {
     if (pin.length === 6) {
-      authenticate(pin);
+      authenticate(pin, password);
     }
-  }, [pin]);
+  }, [pin, password]);
 
   // Support pasting TOTP codes directly
   useEffect(() => {
@@ -348,12 +354,12 @@ function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [isAuthenticated]);
 
-  const authenticate = async (token) => {
+  const authenticate = async (token, pass) => {
     try {
       const res = await window.fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({ token, password: pass })
       });
       if (!res.ok) {
         setAuthError('Invalid or expired PIN');
@@ -412,7 +418,7 @@ function App() {
       if (authRef.current) {
         if (term.current) term.current.writeln('\x1b[31m\n[Connection lost. Reconnecting...]\x1b[0m');
         setTimeout(() => {
-          if (pinRef.current) authenticate(pinRef.current);
+          if (pinRef.current) authenticate(pinRef.current, passwordRef.current);
         }, 1000);
       } else {
         setAuthError('Connection failed');
@@ -635,9 +641,21 @@ function App() {
           <div className="auth-header">
             <div className="auth-logo"></div>
             <h2>A.I.M. SECURE</h2>
-            <p>Enter Authenticator Code</p>
+            <p>Enter Password & Authenticator Code</p>
           </div>
           
+          <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+            <input 
+              type="password" 
+              className="modal-input" 
+              style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '12px' }}
+              placeholder="Admin Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+
           <div className="pin-display">
             {[...Array(6)].map((_, i) => (
               <div key={i} className={`pin-dot ${i < pin.length ? 'filled' : ''}`}></div>

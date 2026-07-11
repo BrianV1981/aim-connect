@@ -1,4 +1,6 @@
 fastapi
 uvicorn
 websockets
-pyotp\nqrcode
+pyotp
+qrcode
+bcrypt

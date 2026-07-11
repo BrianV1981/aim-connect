@@ -9,6 +9,7 @@ import pyotp
 import qrcode
 import secrets
 import shutil
+import bcrypt
 from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,6 +66,29 @@ def get_or_create_totp():
 # Initialize TOTP on startup
 totp_instance = get_or_create_totp()
 
+PASSWORD_FILE = "password.hash"
+
+def get_or_create_password():
+    if os.path.exists(PASSWORD_FILE):
+        with open(PASSWORD_FILE, "r") as f:
+            return f.read().strip()
+    else:
+        # Generate a secure random password (approx 12 chars)
+        raw_password = secrets.token_urlsafe(9)
+        hashed_password = bcrypt.hashpw(raw_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        with open(PASSWORD_FILE, "w") as f:
+            f.write(hashed_password)
+        os.chmod(PASSWORD_FILE, 0o600)
+        
+        print("\n\033[91m=== aim-connect PASSWORD SETUP ===\033[0m")
+        print("A new secure admin password has been generated for you.")
+        print(f"Password: \033[93m{raw_password}\033[0m")
+        print("Please save this password in your password manager immediately.\n")
+        return hashed_password
+
+# Initialize Password hash on startup
+admin_password_hash = get_or_create_password()
+
 def set_pty_size(fd: int, rows: int, cols: int) -> None:
     """Resizes the underlying pseudo-terminal using an ioctl syscall."""
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
@@ -78,6 +102,7 @@ def verify_token(x_api_token: str = Header(None)):
 
 class AuthRequest(BaseModel):
     token: str
+    password: str
 
 @app.post("/api/auth")
 def auth_api(req: AuthRequest, request: Request) -> dict:
@@ -96,17 +121,27 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
             auth_attempts[client_ip] = (0, None)
 
     print(f"DEBUG: Received PIN '{req.token}' for verification. Type: {type(req.token)}. Secret loaded: {totp_instance.secret}")
-    if totp_instance.verify(req.token):
-        api_token = secrets.token_hex(32)
-        VALID_API_TOKENS.add(api_token)
-        auth_attempts[client_ip] = (0, None)
-        return {"api_token": api_token}
     
-    attempts, _ = auth_attempts.get(client_ip, (0, None))
-    attempts += 1
-    lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
-    auth_attempts[client_ip] = (attempts, lock)
-    raise HTTPException(status_code=401, detail="Invalid TOTP")
+    # Step 1: Verify TOTP first
+    if not totp_instance.verify(req.token):
+        attempts, _ = auth_attempts.get(client_ip, (0, None))
+        attempts += 1
+        lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
+        auth_attempts[client_ip] = (attempts, lock)
+        raise HTTPException(status_code=401, detail="Invalid TOTP or Password")
+
+    # Step 2: Verify Password
+    if not bcrypt.checkpw(req.password.encode('utf-8'), admin_password_hash.encode('utf-8')):
+        attempts, _ = auth_attempts.get(client_ip, (0, None))
+        attempts += 1
+        lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
+        auth_attempts[client_ip] = (attempts, lock)
+        raise HTTPException(status_code=401, detail="Invalid TOTP or Password")
+        
+    api_token = secrets.token_hex(32)
+    VALID_API_TOKENS.add(api_token)
+    auth_attempts[client_ip] = (0, None)
+    return {"api_token": api_token}
 
 @app.get("/api/health")
 def health_check() -> dict:
