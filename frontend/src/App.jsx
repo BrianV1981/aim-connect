@@ -9,6 +9,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
@@ -644,9 +645,9 @@ function App() {
             <p>Enter Password & Authenticator Code</p>
           </div>
           
-          <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+          <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
             <input 
-              type="password" 
+              type={showPassword ? "text" : "password"} 
               className="modal-input" 
               style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '12px' }}
               placeholder="Admin Password"
@@ -654,6 +655,23 @@ function App() {
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
             />
+            <button 
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '30px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                fontSize: '16px',
+                padding: '4px'
+              }}
+            >
+              {showPassword ? '🫣' : '👁️'}
+            </button>
           </div>
 
           <div className="pin-display">
