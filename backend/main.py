@@ -245,6 +245,21 @@ def create_file_or_dir(req: FileCreateRequest):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/scrollback/{session_name}", dependencies=[Depends(verify_token)])
+def get_scrollback(session_name: str):
+    import subprocess
+    try:
+        # Capture pane with ANSI colors (-e) and entire history (-p)
+        result = subprocess.run(
+            ["tmux", "capture-pane", "-t", session_name, "-S", "-", "-e", "-p"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return {"scrollback": result.stdout}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.delete("/api/file", dependencies=[Depends(verify_token)])
 def delete_file(path: str):
     import shutil

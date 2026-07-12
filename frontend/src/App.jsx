@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
+import { AnsiUp } from 'ansi_up';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './App.css';
@@ -16,6 +17,33 @@ function App() {
   const [showFiles, setShowFiles] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('/home/kingb');
+  const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
+  const [scrollbackContent, setScrollbackContent] = useState('');
+  const isNativeScrollModeRef = useRef(false);
+
+  useEffect(() => {
+    isNativeScrollModeRef.current = isNativeScrollMode;
+  }, [isNativeScrollMode]);
+
+  const enterNativeScrollMode = async () => {
+    if (!activeSession) return;
+    setIsNativeScrollMode(true);
+    setScrollbackContent('Loading scrollback...');
+    try {
+      const res = await window.fetch(`/api/scrollback/${encodeURIComponent(activeSession)}`);
+      const data = await res.json();
+      if (data.scrollback) {
+        const ansi_up = new AnsiUp();
+        const html = ansi_up.ansi_to_html(data.scrollback);
+        setScrollbackContent(html);
+      } else {
+        setScrollbackContent('Error loading scrollback.');
+      }
+    } catch (err) {
+      console.error('Scrollback fetch failed', err);
+      setScrollbackContent('Error loading scrollback.');
+    }
+  };
   const [fileItems, setFileItems] = useState([]);
   const [openFileContent, setOpenFileContent] = useState('');
   const [isEditingFile, setIsEditingFile] = useState(false);
@@ -550,10 +578,18 @@ function App() {
 
     const handleTouchMove = (e) => {
       if (e.touches.length === 1) {
+        if (isNativeScrollModeRef.current) return;
+        
         e.preventDefault(); // Stop browser pull-to-refresh / scrolling
         const currentY = e.touches[0].clientY;
         const deltaY = lastTouchY - currentY;
         
+        if (deltaY < -15 && activeSession) {
+          enterNativeScrollMode();
+          lastTouchY = currentY;
+          return;
+        }
+
         // Dispatch synthetic wheel event so xterm translates it to tmux mouse scrolls
         if (Math.abs(deltaY) > 5) {
           const wheelEvent = new WheelEvent('wheel', {
@@ -793,7 +829,49 @@ function App() {
             </div>
           </div>
         )}
-        <div className="terminal-container" ref={terminalRef}></div>
+        <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+          <div className="terminal-container" ref={terminalRef} style={{ height: '100%' }}></div>
+          {isNativeScrollMode && (
+             <div 
+               className="native-scrollback-overlay"
+               style={{
+                 position: 'absolute',
+                 top: 0, left: 0, right: 0, bottom: 0,
+                 backgroundColor: '#0f172a',
+                 color: '#e2e8f0',
+                 overflowY: 'auto',
+                 WebkitOverflowScrolling: 'touch',
+                 padding: '10px',
+                 fontFamily: 'monospace',
+                 fontSize: '14px',
+                 whiteSpace: 'pre-wrap',
+                 zIndex: 999,
+                 wordBreak: 'break-all'
+               }}
+               onScroll={(e) => {
+                  const { scrollTop, scrollHeight, clientHeight } = e.target;
+                  if (scrollTop + clientHeight >= scrollHeight - 10) {
+                      setIsNativeScrollMode(false);
+                      setScrollbackContent('');
+                  }
+               }}
+               ref={(el) => {
+                 if (el && scrollbackContent && scrollbackContent !== 'Loading scrollback...' && !el.dataset.scrolled) {
+                    el.scrollTop = el.scrollHeight;
+                    el.dataset.scrolled = "true";
+                 }
+               }}
+             >
+                <button 
+                  onClick={() => { setIsNativeScrollMode(false); setScrollbackContent(''); }}
+                  style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 1000, background: '#ef4444', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  ✖ Close
+                </button>
+                <div dangerouslySetInnerHTML={{ __html: scrollbackContent }} style={{ paddingBottom: '50px' }} />
+             </div>
+          )}
+        </div>
         {showKeyboard && (
           <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
             <div className="commander-toolbar" style={{ borderBottom: '1px solid #1c305c', borderTop: 'none', borderRadius: 0 }}>
