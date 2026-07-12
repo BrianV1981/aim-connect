@@ -824,23 +824,21 @@ function App() {
       </div>
 
       <div style={{ display: showFiles ? 'none' : 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        {!showKeyboard && (
-          <div className="commander-toolbar">
-            <div className="macro-group">
-              {macroLibrary.filter(m => m.isPinned).map((macro) => (
-                <button 
-                  key={macro.id} 
-                  className="macro-btn action" 
-                  onClick={() => sendCommand(macro.cmd)}
-                  onContextMenu={(e) => { e.preventDefault(); toggleMacroPin(macro.id); }}
-                >
-                  {macro.isServer ? "☁️ " : "📱 "}{macro.label}
-                </button>
-              ))}
-              <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
-            </div>
+        <div className="commander-toolbar">
+          <div className="macro-group">
+            {macroLibrary.filter(m => m.isPinned).map((macro) => (
+              <button 
+                key={macro.id} 
+                className="macro-btn action" 
+                onClick={() => sendCommand(macro.cmd)}
+                onContextMenu={(e) => { e.preventDefault(); toggleMacroPin(macro.id); }}
+              >
+                {macro.isServer ? "☁️ " : "📱 "}{macro.label}
+              </button>
+            ))}
+            <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
           </div>
-        )}
+        </div>
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
           {isNativeScrollMode && (
@@ -888,6 +886,9 @@ function App() {
                 >
                    {isSelectMode ? (
                      <div 
+                       contentEditable={true}
+                       suppressContentEditableWarning={true}
+                       onKeyDown={e => { e.preventDefault(); return false; }}
                        style={{ 
                          width: '100%', 
                          backgroundColor: 'transparent', 
@@ -898,7 +899,8 @@ function App() {
                          paddingBottom: '50px',
                          WebkitUserSelect: 'text',
                          userSelect: 'text',
-                         cursor: 'text'
+                         cursor: 'text',
+                         outline: 'none'
                        }}
                      >
                        {rawScrollback}
@@ -912,21 +914,6 @@ function App() {
         </div>
         {showKeyboard && (
           <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-            <div className="commander-toolbar" style={{ borderBottom: '1px solid #1c305c', borderTop: 'none', borderRadius: 0 }}>
-              <div className="macro-group">
-                {macroLibrary.filter(m => m.isPinned).map((macro) => (
-                  <button 
-                    key={macro.id} 
-                    className="macro-btn action" 
-                    onClick={() => sendCommand(macro.cmd)}
-                    onContextMenu={(e) => { e.preventDefault(); toggleMacroPin(macro.id); }}
-                  >
-                    {macro.isServer ? "☁️ " : "📱 "}{macro.label}
-                  </button>
-                ))}
-                <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
-              </div>
-            </div>
             <Keyboard mode={keyboardMode} autoCaps={autoCaps} onKeyPress={(key) => sendCommand(key)} />
           </div>
         )}
