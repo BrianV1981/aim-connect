@@ -96,7 +96,7 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 VALID_API_TOKENS = {}
-TOKEN_TTL = 86400  # 24 hours
+TOKEN_TTL = int(os.environ.get('TOKEN_TTL', 14400))  # 4 hours by default
 MAX_TOKENS = 100
 
 def verify_token(x_api_token: str = Header(None)):
@@ -144,7 +144,9 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         
     api_token = secrets.token_hex(32)
     if len(VALID_API_TOKENS) >= MAX_TOKENS:
-        VALID_API_TOKENS.clear()
+        # LRU eviction: remove the oldest token instead of nuking all sessions
+        oldest_token = min(VALID_API_TOKENS.keys(), key=lambda k: VALID_API_TOKENS[k])
+        del VALID_API_TOKENS[oldest_token]
     VALID_API_TOKENS[api_token] = time.time() + TOKEN_TTL
     auth_attempts[client_ip] = (0, None)
     return {"api_token": api_token}
