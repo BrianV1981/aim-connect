@@ -16,7 +16,7 @@ function App() {
   const [activeSession, setActiveSession] = useState('');
   const [showFiles, setShowFiles] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
-  const [currentPath, setCurrentPath] = useState('/home/kingb');
+  const [currentPath, setCurrentPath] = useState('');
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [scrollbackContent, setScrollbackContent] = useState('');
