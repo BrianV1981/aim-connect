@@ -19,6 +19,7 @@ function App() {
   const [currentPath, setCurrentPath] = useState('');
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [scrollbackContent, setScrollbackContent] = useState('');
   const [rawScrollback, setRawScrollback] = useState('');
   const isNativeScrollModeRef = useRef(false);
@@ -668,6 +669,40 @@ function App() {
     }
   }, [showKeyboard]);
 
+  const startDictation = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice dictation is not supported by your browser.");
+      return;
+    }
+
+    if (isListening) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => setIsListening(true);
+    
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        // Send a space after the transcript to make chaining easier
+        ws.current.send(JSON.stringify({ type: 'input', payload: transcript + ' ' }));
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error", event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => setIsListening(false);
+
+    recognition.start();
+  };
+
   const sendCommand = (cmd) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'input', payload: cmd }));
@@ -837,7 +872,14 @@ function App() {
                   {macro.isServer ? "☁️ " : "📱 "}{macro.label}
                 </button>
               ))}
-              <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
+                <button 
+                  className={`macro-btn action ${isListening ? 'listening' : ''}`} 
+                  onClick={startDictation}
+                  style={{ background: isListening ? '#ef4444' : undefined }}
+                >
+                  {isListening ? '🛑' : '🎤'}
+                </button>
+                <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
             </div>
           </div>
         )}
@@ -924,6 +966,13 @@ function App() {
                     {macro.isServer ? "☁️ " : "📱 "}{macro.label}
                   </button>
                 ))}
+                <button 
+                  className={`macro-btn action ${isListening ? 'listening' : ''}`} 
+                  onClick={startDictation}
+                  style={{ background: isListening ? '#ef4444' : undefined }}
+                >
+                  {isListening ? '🛑' : '🎤'}
+                </button>
                 <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
               </div>
             </div>
