@@ -20,7 +20,7 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 *   **Clientless SSH Alternative:** Access your terminal from Safari, Chrome, or Firefox. No App Store downloads required.
 *   **The "Immortality" Protocol:** Built on top of `tmux`. Close your browser, put your phone in your pocket, and your scripts keep running. Log back in and instantly re-attach to the live terminal stream.
 *   **The Web IDE (Full File Management):** The visual file explorer isn't just read-only. It is a fully functional Sovereign Web IDE. Tap a script to edit its code in a full-screen text area, then hit "Save" to instantly overwrite the file on your Linux server. You can visually create, rename, and delete files/folders right from your phone.
-*   **Zero-Trust Security:** Secured by a hardened Google Authenticator (TOTP) pin-pad, Rate Limiting, and IP Allowlisting. No passwords to brute-force.
+*   **Zero-Trust Security:** Secured by dual-layer authentication (Admin Password + Google Authenticator TOTP), strict API token TTLs, Rate Limiting, and IP Allowlisting.
 *   **Dynamic Custom Macros:** Build your own interface. Using the "Commander Toolbar", you can add custom macro buttons (e.g. `pm2 logs\r`) on the fly. The app persists your macros securely in your browser's local storage.
 *   **Sovereign Mobile Keyboard:** Native iOS and Android keyboards notoriously ruin mobile coding by hijacking the viewport and inserting ghost characters via predictive text. AIM-Connect features a custom, on-screen HTML keyboard with specialized developer keys (`[`, `]`, `|`, `\`) that automatically shrinks the terminal to fit.
 *   **Tmux GUI Session Control:** Never lose your place. AIM-Connect features a built-in session manager. Use the native UI dropdown to create new isolated `tmux` workspaces, instantly teleport between running tasks, or permanently destroy environments when you are finished.
@@ -77,7 +77,7 @@ You must run the startup script directly in your terminal the very first time to
 1. Look at your terminal output to find your secure public URL (e.g., `https://random-string.ngrok.app`).
 2. Open that URL on your phone or remote browser.
 3. You will be greeted by the **AIM Secure Pad**.
-4. Check your authenticator app, type the 6-digit pin into the pad, or use the convenient **Clipboard Icon (📋)** on mobile to paste the code.
+4. Check your authenticator app, type your Admin Password and your 6-digit pin into the pad, or use the convenient **Clipboard Icon (📋)** on mobile to paste the code.
 5. You are in!
 
 ---
