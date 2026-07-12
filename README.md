@@ -80,6 +80,19 @@ You must run the startup script directly in your terminal the very first time to
 4. Check your authenticator app, type your Admin Password and your 6-digit pin into the pad, or use the convenient **Clipboard Icon (📋)** on mobile to paste the code.
 5. You are in!
 
+### Step 6: PWA & Multi-Server Theming (Optional)
+AIM-Connect is a Progressive Web App (PWA). You can install it natively on your phone by tapping "Add to Home Screen" in your mobile browser.
+
+If you are running multiple servers (e.g. a Raspberry Pi, a Gaming PC, and a Cloud VPS) and want to have multiple AIM-Connect icons on your phone's home screen, you can easily customize the app name and theme color for each server without modifying any code. 
+
+1. Open your `.env` file on the server.
+2. Add the following environment variables:
+   ```bash
+   AIM_APP_NAME="Gaming Node"
+   AIM_APP_COLOR="#8b0000"
+   ```
+3. Restart the server using `./startup.sh`. The backend will dynamically rewrite the PWA manifest so your phone treats it as a completely unique application!
+
 ---
 
 ## 🛠️ Development & Hacking Setup
