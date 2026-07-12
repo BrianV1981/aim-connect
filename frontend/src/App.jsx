@@ -562,7 +562,14 @@ function App() {
       if (window.visualViewport) {
         document.body.style.height = `${window.visualViewport.height}px`;
       }
-      
+    };
+
+    window.addEventListener('resize', handleResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
       if (fitAddon.current) {
         fitAddon.current.fit();
         const dims = fitAddon.current.proposeDimensions();
@@ -570,11 +577,10 @@ function App() {
           ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
         }
       }
-    };
+    });
 
-    window.addEventListener('resize', handleResize);
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
+    if (terminalRef.current) {
+      resizeObserver.observe(terminalRef.current);
     }
 
     // Mobile touch-to-scroll adapter
