@@ -503,6 +503,10 @@ if os.path.exists(frontend_path):
             if app_name:
                 manifest["name"] = app_name
                 manifest["short_name"] = app_name
+                import urllib.parse
+                safe_id = urllib.parse.quote(app_name.lower().replace(' ', '-'))
+                manifest["id"] = f"/?id={safe_id}"
+                manifest["start_url"] = f"/?id={safe_id}"
             app_color = os.environ.get("AIM_APP_COLOR")
             if app_color:
                 manifest["background_color"] = app_color
