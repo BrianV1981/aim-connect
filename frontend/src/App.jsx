@@ -865,6 +865,8 @@ function App() {
                   onTouchMove={e => e.stopPropagation()}
                   onTouchEnd={e => e.stopPropagation()}
                   onScroll={(e) => {
+                     if (isSelectMode) return; // Disable auto-exit while user is trying to select text!
+                     
                      const { scrollTop, scrollHeight, clientHeight } = e.target;
                      // Only exit if they've actually scrolled up first to avoid instant-exit on mount
                      if (scrollTop + clientHeight < scrollHeight - 50) {
@@ -885,25 +887,22 @@ function App() {
                   }}
                 >
                    {isSelectMode ? (
-                     <textarea 
-                       readOnly
-                       value={rawScrollback}
+                     <div 
                        style={{ 
                          width: '100%', 
-                         height: '100%', 
                          backgroundColor: 'transparent', 
                          color: '#e2e8f0', 
-                         border: 'none', 
-                         outline: 'none', 
-                         resize: 'none', 
                          fontFamily: 'monospace', 
                          fontSize: '14px', 
                          whiteSpace: 'pre-wrap', 
                          paddingBottom: '50px',
                          WebkitUserSelect: 'text',
-                         userSelect: 'text'
+                         userSelect: 'text',
+                         cursor: 'text'
                        }}
-                     />
+                     >
+                       {rawScrollback}
+                     </div>
                    ) : (
                      <div dangerouslySetInnerHTML={{ __html: scrollbackContent }} style={{ paddingBottom: '50px' }} />
                    )}
