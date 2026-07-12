@@ -20,6 +20,7 @@ function App() {
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
   const [scrollbackContent, setScrollbackContent] = useState('');
   const isNativeScrollModeRef = useRef(false);
+  const hasScrolledUpInOverlay = useRef(false);
 
   useEffect(() => {
     isNativeScrollModeRef.current = isNativeScrollMode;
@@ -28,6 +29,7 @@ function App() {
   const enterNativeScrollMode = async () => {
     if (!activeSession) return;
     setIsNativeScrollMode(true);
+    hasScrolledUpInOverlay.current = false;
     setScrollbackContent('Loading scrollback...');
     try {
       const res = await window.fetch(`/api/scrollback/${encodeURIComponent(activeSession)}`);
@@ -853,14 +855,20 @@ function App() {
                }}
                onScroll={(e) => {
                   const { scrollTop, scrollHeight, clientHeight } = e.target;
-                  if (scrollTop + clientHeight >= scrollHeight - 10) {
+                  // Only exit if they've actually scrolled up first to avoid instant-exit on mount
+                  if (scrollTop + clientHeight < scrollHeight - 50) {
+                      hasScrolledUpInOverlay.current = true;
+                  }
+                  if (hasScrolledUpInOverlay.current && scrollTop + clientHeight >= scrollHeight - 10) {
                       setIsNativeScrollMode(false);
                       setScrollbackContent('');
                   }
                }}
                ref={(el) => {
                  if (el && scrollbackContent && scrollbackContent !== 'Loading scrollback...' && !el.dataset.scrolled) {
-                    el.scrollTop = el.scrollHeight;
+                    // Pre-scroll slightly above the bottom so the initial swipe down feels natural 
+                    // and doesn't instantly snap to the absolute bottom edge
+                    el.scrollTop = el.scrollHeight - el.clientHeight - 30;
                     el.dataset.scrolled = "true";
                  }
                }}
