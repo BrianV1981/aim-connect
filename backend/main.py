@@ -95,11 +95,16 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
-VALID_API_TOKENS = set()
+VALID_API_TOKENS = {}
+TOKEN_TTL = 86400  # 24 hours
+MAX_TOKENS = 100
 
 def verify_token(x_api_token: str = Header(None)):
     if not x_api_token or x_api_token not in VALID_API_TOKENS:
         raise HTTPException(status_code=401, detail="Unauthorized API Access")
+    if time.time() > VALID_API_TOKENS[x_api_token]:
+        del VALID_API_TOKENS[x_api_token]
+        raise HTTPException(status_code=401, detail="Token Expired")
 
 class AuthRequest(BaseModel):
     token: str
@@ -138,9 +143,17 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid TOTP or Password")
         
     api_token = secrets.token_hex(32)
-    VALID_API_TOKENS.add(api_token)
+    if len(VALID_API_TOKENS) >= MAX_TOKENS:
+        VALID_API_TOKENS.clear()
+    VALID_API_TOKENS[api_token] = time.time() + TOKEN_TTL
     auth_attempts[client_ip] = (0, None)
     return {"api_token": api_token}
+
+@app.post("/api/logout", dependencies=[Depends(verify_token)])
+def logout(x_api_token: str = Header(None)):
+    if x_api_token in VALID_API_TOKENS:
+        del VALID_API_TOKENS[x_api_token]
+    return {"message": "Logged out"}
 
 @app.get("/api/health")
 def health_check() -> dict:
@@ -334,9 +347,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         if data.get("type") == "auth":
             token = data.get("token", "")
             if token in VALID_API_TOKENS:
-                authenticated = True
-                auth_attempts[client_ip] = (0, None)
-            else:
+                if time.time() > VALID_API_TOKENS[token]:
+                    del VALID_API_TOKENS[token]
+                else:
+                    authenticated = True
+                    auth_attempts[client_ip] = (0, None)
+            
+            if not authenticated:
                 attempts, _ = auth_attempts.get(client_ip, (0, None))
                 attempts += 1
                 lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
