@@ -685,6 +685,8 @@ function App() {
     }
   }, [showKeyboard]);
 
+  const shouldBeListeningRef = useRef(false);
+
   const startDictation = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -693,6 +695,7 @@ function App() {
     }
 
     if (isListening) {
+      shouldBeListeningRef.current = false;
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
@@ -700,6 +703,7 @@ function App() {
       return;
     }
 
+    shouldBeListeningRef.current = true;
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = false;
@@ -718,10 +722,24 @@ function App() {
 
     recognition.onerror = (event) => {
       console.error("Speech recognition error", event.error);
-      setIsListening(false);
+      if (event.error === 'not-allowed') {
+        shouldBeListeningRef.current = false;
+        setIsListening(false);
+      }
     };
 
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      if (shouldBeListeningRef.current) {
+        // Browser aggressively killed it due to a pause. Restart it silently!
+        try {
+          recognition.start();
+        } catch (e) {
+          setIsListening(false);
+        }
+      } else {
+        setIsListening(false);
+      }
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
