@@ -679,7 +679,7 @@ function App() {
       <div className="auth-container">
         <div className="auth-card">
           <div className="auth-header">
-            <div className="auth-logo"></div>
+            <img src="/aim-icon.jpg" alt="A.I.M. Logo" style={{ width: '80px', height: '80px', borderRadius: '16px', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0, 255, 170, 0.2)' }} />
             <h2>A.I.M. SECURE</h2>
             <p>Enter Password & Authenticator Code</p>
           </div>
