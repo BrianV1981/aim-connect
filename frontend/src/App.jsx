@@ -18,7 +18,9 @@ function App() {
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('/home/kingb');
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
+  const [isSelectMode, setIsSelectMode] = useState(false);
   const [scrollbackContent, setScrollbackContent] = useState('');
+  const [rawScrollback, setRawScrollback] = useState('');
   const isNativeScrollModeRef = useRef(false);
   const hasScrolledUpInOverlay = useRef(false);
 
@@ -38,12 +40,17 @@ function App() {
         const ansi_up = new AnsiUp();
         const html = ansi_up.ansi_to_html(data.scrollback);
         setScrollbackContent(html);
+        // Strip ANSI codes for the raw textarea
+        setRawScrollback(data.scrollback.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ''));
+        setIsSelectMode(false);
       } else {
         setScrollbackContent('Error loading scrollback.');
+        setRawScrollback('Error loading scrollback.');
       }
     } catch (err) {
       console.error('Scrollback fetch failed', err);
       setScrollbackContent('Error loading scrollback.');
+      setRawScrollback('Error loading scrollback.');
     }
   };
   const [fileItems, setFileItems] = useState([]);
@@ -859,13 +866,43 @@ function App() {
                  }
                }}
              >
-                <button 
-                  onClick={() => { setIsNativeScrollMode(false); setScrollbackContent(''); }}
-                  style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 1000, background: '#ef4444', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                >
-                  ✖ Close
-                </button>
-                <div dangerouslySetInnerHTML={{ __html: scrollbackContent }} style={{ paddingBottom: '50px' }} />
+                <div style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 1000, display: 'flex', gap: '8px' }}>
+                  <button 
+                    onClick={() => setIsSelectMode(!isSelectMode)}
+                    style={{ background: '#3b82f6', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    {isSelectMode ? '🎨 Color View' : '📝 Select Text'}
+                  </button>
+                  <button 
+                    onClick={() => { setIsNativeScrollMode(false); setScrollbackContent(''); }}
+                    style={{ background: '#ef4444', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    ✖ Close
+                  </button>
+                </div>
+                {isSelectMode ? (
+                  <textarea 
+                    readOnly
+                    value={rawScrollback}
+                    style={{ 
+                      width: '100%', 
+                      height: '100%', 
+                      backgroundColor: 'transparent', 
+                      color: '#e2e8f0', 
+                      border: 'none', 
+                      outline: 'none', 
+                      resize: 'none', 
+                      fontFamily: 'monospace', 
+                      fontSize: '14px', 
+                      whiteSpace: 'pre-wrap', 
+                      paddingBottom: '50px',
+                      WebkitUserSelect: 'text',
+                      userSelect: 'text'
+                    }}
+                  />
+                ) : (
+                  <div dangerouslySetInnerHTML={{ __html: scrollbackContent }} style={{ paddingBottom: '50px' }} />
+                )}
              </div>
           )}
         </div>
