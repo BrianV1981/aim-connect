@@ -332,7 +332,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         data = json.loads(auth_message)
         if data.get("type") == "auth":
             token = data.get("token", "")
-            if token in VALID_API_TOKENS or totp_instance.verify(token):
+            if token in VALID_API_TOKENS:
                 authenticated = True
                 auth_attempts[client_ip] = (0, None)
             else:
