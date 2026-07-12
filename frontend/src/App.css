@@ -82,6 +82,25 @@ body {
   min-height: 0;
 }
 
+.native-scrollback-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #0f172a;
+  color: #e2e8f0;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 14px;
+  white-space: pre-wrap;
+  z-index: 999;
+  word-break: break-all;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-touch-callout: default !important;
+  touch-action: auto !important;
+}
+
 /* xterm overrides for a cleaner look */
 .xterm .xterm-viewport {
   background-color: transparent !important;
