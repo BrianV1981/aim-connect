@@ -198,7 +198,7 @@ function App() {
       try {
         const res = await fetch('/api/sessions');
         const data = await res.json();
-        setSessions(data.sessions);
+        setSessions(prev => JSON.stringify(prev) === JSON.stringify(data.sessions) ? prev : data.sessions);
         if (data.sessions.length > 0 && !activeSession) {
           setActiveSession(data.sessions[0]);
         }
