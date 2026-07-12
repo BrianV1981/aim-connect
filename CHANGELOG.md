@@ -22,12 +22,12 @@ All notable changes to this project will be documented in this file.
 - **Sovereign Mobile Keyboard:** A custom on-screen HTML developer keyboard that bypasses native mobile OS predictive text bugs.
 - **Commander Toolbar:** A customizable macro execution bar that saves user-defined bash snippets to local storage.
 - **Mobile Touch-Scroll Adapter:** Synthesizes mobile swipes into native tmux mouse-wheel events for smooth paging in `vim`/`less`.
-- **Zero-Trust Security:** Strict Google Authenticator (TOTP) pin-pad lockscreen guarding the WebSocket and API endpoints.
+- **Zero-Trust Security:** Dual-layer auth (Admin Password + Google Authenticator TOTP) guarding the WebSocket and API endpoints.
 - **Deployment Architecture:** Fully Dockerized setup, `.env` file configuration, and a portable `startup.sh` script that natively serves the built frontend from FastAPI.
 
 ### Security
 - Implemented `secure_path()` wrapper to prevent Path Traversal attacks on all file I/O endpoints.
-- Isolated all secrets to an uncommitted `.env` file and strictly ignored `totp.secret`.
+- Isolated all secrets and explicitly untracked `totp.secret` and `password.hash` from git.
 - Configurable CORS origins via `CORS_ORIGINS` environment variable.
 
 ### Changed
