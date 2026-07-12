@@ -731,12 +731,18 @@ function App() {
           ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
         } else {
           // Handle verbal punctuation replacements
-          // Remove trailing space after 'quote' and leading space before 'unquote' to make them tight!
           let finalPayload = transcript
+            .replace(/\bdot dot dot\b/gi, '...')
+            .replace(/\bdot dot\b/gi, '..')
+            .replace(/\bcomma\b/gi, ',')
+            .replace(/\bperiod\b/gi, '.')
+            .replace(/\bquestion mark\b/gi, '?')
             .replace(/\bquote\s+/gi, '"')
             .replace(/\s+\bunquote\b/gi, '"')
             .replace(/\bquote\b/gi, '"')
-            .replace(/\bunquote\b/gi, '"');
+            .replace(/\bunquote\b/gi, '"')
+            // Remove spaces BEFORE punctuation like period, comma, question mark
+            .replace(/\s+([.,?!])/g, '$1');
           
           // Send a space after the transcript to make chaining easier
           ws.current.send(JSON.stringify({ type: 'input', payload: finalPayload + ' ' }));
