@@ -491,9 +491,34 @@ if os.path.exists(frontend_path):
         if file_path != base and not file_path.startswith(base + os.sep):
             return FileResponse(os.path.join(frontend_path, "index.html"))
             
-        if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(frontend_path, "index.html"))
+        if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            file_path = os.path.join(frontend_path, "index.html")
+            
+        if file_path.endswith("manifest.json"):
+            import json
+            from fastapi.responses import JSONResponse
+            with open(file_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            app_name = os.environ.get("AIM_APP_NAME")
+            if app_name:
+                manifest["name"] = app_name
+                manifest["short_name"] = app_name
+            app_color = os.environ.get("AIM_APP_COLOR")
+            if app_color:
+                manifest["background_color"] = app_color
+                manifest["theme_color"] = app_color
+            return JSONResponse(manifest)
+
+        if file_path.endswith("index.html"):
+            app_name = os.environ.get("AIM_APP_NAME")
+            if app_name:
+                from fastapi.responses import HTMLResponse
+                with open(file_path, "r", encoding="utf-8") as f:
+                    html = f.read()
+                html = html.replace("<title>A.I.M. Connect</title>", f"<title>{app_name}</title>")
+                return HTMLResponse(content=html)
+
+        return FileResponse(file_path)
 else:
     @app.get("/")
     def read_root():
