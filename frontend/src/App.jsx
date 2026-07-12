@@ -841,32 +841,8 @@ function App() {
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
           {isNativeScrollMode && (
-             <div 
-               className="native-scrollback-overlay"
-               onTouchStart={e => e.stopPropagation()}
-               onTouchMove={e => e.stopPropagation()}
-               onTouchEnd={e => e.stopPropagation()}
-               onScroll={(e) => {
-                  const { scrollTop, scrollHeight, clientHeight } = e.target;
-                  // Only exit if they've actually scrolled up first to avoid instant-exit on mount
-                  if (scrollTop + clientHeight < scrollHeight - 50) {
-                      hasScrolledUpInOverlay.current = true;
-                  }
-                  if (hasScrolledUpInOverlay.current && scrollTop + clientHeight >= scrollHeight - 10) {
-                      setIsNativeScrollMode(false);
-                      setScrollbackContent('');
-                  }
-               }}
-               ref={(el) => {
-                 if (el && scrollbackContent && scrollbackContent !== 'Loading scrollback...' && !el.dataset.scrolled) {
-                    // Pre-scroll slightly above the bottom so the initial swipe down feels natural 
-                    // and doesn't instantly snap to the absolute bottom edge
-                    el.scrollTop = el.scrollHeight - el.clientHeight - 30;
-                    el.dataset.scrolled = "true";
-                 }
-               }}
-             >
-                <div style={{ position: 'fixed', top: '10px', right: '10px', zIndex: 1000, display: 'flex', gap: '8px' }}>
+             <>
+                <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 1001, display: 'flex', gap: '8px' }}>
                   <button 
                     onClick={() => setIsSelectMode(!isSelectMode)}
                     style={{ background: '#3b82f6', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
@@ -880,30 +856,56 @@ function App() {
                     ✖ Close
                   </button>
                 </div>
-                {isSelectMode ? (
-                  <textarea 
-                    readOnly
-                    value={rawScrollback}
-                    style={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      backgroundColor: 'transparent', 
-                      color: '#e2e8f0', 
-                      border: 'none', 
-                      outline: 'none', 
-                      resize: 'none', 
-                      fontFamily: 'monospace', 
-                      fontSize: '14px', 
-                      whiteSpace: 'pre-wrap', 
-                      paddingBottom: '50px',
-                      WebkitUserSelect: 'text',
-                      userSelect: 'text'
-                    }}
-                  />
-                ) : (
-                  <div dangerouslySetInnerHTML={{ __html: scrollbackContent }} style={{ paddingBottom: '50px' }} />
-                )}
-             </div>
+                <div 
+                  className="native-scrollback-overlay"
+                  onTouchStart={e => e.stopPropagation()}
+                  onTouchMove={e => e.stopPropagation()}
+                  onTouchEnd={e => e.stopPropagation()}
+                  onScroll={(e) => {
+                     const { scrollTop, scrollHeight, clientHeight } = e.target;
+                     // Only exit if they've actually scrolled up first to avoid instant-exit on mount
+                     if (scrollTop + clientHeight < scrollHeight - 50) {
+                         hasScrolledUpInOverlay.current = true;
+                     }
+                     if (hasScrolledUpInOverlay.current && scrollTop + clientHeight >= scrollHeight - 10) {
+                         setIsNativeScrollMode(false);
+                         setScrollbackContent('');
+                     }
+                  }}
+                  ref={(el) => {
+                    if (el && scrollbackContent && scrollbackContent !== 'Loading scrollback...' && !el.dataset.scrolled) {
+                       // Pre-scroll slightly above the bottom so the initial swipe down feels natural 
+                       // and doesn't instantly snap to the absolute bottom edge
+                       el.scrollTop = el.scrollHeight - el.clientHeight - 30;
+                       el.dataset.scrolled = "true";
+                    }
+                  }}
+                >
+                   {isSelectMode ? (
+                     <textarea 
+                       readOnly
+                       value={rawScrollback}
+                       style={{ 
+                         width: '100%', 
+                         height: '100%', 
+                         backgroundColor: 'transparent', 
+                         color: '#e2e8f0', 
+                         border: 'none', 
+                         outline: 'none', 
+                         resize: 'none', 
+                         fontFamily: 'monospace', 
+                         fontSize: '14px', 
+                         whiteSpace: 'pre-wrap', 
+                         paddingBottom: '50px',
+                         WebkitUserSelect: 'text',
+                         userSelect: 'text'
+                       }}
+                     />
+                   ) : (
+                     <div dangerouslySetInnerHTML={{ __html: scrollbackContent }} style={{ paddingBottom: '50px' }} />
+                   )}
+                </div>
+             </>
           )}
         </div>
         {showKeyboard && (
