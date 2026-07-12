@@ -36,7 +36,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DEFAULT_WORKSPACE = os.environ.get("AIM_WORKSPACE", os.path.expanduser("~"))
+DEFAULT_WORKSPACE = os.environ.get("AIM_WORKSPACE", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "workspace")))
+os.makedirs(DEFAULT_WORKSPACE, exist_ok=True)
 
 SECRET_FILE = "totp.secret"
 
@@ -198,7 +199,7 @@ def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
             })
         # Sort directories first, then files
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
-        return {"path": path, "items": items}
+        return {"path": safe_path, "items": items}
     except Exception as e:
         return {"error": str(e)}
 
