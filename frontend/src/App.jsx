@@ -129,11 +129,20 @@ function App() {
   // Dynamic Viewport Height Fix for Mobile PWA
   useEffect(() => {
     const setHeight = () => {
-      document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+      const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      document.documentElement.style.setProperty('--vh', `${vh * 0.01}px`);
     };
     setHeight();
     window.addEventListener('resize', setHeight);
-    return () => window.removeEventListener('resize', setHeight);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setHeight);
+    }
+    return () => {
+      window.removeEventListener('resize', setHeight);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', setHeight);
+      }
+    };
   }, []);
 
   // Override fetch to include token for API routes
@@ -563,7 +572,14 @@ function App() {
       if (window.visualViewport) {
         document.body.style.height = `${window.visualViewport.height}px`;
       }
-      
+    };
+
+    window.addEventListener('resize', handleResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
       if (fitAddon.current) {
         fitAddon.current.fit();
         const dims = fitAddon.current.proposeDimensions();
@@ -571,11 +587,10 @@ function App() {
           ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
         }
       }
-    };
+    });
 
-    window.addEventListener('resize', handleResize);
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
+    if (terminalRef.current) {
+      resizeObserver.observe(terminalRef.current);
     }
 
     // Mobile touch-to-scroll adapter
@@ -930,6 +945,9 @@ function App() {
                 >
                    {isSelectMode ? (
                      <div 
+                       contentEditable={true}
+                       suppressContentEditableWarning={true}
+                       onKeyDown={e => { e.preventDefault(); return false; }}
                        style={{ 
                          width: '100%', 
                          backgroundColor: 'transparent', 
@@ -940,7 +958,8 @@ function App() {
                          paddingBottom: '50px',
                          WebkitUserSelect: 'text',
                          userSelect: 'text',
-                         cursor: 'text'
+                         cursor: 'text',
+                         outline: 'none'
                        }}
                      >
                        {rawScrollback}
