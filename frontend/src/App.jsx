@@ -7,26 +7,6 @@ import './App.css';
 import Keyboard from './Keyboard';
 
 function App() {
-  
-  // Hub Mode State
-  const [servers, setServers] = useState(() => JSON.parse(localStorage.getItem('aim-servers') || '[{"id":"local","name":"Local Server","url":""}]'));
-  const [activeServerId, setActiveServerId] = useState(() => localStorage.getItem('aim-active-server') || 'local');
-  const [apiTokens, setApiTokens] = useState(() => JSON.parse(localStorage.getItem('aim-api-tokens') || '{}'));
-  const [showMicButton, setShowMicButton] = useState(() => JSON.parse(localStorage.getItem('aim-show-mic') ?? 'true'));
-  const [showMacroGear, setShowMacroGear] = useState(() => JSON.parse(localStorage.getItem('aim-show-gear') ?? 'true'));
-
-  const activeUrlRef = useRef('');
-  const activeIdRef = useRef(activeServerId);
-  const tokensRef = useRef(apiTokens);
-
-  useEffect(() => {
-    const s = servers.find(x => x.id === activeServerId);
-    activeUrlRef.current = s ? s.url : '';
-    activeIdRef.current = activeServerId;
-  }, [servers, activeServerId]);
-
-  useEffect(() => { tokensRef.current = apiTokens; }, [apiTokens]);
-
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
@@ -149,6 +129,7 @@ function App() {
   const authRef = useRef(false);
   const pinRef = useRef('');
   const passwordRef = useRef('');
+  const apiTokenRef = useRef(null);
 
   // Dynamic Viewport Height Fix for Mobile PWA
   useEffect(() => {
@@ -173,7 +154,7 @@ function App() {
   useEffect(() => {
     const originalFetch = window.fetch;
     window.fetch = async (resource, config = {}) => {
-      if (typeof resource === 'string' && resource.startsWith('/api/') && resource !== '/api/auth') {
+      if (typeof resource === 'string' && resource.startsWith('/api/') && resource !== '/api/auth' && apiTokenRef.current) {
         config.headers = {
           ...config.headers,
           'x-api-token': apiTokenRef.current
@@ -244,31 +225,6 @@ function App() {
     const interval = setInterval(fetchSessions, 5000);
     return () => clearInterval(interval);
   }, [isAuthenticated, activeSession]);
-
-  
-  const handleServerSwitch = (e) => {
-    const val = e.target.value;
-    if (val === 'ADD_NEW') {
-       const url = window.prompt("Enter Remote Server URL (e.g., https://gaming.yourdomain.com):");
-       if (!url) return;
-       const name = window.prompt("Enter a short name (e.g., Gaming):");
-       if (!name) return;
-       const id = Date.now().toString();
-       const newServers = [...servers, { id, name, url: url.replace(/\/$/, '') }];
-       setServers(newServers);
-       localStorage.setItem('aim-servers', JSON.stringify(newServers));
-       setActiveServerId(id);
-       localStorage.setItem('aim-active-server', id);
-       // Check if we have a token
-       if (apiTokens[id]) setIsAuthenticated(true);
-       else setIsAuthenticated(false);
-    } else {
-       setActiveServerId(val);
-       localStorage.setItem('aim-active-server', val);
-       if (apiTokens[val]) setIsAuthenticated(true);
-       else setIsAuthenticated(false);
-    }
-  };
 
   const createSession = async () => {
     const name = window.prompt("New Session Name:");
@@ -465,10 +421,7 @@ function App() {
         console.error("Logout failed", e);
       }
     }
-    const newTokens = { ...apiTokens };
-    delete newTokens[activeServerId];
-    setApiTokens(newTokens);
-    localStorage.setItem('aim-api-tokens', JSON.stringify(newTokens));
+    apiTokenRef.current = null;
     setIsAuthenticated(false);
     setPin('');
     if (ws.current) {
@@ -505,7 +458,7 @@ function App() {
     
     socket.onopen = () => {
       // Send the API token to WS, not the original PIN
-      socket.send(JSON.stringify({ type: 'auth', token: tokensRef.current[activeIdRef.current] }));
+      socket.send(JSON.stringify({ type: 'auth', token: apiTokenRef.current }));
     };
 
     socket.onmessage = (event) => {
@@ -924,18 +877,6 @@ function App() {
     <div className="app-container">
       <header className="app-header">
         <h1>aim-connect</h1>
-        
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginRight: '8px' }}>
-            <select 
-              className="session-select" 
-              value={activeServerId} 
-              onChange={handleServerSwitch}
-              style={{ background: '#0f172a', color: '#38bdf8', border: '1px solid #38bdf8', outline: 'none', borderRadius: '4px' }}
-            >
-              {servers.map(s => <option key={s.id} value={s.id}>🌍 {s.name}</option>)}
-              <option value="ADD_NEW">+ Add Server...</option>
-            </select>
-          </div>
         {sessions.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <select 
@@ -1036,14 +977,14 @@ function App() {
                   {macro.isServer ? "☁️ " : "📱 "}{macro.label}
                 </button>
               ))}
-                {showMicButton && <button 
+                <button 
                   className={`macro-btn action ${isListening ? 'listening' : ''}`} 
                   onClick={startDictation}
                   style={{ background: isListening ? '#ef4444' : undefined }}
                 >
                   {isListening ? '🛑' : '🎤'}
-                </button>}
-                {showMacroGear && <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>}
+                </button>
+                <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
             </div>
           </div>
         )}
@@ -1134,14 +1075,14 @@ function App() {
                     {macro.isServer ? "☁️ " : "📱 "}{macro.label}
                   </button>
                 ))}
-                {showMicButton && <button 
+                <button 
                   className={`macro-btn action ${isListening ? 'listening' : ''}`} 
                   onClick={startDictation}
                   style={{ background: isListening ? '#ef4444' : undefined }}
                 >
                   {isListening ? '🛑' : '🎤'}
-                </button>}
-                {showMacroGear && <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>}
+                </button>
+                <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
               </div>
             </div>
             <Keyboard mode={keyboardMode} autoCaps={autoCaps} onKeyPress={(key) => sendCommand(key)} />
