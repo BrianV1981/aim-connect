@@ -8,6 +8,8 @@ dist/
 ngrok
 *.log
 totp.secret
+backend/totp.secret
+backend/password.hash
 logs/
 
 # Agent Specific
