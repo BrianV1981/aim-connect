@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-websockets
-pyotp
-qrcode
-bcrypt
+fastapi==0.139.0
+uvicorn==0.50.0
+websockets==16.0
+PyOTP==2.10.0
+qrcode==8.2
+bcrypt==5.0.0
