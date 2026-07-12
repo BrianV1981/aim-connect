@@ -13,7 +13,9 @@ tmux kill-session -t aim-connect-workspace 2>/dev/null
 pkill -f "./ngrok" 2>/dev/null
 
 if [ -f "$DIR/.env" ]; then
+    set -a
     source "$DIR/.env"
+    set +a
 fi
 
 if [ -n "$NGROK_AUTHTOKEN" ]; then
