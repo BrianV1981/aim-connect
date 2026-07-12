@@ -9,6 +9,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Kill any previously running instances
 tmux kill-session -t aim-backend 2>/dev/null
 tmux kill-session -t aim-ngrok 2>/dev/null
+tmux kill-session -t aim-connect-workspace 2>/dev/null
 pkill -f "./ngrok" 2>/dev/null
 
 if [ -f "$DIR/.env" ]; then
@@ -22,22 +23,25 @@ else
     echo -e "\n\033[33m[1/3] Skipping Ngrok Auth (NGROK_AUTHTOKEN not set in .env)...\033[0m"
 fi
 
+# Create a unified session and name the first window 'servers'
+tmux new-session -d -s aim-connect-workspace -n "servers"
+
 echo -e "\033[36m[2/3] Starting FastAPI Backend (Port 8000)...\033[0m"
-cd "$DIR/backend"
-if [ -f "venv/bin/activate" ]; then
-    tmux new-session -d -s aim-backend "source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"
+if [ -f "$DIR/backend/venv/bin/activate" ]; then
+    tmux send-keys -t aim-connect-workspace:servers "cd \"$DIR/backend\" && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000" Enter
 else
-    tmux new-session -d -s aim-backend "uvicorn main:app --host 0.0.0.0 --port 8000"
+    tmux send-keys -t aim-connect-workspace:servers "cd \"$DIR/backend\" && uvicorn main:app --host 0.0.0.0 --port 8000" Enter
 fi
 
 echo -e "\033[36m[3/3] Opening Secure Ngrok Tunnel to Port 8000...\033[0m"
-cd "$DIR"
+# Split window horizontally for ngrok
+tmux split-window -h -t aim-connect-workspace:servers
 
 if [ -n "$NGROK_DOMAIN" ]; then
-    tmux new-session -d -s aim-ngrok "./ngrok http --url=$NGROK_DOMAIN 8000 --log=stdout"
+    tmux send-keys -t aim-connect-workspace:servers.1 "cd \"$DIR\" && ./ngrok http --url=$NGROK_DOMAIN 8000 --log=stdout" Enter
     FINAL_URL="https://$NGROK_DOMAIN"
 else
-    tmux new-session -d -s aim-ngrok "./ngrok http 8000 --log=stdout"
+    tmux send-keys -t aim-connect-workspace:servers.1 "cd \"$DIR\" && ./ngrok http 8000 --log=stdout" Enter
     FINAL_URL="<Check ngrok dashboard or logs for your ephemeral URL>"
 fi
 
