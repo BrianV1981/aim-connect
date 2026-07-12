@@ -593,12 +593,6 @@ function App() {
         const currentY = e.touches[0].clientY;
         const deltaY = lastTouchY - currentY;
         
-        if (deltaY < -15 && activeSession) {
-          enterNativeScrollMode();
-          lastTouchY = currentY;
-          return;
-        }
-
         // Dispatch synthetic wheel event so xterm translates it to tmux mouse scrolls
         if (Math.abs(deltaY) > 5) {
           const wheelEvent = new WheelEvent('wheel', {
@@ -765,6 +759,15 @@ function App() {
         <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
           {showFiles ? '💻 Terminal' : '📁 Files'}
         </button>
+        {!showFiles && (
+          <button 
+            className="macro-btn" 
+            onClick={enterNativeScrollMode}
+            style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
+          >
+            🔍 Scroll/Copy
+          </button>
+        )}
         <button 
           className={`macro-btn ${showKeyboard ? 'active' : ''}`} 
           onClick={() => setShowKeyboard(!showKeyboard)}
