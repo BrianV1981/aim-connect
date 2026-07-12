@@ -1,3 +1,7 @@
+***This is old***
+
+
+
 This is a genuinely impressive weekend project—you've built a fully functional, self-hosted web-based terminal with a surprising number of thoughtful features. Here's a detailed review covering the good, the concerns, and some suggestions for improvement.
 
 ## The Good: What's Working Well

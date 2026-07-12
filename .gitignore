@@ -13,3 +13,11 @@ logs/
 # Agent Specific
 aim-connect-agent-sop.md
 docs/ngrok.md
+
+# --- A.I.M. OS Exoskeleton ---
+.aim_core/
+.gemini/
+AGENTS.md
+aim-agy_os/
+memory-wiki/
+workspace/
