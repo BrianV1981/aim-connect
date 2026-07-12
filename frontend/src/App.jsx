@@ -21,6 +21,10 @@ function App() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
+  const [voiceContinuous, setVoiceContinuous] = useState(() => JSON.parse(localStorage.getItem('aim-voice-continuous') ?? 'true'));
+  const [voiceAutoEnter, setVoiceAutoEnter] = useState(() => JSON.parse(localStorage.getItem('aim-voice-enter') ?? 'true'));
+  const [voiceAutoExecute, setVoiceAutoExecute] = useState(() => JSON.parse(localStorage.getItem('aim-voice-execute') ?? 'true'));
+  const [voiceAutoSend, setVoiceAutoSend] = useState(() => JSON.parse(localStorage.getItem('aim-voice-send') ?? 'true'));
   const [scrollbackContent, setScrollbackContent] = useState('');
   const [rawScrollback, setRawScrollback] = useState('');
   const isNativeScrollModeRef = useRef(false);
@@ -713,10 +717,21 @@ function App() {
     
     recognition.onresult = (event) => {
       const lastIdx = event.results.length - 1;
-      const transcript = event.results[lastIdx][0].transcript;
+      let transcript = event.results[lastIdx][0].transcript.trim().toLowerCase();
+      
+      // Check for verbal action commands
+      let isCommand = false;
+      if (transcript === "enter" && voiceAutoEnter) isCommand = true;
+      if (transcript === "send" && voiceAutoSend) isCommand = true;
+      if (transcript === "execute" && voiceAutoExecute) isCommand = true;
+
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        // Send a space after the transcript to make chaining easier
-        ws.current.send(JSON.stringify({ type: 'input', payload: transcript + ' ' }));
+        if (isCommand) {
+          ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
+        } else {
+          // Send a space after the raw transcript to make chaining easier
+          ws.current.send(JSON.stringify({ type: 'input', payload: event.results[lastIdx][0].transcript + ' ' }));
+        }
       }
     };
 
@@ -729,6 +744,13 @@ function App() {
     };
 
     recognition.onend = () => {
+      // If voiceContinuous is false, let it die naturally
+      if (!voiceContinuous) {
+        shouldBeListeningRef.current = false;
+        setIsListening(false);
+        return;
+      }
+
       if (shouldBeListeningRef.current) {
         // Browser aggressively killed it due to a pause. Restart it silently!
         try {
@@ -1146,6 +1168,62 @@ function App() {
                 <option value="light">Light (Coming Soon)</option>
               </select>
             </div>
+            <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
+              <label style={{display: 'block', marginBottom: '12px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice Dictation Settings</label>
+              
+              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+                <input 
+                  type="checkbox" 
+                  checked={voiceContinuous} 
+                  onChange={e => {
+                    setVoiceContinuous(e.target.checked);
+                    localStorage.setItem('aim-voice-continuous', JSON.stringify(e.target.checked));
+                  }}
+                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+                />
+                <label style={{color: '#e2e8f0', margin: 0}}>Continuous Loop (Causes Android Beeps)</label>
+              </div>
+
+              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+                <input 
+                  type="checkbox" 
+                  checked={voiceAutoEnter} 
+                  onChange={e => {
+                    setVoiceAutoEnter(e.target.checked);
+                    localStorage.setItem('aim-voice-enter', JSON.stringify(e.target.checked));
+                  }}
+                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+                />
+                <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Enter"</label>
+              </div>
+
+              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+                <input 
+                  type="checkbox" 
+                  checked={voiceAutoSend} 
+                  onChange={e => {
+                    setVoiceAutoSend(e.target.checked);
+                    localStorage.setItem('aim-voice-send', JSON.stringify(e.target.checked));
+                  }}
+                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+                />
+                <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Send"</label>
+              </div>
+
+              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+                <input 
+                  type="checkbox" 
+                  checked={voiceAutoExecute} 
+                  onChange={e => {
+                    setVoiceAutoExecute(e.target.checked);
+                    localStorage.setItem('aim-voice-execute', JSON.stringify(e.target.checked));
+                  }}
+                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+                />
+                <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Execute"</label>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button className="macro-btn action" onClick={() => setShowSettings(false)}>Close</button>
             </div>
