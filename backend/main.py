@@ -120,8 +120,6 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         elif lock_time and now >= lock_time:
             auth_attempts[client_ip] = (0, None)
 
-    print(f"DEBUG: Received PIN '{req.token}' for verification. Type: {type(req.token)}. Secret loaded: {totp_instance.secret}")
-    
     # Step 1: Verify TOTP first
     if not totp_instance.verify(req.token):
         attempts, _ = auth_attempts.get(client_ip, (0, None))
