@@ -129,7 +129,14 @@ function App() {
   const authRef = useRef(false);
   const pinRef = useRef('');
   const passwordRef = useRef('');
-  const apiTokenRef = useRef(null);
+  const apiTokenRef = useRef(localStorage.getItem('aim-token') || null);
+  
+  // Auto-auth on load if token exists
+  useEffect(() => {
+    if (apiTokenRef.current && !isAuthenticated) {
+      setIsAuthenticated(true);
+    }
+  }, []);
 
   // Dynamic Viewport Height Fix for Mobile PWA
   useEffect(() => {
@@ -422,6 +429,7 @@ function App() {
       }
     }
     apiTokenRef.current = null;
+    localStorage.removeItem('aim-token');
     setIsAuthenticated(false);
     setPin('');
     if (ws.current) {
