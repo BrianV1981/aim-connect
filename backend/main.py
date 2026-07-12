@@ -316,7 +316,8 @@ def save_macros(req: MacroSaveRequest):
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """
     Primary WebSocket handler for streaming terminal I/O.
-    Enforces a strict 10-second TOTP authentication window on connection.
+    Enforces a strict 10-second API Token authentication window on connection.
+    If the client does not send a valid token within 10s, the socket is dropped.
     Spawns a PTY (pseudo-terminal) via os.fork() to bridge the WebSocket 
     into a native tmux session, allowing persistent background execution.
     """
@@ -362,7 +363,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 auth_attempts[client_ip] = (attempts, lock)
                 
         if not authenticated:
-            await websocket.close(code=1008, reason="Invalid TOTP")
+            await websocket.close(code=1008, reason="Invalid API Token")
             return
         
         await websocket.send_text(json.dumps({"type": "auth_success"}))
