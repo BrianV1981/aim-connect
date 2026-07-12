@@ -407,6 +407,29 @@ function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [isAuthenticated]);
 
+  const handleLogout = async () => {
+    if (apiTokenRef.current) {
+      try {
+        await window.fetch('/api/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-token': apiTokenRef.current
+          }
+        });
+      } catch (e) {
+        console.error("Logout failed", e);
+      }
+    }
+    apiTokenRef.current = null;
+    setIsAuthenticated(false);
+    setPin('');
+    if (ws.current) {
+      ws.current.close();
+      ws.current = null;
+    }
+  };
+
   const authenticate = async (token, pass) => {
     try {
       const res = await window.fetch('/api/auth', {
@@ -890,6 +913,9 @@ function App() {
         </button>
         <button className="macro-btn" onClick={() => setShowSettings(true)}>
           ⚙️ Settings
+        </button>
+        <button className="macro-btn" onClick={handleLogout} style={{ color: '#ef4444', border: '1px solid #ef4444' }}>
+          🚪 Logout
         </button>
         <div className="status-indicator"></div>
       </header>
