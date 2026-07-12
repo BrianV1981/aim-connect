@@ -20,6 +20,7 @@ function App() {
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
   const [scrollbackContent, setScrollbackContent] = useState('');
   const [rawScrollback, setRawScrollback] = useState('');
   const isNativeScrollModeRef = useRef(false);
@@ -691,17 +692,24 @@ function App() {
       return;
     }
 
-    if (isListening) return;
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
     
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
+      const lastIdx = event.results.length - 1;
+      const transcript = event.results[lastIdx][0].transcript;
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         // Send a space after the transcript to make chaining easier
         ws.current.send(JSON.stringify({ type: 'input', payload: transcript + ' ' }));
@@ -715,6 +723,7 @@ function App() {
 
     recognition.onend = () => setIsListening(false);
 
+    recognitionRef.current = recognition;
     recognition.start();
   };
 
