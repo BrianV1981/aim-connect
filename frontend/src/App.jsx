@@ -717,20 +717,24 @@ function App() {
     
     recognition.onresult = (event) => {
       const lastIdx = event.results.length - 1;
-      let transcript = event.results[lastIdx][0].transcript.trim().toLowerCase();
+      let transcript = event.results[lastIdx][0].transcript;
+      const lowerTrimmed = transcript.trim().toLowerCase();
       
       // Check for verbal action commands
       let isCommand = false;
-      if (transcript === "enter" && voiceAutoEnter) isCommand = true;
-      if (transcript === "send" && voiceAutoSend) isCommand = true;
-      if (transcript === "execute" && voiceAutoExecute) isCommand = true;
+      if (lowerTrimmed === "enter" && voiceAutoEnter) isCommand = true;
+      if (lowerTrimmed === "send" && voiceAutoSend) isCommand = true;
+      if (lowerTrimmed === "execute" && voiceAutoExecute) isCommand = true;
 
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         if (isCommand) {
           ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
         } else {
-          // Send a space after the raw transcript to make chaining easier
-          ws.current.send(JSON.stringify({ type: 'input', payload: event.results[lastIdx][0].transcript + ' ' }));
+          // Handle verbal punctuation replacements
+          let finalPayload = transcript.replace(/\bquote\b/gi, '"').replace(/\bunquote\b/gi, '"');
+          
+          // Send a space after the transcript to make chaining easier
+          ws.current.send(JSON.stringify({ type: 'input', payload: finalPayload + ' ' }));
         }
       }
     };
