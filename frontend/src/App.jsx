@@ -832,27 +832,10 @@ function App() {
           </div>
         )}
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-          <div className="terminal-container" ref={terminalRef} style={{ height: '100%' }}></div>
+          <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
           {isNativeScrollMode && (
              <div 
                className="native-scrollback-overlay"
-               style={{
-                 position: 'absolute',
-                 top: 0, left: 0, right: 0, bottom: 0,
-                 backgroundColor: '#0f172a',
-                 color: '#e2e8f0',
-                 overflowY: 'auto',
-                 WebkitOverflowScrolling: 'touch',
-                 WebkitUserSelect: 'text',
-                 userSelect: 'text',
-                 WebkitTouchCallout: 'default',
-                 padding: '10px',
-                 fontFamily: 'monospace',
-                 fontSize: '14px',
-                 whiteSpace: 'pre-wrap',
-                 zIndex: 999,
-                 wordBreak: 'break-all'
-               }}
                onScroll={(e) => {
                   const { scrollTop, scrollHeight, clientHeight } = e.target;
                   // Only exit if they've actually scrolled up first to avoid instant-exit on mount
