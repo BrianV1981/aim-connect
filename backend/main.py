@@ -249,9 +249,10 @@ def create_file_or_dir(req: FileCreateRequest):
 def get_scrollback(session_name: str):
     import subprocess
     try:
-        # Capture pane with ANSI colors (-e) and entire history (-p)
+        # Capture pane with ANSI colors (-e) and max 1000 lines of history (-S -1000)
+        # to prevent mobile DOM lockups from massive buffers
         result = subprocess.run(
-            ["tmux", "capture-pane", "-t", session_name, "-S", "-", "-e", "-p"],
+            ["tmux", "capture-pane", "-t", session_name, "-S", "-1000", "-e", "-p"],
             capture_output=True,
             text=True,
             check=True

@@ -99,6 +99,7 @@ body {
   -webkit-user-select: text !important;
   -webkit-touch-callout: default !important;
   touch-action: auto !important;
+  -webkit-transform: translateZ(0);
 }
 
 /* xterm overrides for a cleaner look */

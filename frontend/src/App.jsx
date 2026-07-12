@@ -836,6 +836,9 @@ function App() {
           {isNativeScrollMode && (
              <div 
                className="native-scrollback-overlay"
+               onTouchStart={e => e.stopPropagation()}
+               onTouchMove={e => e.stopPropagation()}
+               onTouchEnd={e => e.stopPropagation()}
                onScroll={(e) => {
                   const { scrollTop, scrollHeight, clientHeight } = e.target;
                   // Only exit if they've actually scrolled up first to avoid instant-exit on mount
