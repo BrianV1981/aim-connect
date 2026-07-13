@@ -924,6 +924,31 @@ function App() {
 
   return (
     <div className="app-container">
+      <div style={{ position: 'absolute', top: '10px', right: '16px', zIndex: 100, display: 'flex', gap: '8px' }}>
+        {!showFiles && (
+          <button 
+            className="macro-btn" 
+            style={{ padding: '6px 12px', background: 'rgba(28, 48, 92, 0.8)', border: '1px solid #3b82f6', color: '#60a5fa' }}
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                if (text) sendCommand(text);
+              } catch (e) {
+                console.error("Paste failed", e);
+              }
+            }}
+          >
+            📋 Paste
+          </button>
+        )}
+        <button 
+          className={`macro-btn action ${isListening ? 'listening' : ''}`} 
+          onClick={startDictation}
+          style={{ padding: '6px 12px', background: isListening ? '#ef4444' : 'rgba(200, 56, 3, 0.9)' }}
+        >
+          {isListening ? '🛑' : '🎤 Voice'}
+        </button>
+      </div>
       <header className="app-header">
         <h1>aim-connect</h1>
         {sessions.length > 0 && (
@@ -953,28 +978,8 @@ function App() {
             >
               🔍 Scroll/Copy
             </button>
-            <button 
-              className="macro-btn" 
-              onClick={async () => {
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) sendCommand(text);
-                } catch (e) {
-                  console.error("Paste failed", e);
-                }
-              }}
-            >
-              📋 Paste
-            </button>
           </>
         )}
-        <button 
-          className={`macro-btn action ${isListening ? 'listening' : ''}`} 
-          onClick={startDictation}
-          style={{ background: isListening ? '#ef4444' : undefined }}
-        >
-          {isListening ? '🛑' : '🎤 Voice'}
-        </button>
         <button 
           className={`macro-btn ${showKeyboard ? 'active' : ''}`} 
           onClick={() => setShowKeyboard(!showKeyboard)}
