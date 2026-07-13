@@ -452,6 +452,7 @@ function App() {
       }
       const data = await res.json();
       apiTokenRef.current = data.api_token;
+      localStorage.setItem('aim-token', data.api_token);
     } catch (e) {
       setAuthError('Connection failed');
       setPin('');
