@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 // Singleton AudioContext for key clicks
 let audioCtx = null;
@@ -78,6 +78,37 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
     ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?'],
   ];
 
+  const repeatTimeouts = useRef({});
+  const repeatIntervals = useRef({});
+
+  useEffect(() => {
+    return () => {
+      Object.values(repeatTimeouts.current).forEach(clearTimeout);
+      Object.values(repeatIntervals.current).forEach(clearInterval);
+    };
+  }, []);
+
+  const handlePointerDown = (e, key) => {
+    e.preventDefault();
+    try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
+    handleKey(e, key);
+
+    if (key === '\x7f' || ['\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'].includes(key) || key === ' ') {
+      repeatTimeouts.current[key] = setTimeout(() => {
+        repeatIntervals.current[key] = setInterval(() => {
+          handleKey(e, key);
+        }, 80);
+      }, 400);
+    }
+  };
+
+  const handlePointerUp = (e, key) => {
+    e.preventDefault();
+    try { e.target.releasePointerCapture(e.pointerId); } catch(err) {}
+    clearTimeout(repeatTimeouts.current[key]);
+    clearInterval(repeatIntervals.current[key]);
+  };
+
   const handleKey = (e, key) => {
     e.preventDefault(); // Prevents delay and double-firing!
     playClickSound();
@@ -156,12 +187,12 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
           </button>
         )}
         {row.map(key => (
-          <button key={key} className="kb-key" onPointerDown={(e) => handleKey(e, key)}>
+          <button key={key} className="kb-key" onPointerDown={(e) => handlePointerDown(e, key)} onPointerUp={(e) => handlePointerUp(e, key)} onPointerCancel={(e) => handlePointerUp(e, key)}>
             {getDisplayLabel(key)}
           </button>
         ))}
         {i === 3 && (
-          <button className="kb-key kb-backspace" onPointerDown={(e) => handleKey(e, '\x7f')}>
+          <button className="kb-key kb-backspace" onPointerDown={(e) => handlePointerDown(e, '\x7f')} onPointerUp={(e) => handlePointerUp(e, '\x7f')} onPointerCancel={(e) => handlePointerUp(e, '\x7f')}>
             ⌫
           </button>
         )}
@@ -173,12 +204,12 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
     return (
       <div key={`sym-${i}`} className="kb-row">
         {row.map(key => (
-          <button key={key} className="kb-key" onPointerDown={(e) => handleKey(e, key)}>
+          <button key={key} className="kb-key" onPointerDown={(e) => handlePointerDown(e, key)} onPointerUp={(e) => handlePointerUp(e, key)} onPointerCancel={(e) => handlePointerUp(e, key)}>
             {key}
           </button>
         ))}
         {i === 2 && (
-          <button className="kb-key kb-backspace" onPointerDown={(e) => handleKey(e, '\x7f')}>
+          <button className="kb-key kb-backspace" onPointerDown={(e) => handlePointerDown(e, '\x7f')} onPointerUp={(e) => handlePointerUp(e, '\x7f')} onPointerCancel={(e) => handlePointerUp(e, '\x7f')}>
             ⌫
           </button>
         )}
@@ -198,12 +229,12 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
           >
             Ctrl
           </button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handleKey(e, '\x1b[D')}>←</button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handleKey(e, '\x1b[A')}>↑</button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handleKey(e, '\x1b[B')}>↓</button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handleKey(e, '\x1b[C')}>→</button>
-          <button className="kb-key kb-space" onPointerDown={(e) => handleKey(e, ' ')}>Space</button>
-          <button className="kb-key kb-enter" onPointerDown={(e) => handleKey(e, '\r')}>Enter</button>
+          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[D')} onPointerUp={(e) => handlePointerUp(e, '\x1b[D')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[D')}>←</button>
+          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[A')} onPointerUp={(e) => handlePointerUp(e, '\x1b[A')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[A')}>↑</button>
+          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[B')} onPointerUp={(e) => handlePointerUp(e, '\x1b[B')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[B')}>↓</button>
+          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[C')} onPointerUp={(e) => handlePointerUp(e, '\x1b[C')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[C')}>→</button>
+          <button className="kb-key kb-space" onPointerDown={(e) => handlePointerDown(e, ' ')} onPointerUp={(e) => handlePointerUp(e, ' ')} onPointerCancel={(e) => handlePointerUp(e, ' ')}>Space</button>
+          <button className="kb-key kb-enter" onPointerDown={(e) => handlePointerDown(e, '\r')} onPointerUp={(e) => handlePointerUp(e, '\r')} onPointerCancel={(e) => handlePointerUp(e, '\r')}>Enter</button>
         </div>
       </div>
     );
@@ -238,10 +269,10 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
         >
           {layout === 'alpha' ? '?123' : 'ABC'}
         </button>
-        <button className="kb-key" onPointerDown={(e) => handleKey(e, ',')}>,</button>
-        <button className="kb-key kb-space" onPointerDown={(e) => handleKey(e, ' ')}>Space</button>
-        <button className="kb-key" onPointerDown={(e) => handleKey(e, '.')}>.</button>
-        <button className="kb-key kb-enter" onPointerDown={(e) => handleKey(e, '\r')}>Enter</button>
+        <button className="kb-key" onPointerDown={(e) => handlePointerDown(e, ',')} onPointerUp={(e) => handlePointerUp(e, ',')} onPointerCancel={(e) => handlePointerUp(e, ',')}>,</button>
+        <button className="kb-key kb-space" onPointerDown={(e) => handlePointerDown(e, ' ')} onPointerUp={(e) => handlePointerUp(e, ' ')} onPointerCancel={(e) => handlePointerUp(e, ' ')}>Space</button>
+        <button className="kb-key" onPointerDown={(e) => handlePointerDown(e, '.')} onPointerUp={(e) => handlePointerUp(e, '.')} onPointerCancel={(e) => handlePointerUp(e, '.')}>.</button>
+        <button className="kb-key kb-enter" onPointerDown={(e) => handlePointerDown(e, '\r')} onPointerUp={(e) => handlePointerUp(e, '\r')} onPointerCancel={(e) => handlePointerUp(e, '\r')}>Enter</button>
       </div>
     </div>
   );
