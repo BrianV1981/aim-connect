@@ -906,13 +906,27 @@ function App() {
           {showFiles ? '💻 Terminal' : '📁 Files'}
         </button>
         {!showFiles && (
-          <button 
-            className="macro-btn" 
-            onClick={enterNativeScrollMode}
-            style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
-          >
-            🔍 Scroll/Copy
-          </button>
+          <>
+            <button 
+              className="macro-btn" 
+              onClick={enterNativeScrollMode}
+            >
+              🔍 Scroll/Copy
+            </button>
+            <button 
+              className="macro-btn" 
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText();
+                  if (text) sendCommand(text);
+                } catch (e) {
+                  console.error("Paste failed", e);
+                }
+              }}
+            >
+              📋 Paste
+            </button>
+          </>
         )}
         <button 
           className={`macro-btn action ${isListening ? 'listening' : ''}`} 
