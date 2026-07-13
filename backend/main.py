@@ -127,11 +127,13 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
             auth_attempts[client_ip] = (0, None)
 
     # Step 1: Verify TOTP first
-    if not totp_instance.verify(req.token):
+    # DEBUG PATCH: use valid_window=1 for leeway and log failures
+    if not totp_instance.verify(req.token, valid_window=1):
         attempts, _ = auth_attempts.get(client_ip, (0, None))
         attempts += 1
         lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
         auth_attempts[client_ip] = (attempts, lock)
+        print(f"DEBUG AUTH: TOTP verification failed for token {req.token}")
         raise HTTPException(status_code=401, detail="Invalid TOTP or Password")
 
     # Step 2: Verify Password
@@ -140,6 +142,7 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         attempts += 1
         lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
         auth_attempts[client_ip] = (attempts, lock)
+        print(f"DEBUG AUTH: Password verification failed. Provided password length: {len(req.password)}")
         raise HTTPException(status_code=401, detail="Invalid TOTP or Password")
         
     api_token = secrets.token_hex(32)
@@ -148,6 +151,7 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         oldest_token = min(VALID_API_TOKENS.keys(), key=lambda k: VALID_API_TOKENS[k])
         del VALID_API_TOKENS[oldest_token]
     VALID_API_TOKENS[api_token] = time.time() + TOKEN_TTL
+    save_tokens()
     auth_attempts[client_ip] = (0, None)
     return {"api_token": api_token}
 

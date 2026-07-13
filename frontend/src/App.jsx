@@ -138,6 +138,7 @@ function App() {
   useEffect(() => {
     if (apiTokenRef.current && !isAuthenticated) {
       setIsAuthenticated(true);
+      authenticate(null, null);
     }
   }, []);
 
@@ -442,8 +443,14 @@ function App() {
   };
 
   const authenticate = async (token, pass) => {
-    try {
-      const res = await window.fetch('/api/auth', {
+    if (token !== null && !pass) {
+        setAuthError('Please enter Admin Password first');
+        setPin('');
+        return;
+    }
+    if (token && pass) {
+      try {
+        const res = await window.fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password: pass })
@@ -460,6 +467,7 @@ function App() {
       setAuthError('Connection failed');
       setPin('');
       return;
+    }
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -502,11 +510,19 @@ function App() {
       }
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
+      if (event.code === 1008) {
+        if (term.current) term.current.writeln('\x1b[31m\n[Session expired. Please log in again.]\x1b[0m');
+        setTimeout(() => {
+          handleLogout();
+        }, 1500);
+        return;
+      }
+      
       if (authRef.current) {
         if (term.current) term.current.writeln('\x1b[31m\n[Connection lost. Reconnecting...]\x1b[0m');
         setTimeout(() => {
-          if (pinRef.current) authenticate(pinRef.current, passwordRef.current);
+          authenticate(null, null);
         }, 1000);
       } else {
         setAuthError('Connection failed');
