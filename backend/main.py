@@ -489,7 +489,7 @@ if os.path.exists(frontend_path):
         base = os.path.realpath(frontend_path)
         file_path = os.path.realpath(os.path.join(base, catchall))
         if file_path != base and not file_path.startswith(base + os.sep):
-            return FileResponse(os.path.join(frontend_path, "index.html"))
+            return FileResponse(os.path.join(frontend_path, "index.html"), headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
             
         if not os.path.exists(file_path) or not os.path.isfile(file_path):
             file_path = os.path.join(frontend_path, "index.html")
