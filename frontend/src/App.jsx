@@ -122,6 +122,8 @@ function App() {
     return val !== null ? JSON.parse(val) : true;
   });
   
+  const [termFontSize, setTermFontSize] = useState(() => parseInt(localStorage.getItem('aim-term-fontsize') || '14', 10));
+  const [termTheme, setTermTheme] = useState(() => localStorage.getItem('aim-term-theme') || 'standard');
   const terminalRef = useRef(null);
   const term = useRef(null);
   const ws = useRef(null);
@@ -558,19 +560,31 @@ function App() {
     if (isServer) syncMacrosToServer(updated);
   };
 
+  useEffect(() => {
+    if (term.current) {
+      term.current.options.fontSize = termFontSize;
+      if (termTheme === 'hacker') {
+        term.current.options.theme = { background: '#000000', foreground: '#00ff00', cursor: '#00ff00' };
+      } else if (termTheme === 'high-contrast') {
+        term.current.options.theme = { background: '#000000', foreground: '#ffffff', cursor: '#ffffff' };
+      } else {
+        term.current.options.theme = { background: '#0B162C', foreground: '#e2e8f0', cursor: '#ff5722' };
+      }
+      setTimeout(() => fitAddon.current?.fit(), 50);
+    }
+  }, [termFontSize, termTheme]);
+
   // Initialize terminal once authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
 
     term.current = new Terminal({
       cursorBlink: true,
-      theme: {
-        background: '#0B162C',
-        foreground: '#e2e8f0',
-        cursor: '#ff5722',
-      },
+      theme: termTheme === 'hacker' ? { background: '#000000', foreground: '#00ff00', cursor: '#00ff00' } :
+             termTheme === 'high-contrast' ? { background: '#000000', foreground: '#ffffff', cursor: '#ffffff' } :
+             { background: '#0B162C', foreground: '#e2e8f0', cursor: '#ff5722' },
       fontFamily: '"Fira Code", monospace',
-      fontSize: 14,
+      fontSize: termFontSize,
     });
     
     fitAddon.current = new FitAddon();
@@ -1224,6 +1238,41 @@ function App() {
                 <option value="dark">Dark</option>
                 <option value="light">Light (Coming Soon)</option>
               </select>
+            </div>
+            <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
+              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0', fontWeight: 'bold'}}>Terminal Settings</label>
+              <div style={{marginBottom: '12px'}}>
+                <label style={{display: 'flex', justifyContent: 'space-between', color: '#e2e8f0', marginBottom: '4px'}}>
+                  <span>Font Size</span>
+                  <span>{termFontSize}px</span>
+                </label>
+                <input 
+                  type="range" 
+                  min="10" max="24" 
+                  value={termFontSize}
+                  onChange={e => {
+                    const val = parseInt(e.target.value, 10);
+                    setTermFontSize(val);
+                    localStorage.setItem('aim-term-fontsize', val);
+                  }}
+                  style={{width: '100%'}}
+                />
+              </div>
+              <div style={{marginBottom: '12px'}}>
+                <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Terminal Theme</label>
+                <select 
+                  className="modal-input" 
+                  value={termTheme}
+                  onChange={e => {
+                    setTermTheme(e.target.value);
+                    localStorage.setItem('aim-term-theme', e.target.value);
+                  }}
+                >
+                  <option value="standard">Standard Dark</option>
+                  <option value="high-contrast">High Contrast (B&W)</option>
+                  <option value="hacker">Hacker Green</option>
+                </select>
+              </div>
             </div>
             <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
               <label style={{display: 'block', marginBottom: '12px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice Dictation Settings</label>
