@@ -609,7 +609,17 @@ function App() {
 
     if (terminalRef.current) {
       term.current.open(terminalRef.current);
-      fitAddon.current.fit();
+      
+      // Delay fit to allow flexbox to complete layout
+      setTimeout(() => {
+        if (fitAddon.current) {
+          fitAddon.current.fit();
+          const dims = fitAddon.current.proposeDimensions();
+          if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+          }
+        }
+      }, 100);
       
       // Aggressively disable mobile predictive text to prevent duplication glitches
       const textarea = terminalRef.current.querySelector('textarea');
@@ -622,12 +632,6 @@ function App() {
     }
 
     term.current.writeln('\x1b[32m[Access Granted - aim-connect]\x1b[0m');
-    
-    // Request initial size
-    const dims = fitAddon.current.proposeDimensions();
-    if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-    }
 
     term.current.onData((data) => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
