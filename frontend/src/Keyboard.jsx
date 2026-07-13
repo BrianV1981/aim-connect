@@ -38,13 +38,22 @@ const playClickSound = () => {
   }
 };
 
-export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = true }) {
+export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = true, feedbackMode = 'audio' }) {
   // 0 = off, 1 = shift (1 char), 2 = caps lock
   const [shiftState, setShiftState] = useState(0);
   const [ctrlState, setCtrlState] = useState(false);
   const [layout, setLayout] = useState('alpha'); // 'alpha' or 'symbols'
   const [lastPunctuation, setLastPunctuation] = useState(false);
   
+  const triggerFeedback = () => {
+    if (feedbackMode === 'off') return;
+    if (feedbackMode === 'haptic' && navigator.vibrate) {
+      try { navigator.vibrate(10); } catch(e) {}
+    } else if (feedbackMode === 'audio' || feedbackMode === 'haptic') {
+      triggerFeedback();
+    }
+  };
+
   // ===================== STANDARD MODE =====================
   const normalRows = [
     ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
@@ -111,7 +120,7 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
 
   const handleKey = (e, key) => {
     e.preventDefault(); // Prevents delay and double-firing!
-    playClickSound();
+    triggerFeedback();
     
     let finalKey = key;
     if (ctrlState && key.length === 1 && /[a-zA-Z]/.test(key)) {
@@ -140,13 +149,13 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
 
   const toggleCtrl = (e) => {
     e.preventDefault();
-    playClickSound();
+    triggerFeedback();
     setCtrlState(!ctrlState);
   };
 
   const toggleShift = (e) => {
     e.preventDefault();
-    playClickSound();
+    triggerFeedback();
     if (shiftState === 0) setShiftState(1);
     else if (shiftState === 1) setShiftState(2);
     else setShiftState(0);
@@ -154,13 +163,13 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
 
   const toggleLayout = (e) => {
     e.preventDefault();
-    playClickSound();
+    triggerFeedback();
     setLayout(layout === 'alpha' ? 'symbols' : 'alpha');
   };
 
   const toggleMode = (e) => {
     e.preventDefault();
-    playClickSound();
+    triggerFeedback();
     setMode(mode === 'standard' ? 'hacker' : 'standard');
   };
 

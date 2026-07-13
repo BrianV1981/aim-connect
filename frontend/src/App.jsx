@@ -124,6 +124,7 @@ function App() {
   
   const [termFontSize, setTermFontSize] = useState(() => parseInt(localStorage.getItem('aim-term-fontsize') || '14', 10));
   const [termTheme, setTermTheme] = useState(() => localStorage.getItem('aim-term-theme') || 'standard');
+  const [keyboardFeedback, setKeyboardFeedback] = useState(() => localStorage.getItem('aim-kb-feedback') || 'audio');
   const terminalRef = useRef(null);
   const term = useRef(null);
   const ws = useRef(null);
@@ -1115,7 +1116,7 @@ function App() {
                 <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
               </div>
             </div>
-            <Keyboard mode={keyboardMode} autoCaps={autoCaps} onKeyPress={(key) => sendCommand(key)} />
+            <Keyboard mode={keyboardMode} autoCaps={autoCaps} feedbackMode={keyboardFeedback} onKeyPress={(key) => sendCommand(key)} />
           </div>
         )}
       </div>
@@ -1237,6 +1238,21 @@ function App() {
               >
                 <option value="dark">Dark</option>
                 <option value="light">Light (Coming Soon)</option>
+              </select>
+            </div>
+            <div style={{marginBottom: '16px'}}>
+              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Keyboard Feedback</label>
+              <select 
+                className="modal-input" 
+                value={keyboardFeedback}
+                onChange={e => {
+                  setKeyboardFeedback(e.target.value);
+                  localStorage.setItem('aim-kb-feedback', e.target.value);
+                }}
+              >
+                <option value="audio">Audio (Ticks)</option>
+                <option value="haptic">Haptic (Vibration)</option>
+                <option value="off">Off (Silent)</option>
               </select>
             </div>
             <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
