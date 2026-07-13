@@ -737,6 +737,7 @@ function App() {
   }, [showKeyboard]);
 
   const shouldBeListeningRef = useRef(false);
+  const lastVoiceEndedWithSpace = useRef(false);
 
   const startDictation = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -776,6 +777,7 @@ function App() {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         if (isCommand) {
           ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
+          lastVoiceEndedWithSpace.current = false;
         } else {
           // Handle verbal punctuation replacements
           let finalPayload = transcript
@@ -791,8 +793,14 @@ function App() {
             // Remove spaces BEFORE punctuation like period, comma, question mark
             .replace(/\s+([.,?!])/g, '$1');
           
+          let prefix = "";
+          if (lastVoiceEndedWithSpace.current && /^[.,?!]/.test(finalPayload)) {
+            prefix = "\b";
+          }
+          
           // Send a space after the transcript to make chaining easier
-          ws.current.send(JSON.stringify({ type: 'input', payload: finalPayload + ' ' }));
+          ws.current.send(JSON.stringify({ type: 'input', payload: prefix + finalPayload + ' ' }));
+          lastVoiceEndedWithSpace.current = true;
         }
       }
     };
@@ -832,6 +840,7 @@ function App() {
   const sendCommand = (cmd) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'input', payload: cmd }));
+      lastVoiceEndedWithSpace.current = false;
     }
   };
 
