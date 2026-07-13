@@ -915,6 +915,13 @@ function App() {
           </button>
         )}
         <button 
+          className={`macro-btn action ${isListening ? 'listening' : ''}`} 
+          onClick={startDictation}
+          style={{ background: isListening ? '#ef4444' : undefined }}
+        >
+          {isListening ? '🛑' : '🎤 Voice'}
+        </button>
+        <button 
           className={`macro-btn ${showKeyboard ? 'active' : ''}`} 
           onClick={() => setShowKeyboard(!showKeyboard)}
         >
@@ -986,13 +993,6 @@ function App() {
                   {macro.isServer ? "☁️ " : "📱 "}{macro.label}
                 </button>
               ))}
-                <button 
-                  className={`macro-btn action ${isListening ? 'listening' : ''}`} 
-                  onClick={startDictation}
-                  style={{ background: isListening ? '#ef4444' : undefined }}
-                >
-                  {isListening ? '🛑' : '🎤'}
-                </button>
                 <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
             </div>
           </div>
@@ -1084,13 +1084,6 @@ function App() {
                     {macro.isServer ? "☁️ " : "📱 "}{macro.label}
                   </button>
                 ))}
-                <button 
-                  className={`macro-btn action ${isListening ? 'listening' : ''}`} 
-                  onClick={startDictation}
-                  style={{ background: isListening ? '#ef4444' : undefined }}
-                >
-                  {isListening ? '🛑' : '🎤'}
-                </button>
                 <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
               </div>
             </div>
