@@ -95,8 +95,21 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
+import json
+TOKEN_FILE = "tokens.json"
 VALID_API_TOKENS = {}
+if os.path.exists(TOKEN_FILE):
+    try:
+        with open(TOKEN_FILE, 'r') as f:
+            VALID_API_TOKENS = json.load(f)
+    except Exception:
+        pass
+
 TOKEN_TTL = int(os.environ.get('TOKEN_TTL', 14400))  # 4 hours by default
+
+def save_tokens():
+    with open(TOKEN_FILE, 'w') as f:
+        json.dump(VALID_API_TOKENS, f)
 MAX_TOKENS = 100
 
 def verify_token(x_api_token: str = Header(None)):
