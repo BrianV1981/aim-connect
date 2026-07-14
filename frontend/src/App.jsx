@@ -292,6 +292,14 @@ function App() {
     setActiveSession(newSession);
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
+      if (fitAddon.current) {
+        setTimeout(() => {
+           const dims = fitAddon.current.proposeDimensions();
+           if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
+             ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+           }
+        }, 100);
+      }
     }
   };
 
