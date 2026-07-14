@@ -767,6 +767,19 @@ function App() {
     }
   }, [showKeyboard]);
 
+  // Force layout recalculation when switching sessions
+  useEffect(() => {
+    if (activeSession && fitAddon.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
+      setTimeout(() => {
+        fitAddon.current.fit();
+        const dims = fitAddon.current.proposeDimensions();
+        if (dims) {
+          ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+        }
+      }, 100);
+    }
+  }, [activeSession]);
+
   const shouldBeListeningRef = useRef(false);
   const lastVoiceEndedWithSpace = useRef(false);
 
@@ -933,6 +946,7 @@ function App() {
             <button className="key action" onClick={handleBackspace}>⌫</button>
           </div>
         </div>
+        <div style={{ position: 'absolute', bottom: '10px', right: '10px', color: '#64748b', fontSize: '10px', zIndex: 10 }}>v1.0.2</div>
       </div>
     );
   }
