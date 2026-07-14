@@ -531,13 +531,20 @@ if os.path.exists(frontend_path):
             return JSONResponse(manifest)
 
         if file_path.endswith("index.html"):
+            headers = {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
             app_name = os.environ.get("AIM_APP_NAME")
             if app_name:
                 from fastapi.responses import HTMLResponse
                 with open(file_path, "r", encoding="utf-8") as f:
                     html = f.read()
                 html = html.replace("<title>A.I.M. Connect</title>", f"<title>{app_name}</title>")
-                return HTMLResponse(content=html)
+                return HTMLResponse(content=html, headers=headers)
+            
+            return FileResponse(file_path, headers=headers)
 
         return FileResponse(file_path)
 else:
