@@ -610,16 +610,19 @@ function App() {
     if (terminalRef.current) {
       term.current.open(terminalRef.current);
       
-      // Delay fit to allow flexbox to complete layout
-      setTimeout(() => {
-        if (fitAddon.current) {
+      // Robust fit loop: wait for CSS flexbox to finish settling on mobile
+      let fitAttempts = 0;
+      const fitInterval = setInterval(() => {
+        if (fitAddon.current && terminalRef.current) {
           fitAddon.current.fit();
           const dims = fitAddon.current.proposeDimensions();
           if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
           }
         }
-      }, 100);
+        fitAttempts++;
+        if (fitAttempts >= 10) clearInterval(fitInterval); // Try for 1.5 seconds (150ms * 10)
+      }, 150);
       
       // Aggressively disable mobile predictive text to prevent duplication glitches
       const textarea = terminalRef.current.querySelector('textarea');
