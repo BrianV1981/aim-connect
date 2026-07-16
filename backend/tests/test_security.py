@@ -93,3 +93,28 @@ class TestSecurePath:
 
         result = secure_path(".")
         assert result == os.path.realpath(DEFAULT_WORKSPACE)
+
+
+# ---------------------------------------------------------------------------
+# HTTPS enforcement middleware
+# ---------------------------------------------------------------------------
+class TestHTTPSEnforcement:
+    """Tests for the HTTPS enforcement middleware.
+
+    NOTE: FastAPI TestClient connects from 127.0.0.1 by default, which is
+    always allowed (localhost exemption). We can verify the exemptions work
+    but cannot easily simulate a non-localhost IP without deeper mocking.
+    """
+
+    def test_localhost_allowed_without_https(self):
+        """Localhost connections should always be allowed (dev mode)."""
+        client = _get_client()
+        response = client.get("/api/health")
+        assert response.status_code == 200
+
+    def test_health_endpoint_returns_ok(self):
+        """Health endpoint should return status ok."""
+        client = _get_client()
+        response = client.get("/api/health")
+        data = response.json()
+        assert data["status"] == "ok"

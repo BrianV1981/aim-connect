@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import logging
 import time
 import re
@@ -25,6 +25,7 @@ logger = logging.getLogger("aim-connect")
 app = FastAPI()
 
 ALLOWED_IPS = os.environ.get("ALLOWED_IPS", "")
+ALLOW_HTTP = os.getenv("ALLOW_HTTP", "false").lower() == "true"
 auth_attempts = {}
 MAX_AUTH_ATTEMPTS = 5
 LOCKOUT_TIME = 300 # 5 minutes
@@ -38,6 +39,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- HTTPS Enforcement Middleware ---
+@app.middleware("http")
+async def enforce_https(request: Request, call_next):
+    """Reject plaintext HTTP unless running on localhost or ALLOW_HTTP is set."""
+    if ALLOW_HTTP:
+        return await call_next(request)
+
+    # Always allow localhost and test clients (dev mode)
+    client_host = request.client.host if request.client else ""
+    if client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return await call_next(request)
+
+    # Always allow /api/health (Docker HEALTHCHECK runs over HTTP internally)
+    if request.url.path == "/api/health":
+        return await call_next(request)
+
+    # Check X-Forwarded-Proto header (set by ngrok, cloudflare, nginx)
+    proto = request.headers.get("x-forwarded-proto", "http")
+    if proto != "https":
+        logger.warning("HTTPS enforcement: rejected %s request from %s to %s", proto, client_host, request.url.path)
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "HTTPS required. Do not expose this service over plain HTTP."}
+        )
+
+    return await call_next(request)
 
 DEFAULT_WORKSPACE = os.environ.get("AIM_WORKSPACE", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "workspace")))
 os.makedirs(DEFAULT_WORKSPACE, exist_ok=True)
