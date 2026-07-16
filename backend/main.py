@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import logging
 import time
+import re
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("aim-connect")
@@ -27,6 +28,8 @@ ALLOWED_IPS = os.environ.get("ALLOWED_IPS", "")
 auth_attempts = {}
 MAX_AUTH_ATTEMPTS = 5
 LOCKOUT_TIME = 300 # 5 minutes
+SESSION_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
+_last_used_totp = None  # TOTP replay protection
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,7 +57,7 @@ def get_or_create_totp():
         # Print QR Code to console for setup
         print("\n\033[92m=== aim-connect TOTP SETUP ===\033[0m")
         print("Scan this QR code with Google Authenticator or Authy:\n")
-        uri = pyotp.totp.TOTP(secret).provisioning_uri(name="aim-agy", issuer_name="aim-connect")
+        uri = pyotp.totp.TOTP(secret).provisioning_uri(name="aim-connect", issuer_name="aim-connect")
         qr = qrcode.QRCode(version=1, box_size=2, border=1)
         qr.add_data(uri)
         qr.make(fit=True)
@@ -90,12 +93,34 @@ def get_or_create_password():
 # Initialize Password hash on startup
 admin_password_hash = get_or_create_password()
 
+# --- Passphrase (Stealth "Name" field — third auth factor) ---
+PASSPHRASE_FILE = "passphrase.hash"
+
+def get_or_create_passphrase():
+    if os.path.exists(PASSPHRASE_FILE):
+        with open(PASSPHRASE_FILE, "r") as f:
+            return f.read().strip()
+    else:
+        raw_passphrase = secrets.token_urlsafe(16)
+        hashed_passphrase = bcrypt.hashpw(raw_passphrase.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        with open(PASSPHRASE_FILE, "w") as f:
+            f.write(hashed_passphrase)
+        os.chmod(PASSPHRASE_FILE, 0o600)
+        
+        print("\n\033[95m=== aim-connect PASSPHRASE SETUP ===\033[0m")
+        print("A stealth passphrase has been generated (the 'Name' field on login).")
+        print(f"Passphrase: \033[93m{raw_passphrase}\033[0m")
+        print("This is your third auth factor. Save it in your password manager.\n")
+        return hashed_passphrase
+
+# Initialize Passphrase hash on startup
+admin_passphrase_hash = get_or_create_passphrase()
+
 def set_pty_size(fd: int, rows: int, cols: int) -> None:
     """Resizes the underlying pseudo-terminal using an ioctl syscall."""
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
-import json
 TOKEN_FILE = "tokens.json"
 VALID_API_TOKENS = {}
 if os.path.exists(TOKEN_FILE):
@@ -110,6 +135,10 @@ TOKEN_TTL = int(os.environ.get('TOKEN_TTL', 14400))  # 4 hours by default
 def save_tokens():
     with open(TOKEN_FILE, 'w') as f:
         json.dump(VALID_API_TOKENS, f)
+    try:
+        os.chmod(TOKEN_FILE, 0o600)
+    except OSError:
+        pass
 MAX_TOKENS = 100
 
 def verify_token(x_api_token: str = Header(None)):
@@ -122,16 +151,25 @@ def verify_token(x_api_token: str = Header(None)):
 class AuthRequest(BaseModel):
     token: str
     password: str
+    passphrase: str = ""
 
 @app.post("/api/auth")
 def auth_api(req: AuthRequest, request: Request) -> dict:
+    global _last_used_totp
     client_ip = request.client.host
     if ALLOWED_IPS:
         allowed = [ip.strip() for ip in ALLOWED_IPS.split(",")]
         if client_ip not in allowed:
             raise HTTPException(status_code=403, detail="IP not allowed")
-            
+
     now = time.time()
+
+    # Evict stale auth_attempts entries (older than lockout window)
+    stale_ips = [ip for ip, (_, lock) in auth_attempts.items()
+                 if lock and now >= lock + LOCKOUT_TIME]
+    for ip in stale_ips:
+        del auth_attempts[ip]
+
     if client_ip in auth_attempts:
         attempts, lock_time = auth_attempts[client_ip]
         if lock_time and now < lock_time:
@@ -139,25 +177,31 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         elif lock_time and now >= lock_time:
             auth_attempts[client_ip] = (0, None)
 
-    # Step 1: Verify TOTP first
-    # DEBUG PATCH: use valid_window=1 for leeway and log failures
-    if not totp_instance.verify(req.token, valid_window=1):
+    def _fail_auth(client_ip, now):
         attempts, _ = auth_attempts.get(client_ip, (0, None))
         attempts += 1
         lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
         auth_attempts[client_ip] = (attempts, lock)
-        print(f"DEBUG AUTH: TOTP verification failed for token {req.token}")
-        raise HTTPException(status_code=401, detail="Invalid TOTP or Password")
+        logger.warning("Auth failed for IP %s (attempt %d)", client_ip, attempts)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Step 2: Verify Password
+    # Step 1: Verify Passphrase (stealth "Name" field)
+    if not req.passphrase or not bcrypt.checkpw(req.passphrase.encode('utf-8'), admin_passphrase_hash.encode('utf-8')):
+        _fail_auth(client_ip, now)
+
+    # Step 2: Verify TOTP
+    if not totp_instance.verify(req.token, valid_window=1):
+        _fail_auth(client_ip, now)
+
+    # Step 2b: TOTP replay protection
+    if _last_used_totp == req.token:
+        _fail_auth(client_ip, now)
+    _last_used_totp = req.token
+
+    # Step 3: Verify Password
     if not bcrypt.checkpw(req.password.encode('utf-8'), admin_password_hash.encode('utf-8')):
-        attempts, _ = auth_attempts.get(client_ip, (0, None))
-        attempts += 1
-        lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
-        auth_attempts[client_ip] = (attempts, lock)
-        print(f"DEBUG AUTH: Password verification failed. Provided password length: {len(req.password)}")
-        raise HTTPException(status_code=401, detail="Invalid TOTP or Password")
-        
+        _fail_auth(client_ip, now)
+
     api_token = secrets.token_hex(32)
     if len(VALID_API_TOKENS) >= MAX_TOKENS:
         # LRU eviction: remove the oldest token instead of nuking all sessions
@@ -196,6 +240,8 @@ class SessionRequest(BaseModel):
 @app.post("/api/sessions", dependencies=[Depends(verify_token)])
 def create_session(req: SessionRequest) -> dict:
     """Spawns a new detached tmux session and enables global mouse support."""
+    if not SESSION_NAME_RE.match(req.name):
+        raise HTTPException(status_code=400, detail="Invalid session name. Use only letters, numbers, hyphens, underscores (max 64 chars).")
     import subprocess
     result = subprocess.run(["tmux", "new-session", "-d", "-s", req.name], capture_output=True, text=True)
     if result.returncode == 0:
