@@ -164,13 +164,30 @@ def get_or_create_passphrase():
 # Initialize Passphrase hash on startup
 admin_passphrase_hash = get_or_create_passphrase()
 
+# --- Multi-User Support (optional users.json) ---
+USERS_FILE = "users.json"
+
+def load_users():
+    """Load multi-user config. Returns dict of users or None for single-user mode."""
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, 'r') as f:
+                users = json.load(f)
+            logger.info("Multi-user mode: loaded %d users from %s", len(users), USERS_FILE)
+            return users
+        except Exception as e:
+            logger.error("Failed to load %s: %s — falling back to single-user", USERS_FILE, e)
+    return None
+
+users_db = load_users()
+
 def set_pty_size(fd: int, rows: int, cols: int) -> None:
     """Resizes the underlying pseudo-terminal using an ioctl syscall."""
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 TOKEN_FILE = "tokens.json"
-VALID_API_TOKENS = {}
+VALID_API_TOKENS = {}  # token -> {"expires": float, "user": str, "role": str, "prefix": str}
 if os.path.exists(TOKEN_FILE):
     try:
         with open(TOKEN_FILE, 'r') as f:
@@ -192,7 +209,10 @@ MAX_TOKENS = 100
 def verify_token(x_api_token: str = Header(None)):
     if not x_api_token or x_api_token not in VALID_API_TOKENS:
         raise HTTPException(status_code=401, detail="Unauthorized API Access")
-    if time.time() > VALID_API_TOKENS[x_api_token]:
+    token_data = VALID_API_TOKENS[x_api_token]
+    # Support both old format (float) and new format (dict)
+    expires = token_data if isinstance(token_data, (int, float)) else token_data.get("expires", 0)
+    if time.time() > expires:
         del VALID_API_TOKENS[x_api_token]
         raise HTTPException(status_code=401, detail="Token Expired")
 
@@ -233,6 +253,49 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         logger.warning("Auth failed for IP %s (attempt %d)", client_ip, attempts)
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    # --- Multi-user auth path ---
+    if users_db:
+        matched_user = None
+        matched_username = None
+        for username, user_data in users_db.items():
+            try:
+                passphrase_ok = bcrypt.checkpw(req.passphrase.encode('utf-8'), user_data["passphrase_hash"].encode('utf-8'))
+                password_ok = bcrypt.checkpw(req.password.encode('utf-8'), user_data["password_hash"].encode('utf-8'))
+                user_totp = pyotp.TOTP(user_data["totp_secret"])
+                totp_ok = user_totp.verify(req.token, valid_window=1)
+                if passphrase_ok and password_ok and totp_ok:
+                    matched_user = user_data
+                    matched_username = username
+                    break
+            except Exception:
+                continue
+        
+        if not matched_user:
+            _fail_auth(client_ip, now)
+        
+        # TOTP replay protection
+        if _last_used_totp == req.token:
+            _fail_auth(client_ip, now)
+        _last_used_totp = req.token
+        
+        api_token = secrets.token_hex(32)
+        if len(VALID_API_TOKENS) >= MAX_TOKENS:
+            oldest_token = min(VALID_API_TOKENS.keys(), key=lambda k: (
+                VALID_API_TOKENS[k] if isinstance(VALID_API_TOKENS[k], (int, float))
+                else VALID_API_TOKENS[k].get("expires", 0)
+            ))
+            del VALID_API_TOKENS[oldest_token]
+        VALID_API_TOKENS[api_token] = {
+            "expires": time.time() + TOKEN_TTL,
+            "user": matched_username,
+            "role": matched_user.get("role", "user"),
+            "prefix": matched_user.get("sessions_prefix", "")
+        }
+        save_tokens()
+        auth_attempts[client_ip] = (0, None)
+        return {"api_token": api_token, "user": matched_username, "role": matched_user.get("role", "user")}
+
+    # --- Single-user auth path (legacy) ---
     # Step 1: Verify Passphrase (stealth "Name" field)
     if not req.passphrase or not bcrypt.checkpw(req.passphrase.encode('utf-8'), admin_passphrase_hash.encode('utf-8')):
         _fail_auth(client_ip, now)
@@ -252,10 +315,17 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
 
     api_token = secrets.token_hex(32)
     if len(VALID_API_TOKENS) >= MAX_TOKENS:
-        # LRU eviction: remove the oldest token instead of nuking all sessions
-        oldest_token = min(VALID_API_TOKENS.keys(), key=lambda k: VALID_API_TOKENS[k])
+        oldest_token = min(VALID_API_TOKENS.keys(), key=lambda k: (
+            VALID_API_TOKENS[k] if isinstance(VALID_API_TOKENS[k], (int, float))
+            else VALID_API_TOKENS[k].get("expires", 0)
+        ))
         del VALID_API_TOKENS[oldest_token]
-    VALID_API_TOKENS[api_token] = time.time() + TOKEN_TTL
+    VALID_API_TOKENS[api_token] = {
+        "expires": time.time() + TOKEN_TTL,
+        "user": "admin",
+        "role": "admin",
+        "prefix": ""
+    }
     save_tokens()
     auth_attempts[client_ip] = (0, None)
     return {"api_token": api_token}
@@ -271,15 +341,27 @@ def health_check() -> dict:
     """Health check endpoint for Docker and monitoring watchdogs."""
     return {"status": "ok", "service": "aim-connect"}
 
+def _get_user_from_token(x_api_token: str = Header(None)):
+    """Extract user info from token. Returns (role, prefix) tuple."""
+    if not x_api_token or x_api_token not in VALID_API_TOKENS:
+        return ("admin", "")
+    token_data = VALID_API_TOKENS[x_api_token]
+    if isinstance(token_data, (int, float)):
+        return ("admin", "")  # Legacy token format
+    return (token_data.get("role", "user"), token_data.get("prefix", ""))
+
 @app.get("/api/sessions", dependencies=[Depends(verify_token)])
-def get_sessions() -> dict:
+def get_sessions(x_api_token: str = Header(None)) -> dict:
     import subprocess
     result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
     sessions = []
+    role, prefix = _get_user_from_token(x_api_token)
     if result.returncode == 0:
         for line in result.stdout.splitlines():
             if line and not line.startswith("aim-client-"):
-                sessions.append(line)
+                # Non-admin users only see sessions with their prefix (or all if no prefix)
+                if role == "admin" or not prefix or line.startswith(prefix):
+                    sessions.append(line)
     return {"sessions": sessions}
 
 class SessionRequest(BaseModel):
