@@ -5,6 +5,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './App.css';
 import Keyboard from './Keyboard';
+import SettingsModal from './components/SettingsModal';
+import MacroLibraryModal from './components/MacroLibraryModal';
+import AuthScreen from './components/AuthScreen';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -108,11 +111,6 @@ function App() {
   });
   
   const [showMacroLibrary, setShowMacroLibrary] = useState(false);
-  const [showMacroModal, setShowMacroModal] = useState(false);
-  const [editingMacroId, setEditingMacroId] = useState(null);
-  const [newMacroLabel, setNewMacroLabel] = useState('');
-  const [newMacroCmd, setNewMacroCmd] = useState('');
-  const [newMacroIsServer, setNewMacroIsServer] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState('dark');
   const [keyboardMode, setKeyboardMode] = useState(() => {
@@ -575,23 +573,17 @@ function App() {
     if (updated.find(m => m.id === id)?.isServer) syncMacrosToServer(updated);
   };
 
-  const saveMacro = () => {
-    if (!newMacroLabel || !newMacroCmd) return;
-    const processedCmd = newMacroCmd.replace(/\\r/g, '\r').replace(/\\n/g, '\n');
+  const saveMacro = (editingId, label, cmd, isServer) => {
+    if (!label || !cmd) return;
     let updated;
-    if (editingMacroId) {
-      updated = macroLibrary.map(m => m.id === editingMacroId ? { ...m, label: newMacroLabel, cmd: processedCmd, isServer: newMacroIsServer } : m);
+    if (editingId) {
+      updated = macroLibrary.map(m => m.id === editingId ? { ...m, label, cmd, isServer } : m);
     } else {
-      updated = [...macroLibrary, { id: Date.now().toString(), label: newMacroLabel, cmd: processedCmd, isPinned: true, isServer: newMacroIsServer }];
+      updated = [...macroLibrary, { id: Date.now().toString(), label, cmd, isPinned: true, isServer }];
     }
     setMacroLibrary(updated);
     localStorage.setItem('aim-macro-library', JSON.stringify(updated));
     syncMacrosToServer(updated);
-    setShowMacroModal(false);
-    setNewMacroLabel('');
-    setNewMacroCmd('');
-    setNewMacroIsServer(false);
-    setEditingMacroId(null);
   };
 
   const deleteMacro = (id) => {
@@ -908,76 +900,15 @@ function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <div className="auth-header">
-            <img src="/aim-icon.jpg" alt="A.I.M. Logo" style={{ width: '80px', height: '80px', borderRadius: '16px', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0, 255, 170, 0.2)' }} />
-            <h2>A.I.M. SECURE</h2>
-            <p>Enter Name, Password & Authenticator Code</p>
-          </div>
-          
-          <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
-            <input 
-              type="text" 
-              className="modal-input" 
-              style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '12px' }}
-              placeholder="Name"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              autoComplete="username"
-            />
-          </div>
-          
-          <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
-            <input 
-              type={showPassword ? "text" : "password"} 
-              className="modal-input" 
-              style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '12px' }}
-              placeholder="Admin Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-            <button 
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute',
-                right: '30px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'transparent',
-                border: 'none',
-                color: '#94a3b8',
-                cursor: 'pointer',
-                fontSize: '16px',
-                padding: '4px'
-              }}
-            >
-              {showPassword ? '🫣' : '👁️'}
-            </button>
-          </div>
-
-          <div className="pin-display">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className={`pin-dot ${i < pin.length ? 'filled' : ''}`}></div>
-            ))}
-          </div>
-          
-          {authError && <div className="auth-error">{authError}</div>}
-
-          <div className="keypad">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-              <button key={num} className="key" onClick={() => handlePinInput(num.toString())}>
-                {num}
-              </button>
-            ))}
-            <button className="key action" style={{ fontSize: '24px' }} onClick={handlePasteClick}>📋</button>
-            <button className="key" onClick={() => handlePinInput('0')}>0</button>
-            <button className="key action" onClick={handleBackspace}>⌫</button>
-          </div>
-        </div>
-        <div style={{ position: 'absolute', bottom: '10px', right: '10px', color: '#64748b', fontSize: '10px', zIndex: 10 }}>v1.1.0</div>
-      </div>
+      <AuthScreen
+        passphrase={passphrase} setPassphrase={setPassphrase}
+        password={password} setPassword={setPassword}
+        showPassword={showPassword} setShowPassword={setShowPassword}
+        pin={pin} authError={authError}
+        onPinInput={handlePinInput}
+        onBackspace={handleBackspace}
+        onPasteClick={handlePasteClick}
+      />
     );
   }
 
@@ -1206,235 +1137,29 @@ function App() {
       </div>
 
       {showMacroLibrary && (
-        <div className="modal-overlay" onClick={() => setShowMacroLibrary(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '95%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ color: '#e2e8f0', margin: 0 }}>Macro Library</h3>
-              <button className="macro-btn action add-macro" onClick={() => { setEditingMacroId(null); setNewMacroLabel(''); setNewMacroCmd(''); setNewMacroIsServer(false); setShowMacroModal(true); }}>+ New</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '60vh', overflowY: 'auto' }}>
-              {macroLibrary.map(macro => (
-                <div key={macro.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1c305c', padding: '8px 12px', borderRadius: '4px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={macro.isPinned} 
-                      onChange={() => toggleMacroPin(macro.id)}
-                      style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
-                    />
-                    <div>
-                      <div style={{ color: '#e2e8f0', fontWeight: 'bold', fontSize: '14px' }}>{macro.isServer ? "☁️ " : "📱 "}{macro.label}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '12px', fontFamily: 'monospace' }}>{macro.cmd.replace(/\r/g, '\\r').replace(/\x0c/g, '\\x0c')}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="macro-btn" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={() => {
-                      setEditingMacroId(macro.id);
-                      setNewMacroLabel(macro.label);
-                      setNewMacroCmd(macro.cmd.replace(/\r/g, '\\r').replace(/\n/g, '\\n'));
-                      setNewMacroIsServer(!!macro.isServer);
-                      setShowMacroModal(true);
-                    }}>✏️</button>
-                    <button className="macro-btn" style={{ padding: '4px 8px', fontSize: '12px', color: '#f87171' }} onClick={() => deleteMacro(macro.id)}>🗑️</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button className="macro-btn action" onClick={() => setShowMacroLibrary(false)}>Done</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showMacroModal && (
-        <div className="modal-overlay" onClick={() => setShowMacroModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3 style={{ color: '#e2e8f0', marginBottom: '16px' }}>{editingMacroId ? 'Edit Macro' : 'Add Custom Macro'}</h3>
-            <input 
-              className="modal-input" 
-              placeholder="Button Label (e.g. logs)" 
-              value={newMacroLabel} 
-              onChange={e => setNewMacroLabel(e.target.value)} 
-            />
-            <input 
-              className="modal-input" 
-              placeholder="Bash Command (e.g. pm2 logs\r)" 
-              value={newMacroCmd} 
-              onChange={e => setNewMacroCmd(e.target.value)} 
-            />
-            <p style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '12px' }}>
-              Hint: Add \r to the end to auto-press Enter.
-            </p>
-            <div style={{marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px'}}>
-              <input 
-                type="checkbox" 
-                checked={newMacroIsServer} 
-                onChange={e => setNewMacroIsServer(e.target.checked)}
-                style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
-              />
-              <label style={{color: '#e2e8f0', margin: 0}}>☁️ Sync to Server (Global)</label>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button className="macro-btn" onClick={() => setShowMacroModal(false)}>Cancel</button>
-              <button className="macro-btn action" onClick={saveMacro}>Save</button>
-            </div>
-          </div>
-        </div>
+        <MacroLibraryModal
+          macroLibrary={macroLibrary}
+          onToggleMacroPin={toggleMacroPin}
+          onSaveMacro={saveMacro}
+          onDeleteMacro={deleteMacro}
+          onClose={() => setShowMacroLibrary(false)}
+        />
       )}
 
       {showSettings && (
-        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3 style={{color: '#c83803', marginBottom: '16px'}}>Settings</h3>
-            <div style={{marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px'}}>
-              <input 
-                type="checkbox" 
-                checked={autoCaps} 
-                onChange={e => {
-                  setAutoCaps(e.target.checked);
-                  localStorage.setItem('aim-kb-autocaps', JSON.stringify(e.target.checked));
-                }}
-                style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
-              />
-              <label style={{color: '#e2e8f0', margin: 0}}>Auto-Capitalization</label>
-            </div>
-            <div style={{marginBottom: '16px'}}>
-              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Keyboard Layout</label>
-              <select 
-                className="modal-input" 
-                value={keyboardMode}
-                onChange={e => {
-                  setKeyboardMode(e.target.value);
-                  localStorage.setItem('aim-kb-mode', e.target.value);
-                }}
-              >
-                <option value="standard">Standard (Alpha)</option>
-                <option value="hacker">Hacker (Terminal Keys)</option>
-              </select>
-            </div>
-            <div style={{marginBottom: '16px'}}>
-              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Theme</label>
-              <select 
-                className="modal-input" 
-                value={theme}
-                onChange={e => setTheme(e.target.value)}
-              >
-                <option value="dark">Dark</option>
-                <option value="light">Light (Coming Soon)</option>
-              </select>
-            </div>
-            <div style={{marginBottom: '16px'}}>
-              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Keyboard Feedback</label>
-              <select 
-                className="modal-input" 
-                value={keyboardFeedback}
-                onChange={e => {
-                  setKeyboardFeedback(e.target.value);
-                  localStorage.setItem('aim-kb-feedback', e.target.value);
-                }}
-              >
-                <option value="audio">Audio (Ticks)</option>
-                <option value="haptic">Haptic (Vibration)</option>
-                <option value="off">Off (Silent)</option>
-              </select>
-            </div>
-            <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
-              <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0', fontWeight: 'bold'}}>Terminal Settings</label>
-              <div style={{marginBottom: '12px'}}>
-                <label style={{display: 'flex', justifyContent: 'space-between', color: '#e2e8f0', marginBottom: '4px'}}>
-                  <span>Font Size</span>
-                  <span>{termFontSize}px</span>
-                </label>
-                <input 
-                  type="range" 
-                  min="10" max="24" 
-                  value={termFontSize}
-                  onChange={e => {
-                    const val = parseInt(e.target.value, 10);
-                    setTermFontSize(val);
-                    localStorage.setItem('aim-term-fontsize', val);
-                  }}
-                  style={{width: '100%'}}
-                />
-              </div>
-              <div style={{marginBottom: '12px'}}>
-                <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Terminal Theme</label>
-                <select 
-                  className="modal-input" 
-                  value={termTheme}
-                  onChange={e => {
-                    setTermTheme(e.target.value);
-                    localStorage.setItem('aim-term-theme', e.target.value);
-                  }}
-                >
-                  <option value="standard">Standard Dark</option>
-                  <option value="high-contrast">High Contrast (B&W)</option>
-                  <option value="hacker">Hacker Green</option>
-                </select>
-              </div>
-            </div>
-            <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
-              <label style={{display: 'block', marginBottom: '12px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice Dictation Settings</label>
-              
-              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
-                <input 
-                  type="checkbox" 
-                  checked={voiceContinuous} 
-                  onChange={e => {
-                    setVoiceContinuous(e.target.checked);
-                    localStorage.setItem('aim-voice-continuous', JSON.stringify(e.target.checked));
-                  }}
-                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
-                />
-                <label style={{color: '#e2e8f0', margin: 0}}>Continuous Loop (Causes Android Beeps)</label>
-              </div>
-
-              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
-                <input 
-                  type="checkbox" 
-                  checked={voiceAutoEnter} 
-                  onChange={e => {
-                    setVoiceAutoEnter(e.target.checked);
-                    localStorage.setItem('aim-voice-enter', JSON.stringify(e.target.checked));
-                  }}
-                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
-                />
-                <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Enter"</label>
-              </div>
-
-              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
-                <input 
-                  type="checkbox" 
-                  checked={voiceAutoSend} 
-                  onChange={e => {
-                    setVoiceAutoSend(e.target.checked);
-                    localStorage.setItem('aim-voice-send', JSON.stringify(e.target.checked));
-                  }}
-                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
-                />
-                <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Send"</label>
-              </div>
-
-              <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
-                <input 
-                  type="checkbox" 
-                  checked={voiceAutoExecute} 
-                  onChange={e => {
-                    setVoiceAutoExecute(e.target.checked);
-                    localStorage.setItem('aim-voice-execute', JSON.stringify(e.target.checked));
-                  }}
-                  style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
-                />
-                <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Execute"</label>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-              <button className="macro-btn action" onClick={() => setShowSettings(false)}>Close</button>
-            </div>
-          </div>
-        </div>
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          autoCaps={autoCaps} setAutoCaps={setAutoCaps}
+          keyboardMode={keyboardMode} setKeyboardMode={setKeyboardMode}
+          theme={theme} setTheme={setTheme}
+          keyboardFeedback={keyboardFeedback} setKeyboardFeedback={setKeyboardFeedback}
+          termFontSize={termFontSize} setTermFontSize={setTermFontSize}
+          termTheme={termTheme} setTermTheme={setTermTheme}
+          voiceContinuous={voiceContinuous} setVoiceContinuous={setVoiceContinuous}
+          voiceAutoEnter={voiceAutoEnter} setVoiceAutoEnter={setVoiceAutoEnter}
+          voiceAutoSend={voiceAutoSend} setVoiceAutoSend={setVoiceAutoSend}
+          voiceAutoExecute={voiceAutoExecute} setVoiceAutoExecute={setVoiceAutoExecute}
+        />
       )}
     </div>
   );
