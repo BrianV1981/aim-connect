@@ -14,18 +14,19 @@ def test_auth_invalid_totp():
     # Generate valid password but invalid TOTP
     response = client.post("/api/auth", json={
         "token": "000000", # assuming this is invalid
-        "password": "wrong_password"
+        "password": "wrong_password",
+        "passphrase": "wrong"
     })
     assert response.status_code == 401
-    assert "Invalid TOTP or Password" in response.json()["detail"]
+    assert "Invalid credentials" in response.json()["detail"]
 
 def test_auth_rate_limiting():
     # Attempt 5 times rapidly
     for _ in range(5):
-        res = client.post("/api/auth", json={"token": "000000", "password": "wrong"})
+        res = client.post("/api/auth", json={"token": "000000", "password": "wrong", "passphrase": "wrong"})
     
     # 6th attempt should hit rate limit (429)
-    response = client.post("/api/auth", json={"token": "000000", "password": "wrong"})
+    response = client.post("/api/auth", json={"token": "000000", "password": "wrong", "passphrase": "wrong"})
     assert response.status_code == 429
     assert "Too many attempts" in response.json()["detail"]
 
