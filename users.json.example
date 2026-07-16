@@ -1,0 +1,16 @@
+{
+  "admin": {
+    "passphrase_hash": "$2b$12$REPLACE_WITH_BCRYPT_HASH",
+    "password_hash": "$2b$12$REPLACE_WITH_BCRYPT_HASH",
+    "totp_secret": "REPLACE_WITH_BASE32_SECRET",
+    "role": "admin",
+    "sessions_prefix": ""
+  },
+  "operator": {
+    "passphrase_hash": "$2b$12$REPLACE_WITH_BCRYPT_HASH",
+    "password_hash": "$2b$12$REPLACE_WITH_BCRYPT_HASH",
+    "totp_secret": "REPLACE_WITH_BASE32_SECRET",
+    "role": "user",
+    "sessions_prefix": "op-"
+  }
+}
