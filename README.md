@@ -1,5 +1,6 @@
 # 🛸 AIM-Connect
 
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/brianv1981)
 
 **A Clientless, Sovereign, Web-Based Terminal Multiplexer.**
@@ -24,6 +25,8 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 *   **Dynamic Custom Macros:** Build your own interface. Using the "Commander Toolbar", you can add custom macro buttons (e.g. `pm2 logs\r`) on the fly. The app persists your macros securely in your browser's local storage.
 *   **Sovereign Mobile Keyboard:** Native iOS and Android keyboards notoriously ruin mobile coding by hijacking the viewport and inserting ghost characters via predictive text. AIM-Connect features a custom, on-screen HTML keyboard with specialized developer keys (`[`, `]`, `|`, `\`) that automatically shrinks the terminal to fit.
 *   **Tmux GUI Session Control:** Never lose your place. AIM-Connect features a built-in session manager. Use the native UI dropdown to create new isolated `tmux` workspaces, instantly teleport between running tasks, or permanently destroy environments when you are finished.
+*   **Voice Dictation (Speech-to-Terminal):** Talk to your terminal. AIM-Connect includes a full voice recognition engine with verbal action commands ("Enter", "Send", "Execute"), automatic verbal punctuation ("comma", "period", "question mark"), continuous listening mode, and smart spacing. Dictate entire commands hands-free from your phone.
+*   **Scrollback & Copy Mode:** Tap "🔍 Scroll/Copy" to capture the full terminal scrollback buffer. Switch between color-rendered ANSI view and a text-selection mode for easy copy-paste on mobile — something native terminal apps struggle with.
 *   **Collaborative Sovereignty (Multi-User):** Stop paying for arbitrary "seat licenses" just to share your own hardware. Because `aim-connect` relies on raw OS-level `pty` forks, it natively supports isolated, simultaneous multi-user environments. Share your secure URL and TOTP with a collaborator, and you can both work on the same machine—in the same session or entirely different background sessions—without relying on any third-party account systems or corporate gatekeepers.
 
 ---
@@ -131,19 +134,28 @@ If you want to actively modify the UI, use this split-terminal setup:
 
 ## 🐳 Deployment (Docker)
 
-AIM-Connect is fully containerized. For a production deployment on a VPS:
+AIM-Connect ships with a hardened, multi-stage Dockerfile:
+- **Stage 1** builds the React frontend (no Node.js in the final image)
+- **Stage 2** runs the Python backend as a **non-root user** (`appuser`)
+- Includes a `HEALTHCHECK` endpoint at `/api/health`
+- Volume mounts are restricted to `workspace/` only — no source code or secrets exposed to the container
+
+**Quick start:**
 1. `cp .env.example .env` and fill in your `NGROK_AUTHTOKEN` and `ALLOWED_IPS`.
 2. Run `docker-compose up -d --build`.
-3. Check the logs (`docker logs aim-connect -f`) to scan your initial TOTP QR Code!
+3. Check the logs (`docker logs aim-connect -f`) to capture your initial TOTP QR Code, admin password, and stealth passphrase.
 
 ---
 
 ## 📖 How to Use the UI
 
-*   **Session Manager (Top Bar):** Use the dropdown menu to swap between active Tmux sessions. Type a name and click "Create" to spawn a new isolated workspace.
-*   **File Explorer (Left Sidebar):** Navigate your server's filesystem. Click on any text file to open it in the Web IDE. Click the 💾 icon in the IDE to save changes directly to the server.
-*   **Commander Toolbar (Bottom Bar):** Click the `+` icon to create a new Macro Pill. Give it a name (e.g., "Deploy") and a command (e.g., `npm run deploy\r`). The `\r` sends the Enter key. Tap the pill anytime to instantly execute the command in your active terminal.
-*   **Virtual Keyboard:** If you are on mobile, tap the keyboard icon to open the custom developer keyboard. It protects you from autocorrect bugs and provides quick access to brackets, pipes, and slash keys.
+*   **Session Manager (Top Bar):** Use the dropdown to swap between active Tmux sessions. Tap `+` to spawn a new isolated workspace, or `🗑️` to kill the current one.
+*   **File Explorer:** Tap `📁 Files` in the header to toggle the full-screen file browser. Navigate directories, tap any text file to open it in the built-in editor, then hit `Save` to write changes directly to the server. Create new files/folders with the `+ File` / `+ Dir` buttons.
+*   **Commander Toolbar:** Your custom macro buttons live here. Tap `⚙️` to open the Macro Library where you can create, edit, pin/unpin, and delete macros. Each macro can be local (📱, stored in your browser) or server-synced (☁️, shared across devices). Add `\r` to a command to auto-press Enter.
+*   **Sovereign Keyboard:** Tap `⌨️` to toggle the custom on-screen keyboard. It suppresses the native virtual keyboard to prevent autocorrect and ghost characters. Includes specialized keys for `Tab`, `Esc`, `Ctrl`, pipes, brackets, and more. Choose between Standard and Hacker (terminal keys) layouts in Settings.
+*   **Voice Dictation:** Tap `🎤 Voice` to start speech-to-terminal input. Say "Enter", "Send", or "Execute" to submit commands verbally. Use verbal punctuation ("comma", "period", "question mark") for natural dictation. Enable Continuous Loop mode in Settings to keep the mic hot.
+*   **Scroll/Copy Mode:** Tap `🔍 Scroll/Copy` to capture the terminal scrollback. Switch between Color View (rendered ANSI) and Select Text mode for easy copy-paste on mobile. Scroll to the bottom to auto-exit.
+*   **Settings:** Tap `⚙️ Settings` to configure keyboard layout, auto-capitalization, terminal font size, terminal theme (Standard / High Contrast / Hacker Green), keyboard feedback (audio/haptic/off), and voice dictation options.
 
 ---
 
@@ -156,6 +168,30 @@ AIM-Connect is fully containerized. For a production deployment on a VPS:
 > 2. **IP Allowlisting:** Strongly recommended. Configure `ALLOWED_IPS` in your `.env` to restrict access to trusted networks.
 > 3. **Basic Path Traversal Protection:** While the web-UI file endpoints have basic path-traversal blocks to keep navigation scoped, the terminal itself has no such restrictions. 
 > 4. **Protect Your Keys:** The `.env` file containing your Ngrok auth tokens and backend secrets must never be committed to source control.
+
+---
+
+## 🧪 Testing
+
+AIM-Connect includes a full pytest test suite covering authentication and security:
+
+```bash
+cd backend
+source venv/bin/activate
+pip install -r requirements-test.txt
+python -m pytest tests/ -v
+```
+
+**16 tests** covering:
+- Three-factor auth flow (passphrase + password + TOTP)
+- Individual factor rejection (wrong passphrase, wrong password, wrong TOTP)
+- TOTP replay protection
+- Rate limiting and lockout
+- Session name validation
+- Path traversal prevention
+- Token expiry and unauthenticated access
+
+Tests also run automatically via GitHub Actions CI on every push and PR to `master`.
 
 ---
 *Built with sovereignty in mind.*
