@@ -50,7 +50,7 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
     if (feedbackMode === 'haptic' && navigator.vibrate) {
       try { navigator.vibrate(10); } catch(e) {}
     } else if (feedbackMode === 'audio' || feedbackMode === 'haptic') {
-      triggerFeedback();
+      playClickSound();
     }
   };
 
