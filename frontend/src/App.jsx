@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { AnsiUp } from 'ansi_up';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import './App.css';
 import Keyboard from './Keyboard';
@@ -134,6 +135,9 @@ function App() {
   const apiTokenRef = useRef(localStorage.getItem('aim-token') || null);
   const reconnectAttempts = useRef(0);
   const [connState, setConnState] = useState('disconnected');
+  const searchAddon = useRef(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Auto-auth on load if token exists
   useEffect(() => {
@@ -642,6 +646,8 @@ function App() {
     
     fitAddon.current = new FitAddon();
     term.current.loadAddon(fitAddon.current);
+    searchAddon.current = new SearchAddon();
+    term.current.loadAddon(searchAddon.current);
 
     if (terminalRef.current) {
       term.current.open(terminalRef.current);
@@ -974,6 +980,12 @@ function App() {
             >
               📋 Paste
             </button>
+            <button 
+              className="macro-btn" 
+              onClick={() => setShowSearch(!showSearch)}
+            >
+              🔎 Find
+            </button>
           </>
         )}
         <button 
@@ -1060,6 +1072,28 @@ function App() {
           </div>
         )}
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+          {showSearch && (
+            <div className="search-bar">
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search terminal..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (e.shiftKey) searchAddon.current?.findPrevious(searchTerm);
+                    else searchAddon.current?.findNext(searchTerm);
+                  }
+                  if (e.key === 'Escape') { setShowSearch(false); setSearchTerm(''); }
+                }}
+                autoFocus
+              />
+              <button className="search-btn" onClick={() => searchAddon.current?.findPrevious(searchTerm)}>▲</button>
+              <button className="search-btn" onClick={() => searchAddon.current?.findNext(searchTerm)}>▼</button>
+              <button className="search-btn search-close" onClick={() => { setShowSearch(false); setSearchTerm(''); }}>✖</button>
+            </div>
+          )}
           <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
           {isNativeScrollMode && (
              <>
