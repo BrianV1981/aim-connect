@@ -67,9 +67,26 @@ body {
   min-width: 10px;
   min-height: 10px;
   border-radius: 50%;
-  background-color: #a6e3a1; /* green for connected */
-  box-shadow: 0 0 8px #a6e3a1;
+  background-color: #ef4444;
   flex-shrink: 0;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+.status-indicator.connected {
+  background-color: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+.status-indicator.reconnecting {
+  background-color: #eab308;
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.4);
+  animation: pulse-status 1s infinite;
+}
+.status-indicator.disconnected {
+  background-color: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+@keyframes pulse-status {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 .terminal-container {

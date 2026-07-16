@@ -134,6 +134,8 @@ function App() {
   const pinRef = useRef('');
   const passwordRef = useRef('');
   const apiTokenRef = useRef(localStorage.getItem('aim-token') || null);
+  const reconnectAttempts = useRef(0);
+  const [connState, setConnState] = useState('disconnected');
   
   // Auto-auth on load if token exists
   useEffect(() => {
@@ -497,6 +499,8 @@ function App() {
           if (msg.type === 'auth_success') {
             ws.current = socket;
             authRef.current = true;
+            reconnectAttempts.current = 0;
+            setConnState('connected');
             setIsAuthenticated(true);
             return;
           } else if (msg.type === 'auth_failed') {
@@ -522,6 +526,7 @@ function App() {
     socket.onclose = (event) => {
       if (event.code === 1008) {
         if (term.current) term.current.writeln('\x1b[31m\n[Session expired. Please log in again.]\x1b[0m');
+        setConnState('disconnected');
         setTimeout(() => {
           handleLogout();
         }, 1500);
@@ -529,11 +534,23 @@ function App() {
       }
       
       if (authRef.current) {
-        if (term.current) term.current.writeln('\x1b[31m\n[Connection lost. Reconnecting...]\x1b[0m');
-        setTimeout(() => {
-          authenticate(null, null);
-        }, 1000);
+        const MAX_RECONNECT = 5;
+        const BASE_DELAY = 1000;
+        reconnectAttempts.current++;
+        
+        if (reconnectAttempts.current > MAX_RECONNECT) {
+          if (term.current) term.current.writeln('\x1b[31m\n[Connection lost. Max retries exceeded. Returning to login.]\x1b[0m');
+          setConnState('disconnected');
+          setTimeout(() => handleLogout(), 2000);
+          return;
+        }
+        
+        const delay = BASE_DELAY * Math.pow(2, reconnectAttempts.current - 1);
+        setConnState('reconnecting');
+        if (term.current) term.current.writeln(`\x1b[33m\n[Reconnecting... attempt ${reconnectAttempts.current}/${MAX_RECONNECT} (${delay/1000}s)]\x1b[0m`);
+        setTimeout(() => authenticate(null, null), delay);
       } else {
+        setConnState('disconnected');
         setAuthError('Connection failed');
         setPin('');
       }
@@ -1029,7 +1046,7 @@ function App() {
         <button className="macro-btn" onClick={handleLogout} style={{ color: '#ef4444', border: '1px solid #ef4444' }}>
           🚪 Logout
         </button>
-        <div className="status-indicator"></div>
+        <div className={`status-indicator ${connState}`}></div>
       </header>
       
       <div className="file-explorer" style={{ display: showFiles ? 'flex' : 'none' }}>
