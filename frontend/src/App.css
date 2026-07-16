@@ -5,6 +5,7 @@
 }
 
 html {
+  height: 100dvh;
   height: calc(var(--vh, 1vh) * 100);
 }
 
@@ -12,6 +13,7 @@ body {
   background-color: #050a14;
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  height: 100dvh;
   height: calc(var(--vh, 1vh) * 100);
   min-height: calc(var(--vh, 1vh) * 100);
   width: 100vw;
