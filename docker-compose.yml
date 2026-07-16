@@ -9,7 +9,7 @@ services:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
       - NGROK_DOMAIN=${NGROK_DOMAIN}
     volumes:
-      - .:/app
+      - ./workspace:/app/workspace
     restart: unless-stopped
     stdin_open: true
     tty: true

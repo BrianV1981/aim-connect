@@ -1,26 +1,53 @@
+# ===========================================
+# Stage 1: Build Frontend
+# ===========================================
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ===========================================
+# Stage 2: Production Runtime
+# ===========================================
 FROM python:3.11-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
     curl \
-    git \
-    nodejs \
-    npm \
     && rm -rf /var/lib/apt/lists/*
-
-# Install ngrok
-RUN curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && \
-    echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | tee /etc/apt/sources.list.d/ngrok.list && \
-    apt-get update && apt-get install ngrok
 
 WORKDIR /app
 
-# Install python dependencies
+# Install Python dependencies
 COPY backend/requirements.txt backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Create a symlink to ngrok if it's expected in the root directory
-RUN ln -s $(which ngrok) /app/ngrok
+# Copy backend source
+COPY backend/ backend/
+
+# Copy startup script
+COPY startup.sh ./
+
+# Copy built frontend from stage 1
+COPY --from=frontend-build /build/frontend/dist frontend/dist
+
+# Create workspace directory
+RUN mkdir -p workspace
+
+# Create non-root user and set ownership
+RUN groupadd --system appuser && \
+    useradd --system --gid appuser --home-dir /app appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
 
 CMD ["/bin/bash", "./startup.sh"]
