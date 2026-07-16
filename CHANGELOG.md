@@ -26,16 +26,19 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Version aligned across VERSION file, frontend, and CHANGELOG (was 1.0.1/1.0.2/1.0.0).
 - Upgraded auth from two-factor to three-factor with backward-compatible passphrase field.
-
-## [Unreleased]
-### Added
 - **Macro Library Manager:** A unified persistent state manager for all keyboard macros and hardcoded actions, accessible via a new ⚙️ settings modal.
 - **Sticky Ctrl Modifier:** A dedicated `Ctrl` key on the Sovereign Keyboard that natively translates alpha inputs to raw ASCII control sequences (e.g., `Ctrl+W` -> `\x17`).
 - **Auto-Capitalization:** The keyboard now natively detects punctuation (`.`, `!`, `?`) followed by a space and automatically engages the Shift modifier.
 
 ### Fixed
+- **Scrollback Auth Bypass:** Fixed `window.fetch` → `fetch` in scrollback endpoint call, which was bypassing the API token injection and silently breaking the feature in production.
+- **Keyboard Infinite Recursion:** Fixed `triggerFeedback()` calling itself recursively instead of `playClickSound()`, which crashed the browser tab on desktop.
+- **TOTP Provisioning Name:** Changed from "aim-agy" to "aim-connect" for correct branding in authenticator apps.
+- **Duplicate Import:** Removed duplicate `import json` statement.
 - **Mobile PWA Rendering:** Fixed a critical bug on Android devices where the OS navigation bar clipped the bottom of the Progressive Web App. Implemented dynamic `window.innerHeight` binding to a CSS `--vh` variable.
 - **Mobile Touch-Scroll Lock:** Fixed an issue where opening the Sovereign Keyboard completely disabled terminal touch-scrolling. Replaced the aggressive `disableStdin` hack with a passive `textarea.readOnly` state, perfectly blocking the native virtual keyboard while allowing raw finger-swipe pass-through to `xterm.js`.
+
+## [Unreleased]
 
 ## [1.0.0] - 2026-07-06
 

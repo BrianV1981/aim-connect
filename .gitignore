@@ -14,6 +14,7 @@ backend/passphrase.hash
 backend/tokens.json
 tokens.json
 passphrase.hash
+password.hash
 patch_*.py
 patch.py
 logs/
