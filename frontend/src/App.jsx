@@ -617,6 +617,25 @@ function App() {
     if (isServer) syncMacrosToServer(updated);
   };
 
+  const importMacros = (importedMacros, mode) => {
+    let updated;
+    if (mode === 'replace') {
+      updated = importedMacros.map(m => ({ ...m, id: m.id || Date.now().toString() + Math.random() }));
+    } else {
+      // Merge: skip duplicates by label
+      const existing = [...macroLibrary];
+      importedMacros.forEach(m => {
+        if (!existing.some(e => e.label === m.label)) {
+          existing.push({ ...m, id: m.id || Date.now().toString() + Math.random() });
+        }
+      });
+      updated = existing;
+    }
+    setMacroLibrary(updated);
+    localStorage.setItem('aim-macro-library', JSON.stringify(updated));
+    syncMacrosToServer(updated);
+  };
+
   useEffect(() => {
     if (term.current) {
       term.current.options.fontSize = termFontSize;
@@ -1194,6 +1213,7 @@ function App() {
           onToggleMacroPin={toggleMacroPin}
           onSaveMacro={saveMacro}
           onDeleteMacro={deleteMacro}
+          onImportMacros={importMacros}
           onClose={() => setShowMacroLibrary(false)}
         />
       )}
