@@ -10,6 +10,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
+  const [passphrase, setPassphrase] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [sessions, setSessions] = useState([]);
@@ -40,7 +41,7 @@ function App() {
     hasScrolledUpInOverlay.current = false;
     setScrollbackContent('Loading scrollback...');
     try {
-      const res = await window.fetch(`/api/scrollback/${encodeURIComponent(activeSession)}`);
+      const res = await fetch(`/api/scrollback/${encodeURIComponent(activeSession)}`);
       const data = await res.json();
       if (data.scrollback) {
         const ansi_up = new AnsiUp();
@@ -451,8 +452,8 @@ function App() {
   };
 
   const authenticate = async (token, pass) => {
-    if (token !== null && !pass) {
-        setAuthError('Please enter Admin Password first');
+    if (token !== null && (!pass || !passphrase)) {
+        setAuthError(!passphrase ? 'Please enter Name first' : 'Please enter Admin Password first');
         setPin('');
         return;
     }
@@ -461,7 +462,7 @@ function App() {
         const res = await window.fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password: pass })
+        body: JSON.stringify({ token, password: pass, passphrase })
       });
       if (!res.ok) {
         setAuthError('Invalid or expired PIN');
@@ -895,7 +896,19 @@ function App() {
           <div className="auth-header">
             <img src="/aim-icon.jpg" alt="A.I.M. Logo" style={{ width: '80px', height: '80px', borderRadius: '16px', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0, 255, 170, 0.2)' }} />
             <h2>A.I.M. SECURE</h2>
-            <p>Enter Password & Authenticator Code</p>
+            <p>Enter Name, Password & Authenticator Code</p>
+          </div>
+          
+          <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+            <input 
+              type="text" 
+              className="modal-input" 
+              style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '12px' }}
+              placeholder="Name"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              autoComplete="username"
+            />
           </div>
           
           <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
@@ -946,7 +959,7 @@ function App() {
             <button className="key action" onClick={handleBackspace}>⌫</button>
           </div>
         </div>
-        <div style={{ position: 'absolute', bottom: '10px', right: '10px', color: '#64748b', fontSize: '10px', zIndex: 10 }}>v1.0.2</div>
+        <div style={{ position: 'absolute', bottom: '10px', right: '10px', color: '#64748b', fontSize: '10px', zIndex: 10 }}>v1.1.0</div>
       </div>
     );
   }

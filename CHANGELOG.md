@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-07-15
+
+### Added
+- **Three-Factor Auth:** Added stealth passphrase field ("Name") as third authentication factor. Login flow is now Passphrase + Password + TOTP — three-factor without biometrics.
+- **TOTP Replay Protection:** Same TOTP code cannot be reused within its validity window.
+- **Session Name Validation:** tmux session names are validated against `^[a-zA-Z0-9_-]{1,64}$` to prevent unexpected behavior.
+- **Auth Attempts TTL Cleanup:** Rate-limiting entries are now evicted after the lockout window expires, preventing unbounded memory growth.
+- **Token File Permissions:** `tokens.json` is now created with `0o600` permissions, matching `totp.secret` and `password.hash`.
+
+### Security
+- **CRITICAL:** Removed debug prints that leaked TOTP tokens and password lengths to stdout on auth failure.
+- Added `tokens.json`, `passphrase.hash`, and `macros.json` to `.gitignore` and CI secret guard.
+- Auth error messages are now generic ("Invalid credentials") to prevent information leakage.
+- All auth failures logged via structured `logger.warning()` with IP only — no sensitive data.
+
+### Fixed
+- **Scrollback Auth Bypass:** Fixed `window.fetch` → `fetch` in scrollback endpoint call, which was bypassing the API token injection and silently breaking the feature in production.
+- **Keyboard Infinite Recursion:** Fixed `triggerFeedback()` calling itself recursively instead of `playClickSound()`, which crashed the browser tab on desktop.
+- **TOTP Provisioning Name:** Changed from "aim-agy" to "aim-connect" for correct branding in authenticator apps.
+- **Duplicate Import:** Removed duplicate `import json` statement.
+
+### Changed
+- Version aligned across VERSION file, frontend, and CHANGELOG (was 1.0.1/1.0.2/1.0.0).
+- Upgraded auth from two-factor to three-factor with backward-compatible passphrase field.
+
 ## [Unreleased]
 ### Added
 - **Macro Library Manager:** A unified persistent state manager for all keyboard macros and hardcoded actions, accessible via a new ⚙️ settings modal.

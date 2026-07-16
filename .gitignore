@@ -10,6 +10,12 @@ ngrok
 totp.secret
 backend/totp.secret
 backend/password.hash
+backend/passphrase.hash
+backend/tokens.json
+tokens.json
+passphrase.hash
+patch_*.py
+patch.py
 logs/
 
 # Agent Specific
