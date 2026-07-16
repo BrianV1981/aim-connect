@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 export default function MacroLibraryModal({ 
-  macroLibrary, onToggleMacroPin, onSaveMacro, onDeleteMacro, onClose
+  macroLibrary, onToggleMacroPin, onSaveMacro, onDeleteMacro, onImportMacros, onClose
 }) {
   const [showMacroModal, setShowMacroModal] = useState(false);
   const [editingMacroId, setEditingMacroId] = useState(null);
@@ -18,6 +18,48 @@ export default function MacroLibraryModal({
     setNewMacroCmd('');
     setNewMacroIsServer(false);
     setEditingMacroId(null);
+  };
+
+  const fileInputRef = useRef(null);
+
+  const handleExport = () => {
+    const data = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      macros: macroLibrary
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'aim-macros.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = JSON.parse(evt.target.result);
+        const macros = data.macros || data;
+        if (!Array.isArray(macros)) {
+          alert('Invalid macro file: expected an array of macros.');
+          return;
+        }
+        const mode = window.confirm(
+          `Import ${macros.length} macros.\n\nOK = Merge with existing\nCancel = Replace all`
+        ) ? 'merge' : 'replace';
+        onImportMacros(macros, mode);
+      } catch (err) {
+        alert('Failed to parse macro file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    // Reset so same file can be re-imported
+    e.target.value = '';
   };
 
   return (
@@ -56,7 +98,12 @@ export default function MacroLibraryModal({
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
+          <input type="file" ref={fileInputRef} accept=".json" style={{ display: 'none' }} onChange={handleImport} />
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', marginTop: '20px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="macro-btn" onClick={handleExport}>📥 Export</button>
+              <button className="macro-btn" onClick={() => fileInputRef.current?.click()}>📤 Import</button>
+            </div>
             <button className="macro-btn action" onClick={onClose}>Done</button>
           </div>
         </div>
