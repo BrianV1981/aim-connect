@@ -143,19 +143,37 @@ function App() {
     }
   }, []);
 
-  // Dynamic Viewport Height Fix for Mobile PWA
+  // Dynamic Viewport Height Fix for Mobile PWA (debounced for iOS Safari)
   useEffect(() => {
+    let viewportTimeout;
     const setHeight = () => {
-      const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-      document.documentElement.style.setProperty('--vh', `${vh * 0.01}px`);
+      clearTimeout(viewportTimeout);
+      viewportTimeout = setTimeout(() => {
+        const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        document.documentElement.style.setProperty('--vh', `${vh * 0.01}px`);
+        if (window.visualViewport) {
+          document.body.style.height = `${window.visualViewport.height}px`;
+        }
+        // Refit terminal after viewport settles
+        if (fitAddon.current) {
+          try { fitAddon.current.fit(); } catch (e) { /* terminal not ready */ }
+        }
+      }, 150);
+    };
+    const handleOrientation = () => {
+      // iOS needs ~300ms to finish the rotation animation
+      setTimeout(setHeight, 350);
     };
     setHeight();
     window.addEventListener('resize', setHeight);
+    window.addEventListener('orientationchange', handleOrientation);
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', setHeight);
     }
     return () => {
+      clearTimeout(viewportTimeout);
       window.removeEventListener('resize', setHeight);
+      window.removeEventListener('orientationchange', handleOrientation);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', setHeight);
       }
