@@ -543,7 +543,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         if data.get("type") == "auth":
             token = data.get("token", "")
             if token in VALID_API_TOKENS:
-                if time.time() > VALID_API_TOKENS[token]:
+                token_data = VALID_API_TOKENS[token]
+                expires = token_data if isinstance(token_data, (int, float)) else token_data.get("expires", 0)
+                if time.time() > expires:
                     del VALID_API_TOKENS[token]
                 else:
                     authenticated = True
