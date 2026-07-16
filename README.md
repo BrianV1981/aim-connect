@@ -20,7 +20,7 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 *   **Clientless SSH Alternative:** Access your terminal from Safari, Chrome, or Firefox. No App Store downloads required.
 *   **The "Immortality" Protocol:** Built on top of `tmux`. Close your browser, put your phone in your pocket, and your scripts keep running. Log back in and instantly re-attach to the live terminal stream.
 *   **The Web IDE (Full File Management):** The visual file explorer isn't just read-only. It is a fully functional Sovereign Web IDE. Tap a script to edit its code in a full-screen text area, then hit "Save" to instantly overwrite the file on your Linux server. You can visually create, rename, and delete files/folders right from your phone.
-*   **Zero-Trust Security:** Secured by dual-layer authentication (Admin Password + Google Authenticator TOTP), strict API token TTLs, Rate Limiting, and IP Allowlisting.
+*   **Three-Factor Auth (Zero-Trust):** Secured by three-layer authentication (Stealth Passphrase + Admin Password + Google Authenticator TOTP), strict API token TTLs, TOTP replay protection, Rate Limiting, and IP Allowlisting. No biometrics, no cloud IdP, no accounts — you own every byte of the auth chain.
 *   **Dynamic Custom Macros:** Build your own interface. Using the "Commander Toolbar", you can add custom macro buttons (e.g. `pm2 logs\r`) on the fly. The app persists your macros securely in your browser's local storage.
 *   **Sovereign Mobile Keyboard:** Native iOS and Android keyboards notoriously ruin mobile coding by hijacking the viewport and inserting ghost characters via predictive text. AIM-Connect features a custom, on-screen HTML keyboard with specialized developer keys (`[`, `]`, `|`, `\`) that automatically shrinks the terminal to fit.
 *   **Tmux GUI Session Control:** Never lose your place. AIM-Connect features a built-in session manager. Use the native UI dropdown to create new isolated `tmux` workspaces, instantly teleport between running tasks, or permanently destroy environments when you are finished.
@@ -62,22 +62,27 @@ pip install -r requirements.txt
 cd ..
 ```
 
-### Step 4: First-Time Launch & Google Authenticator Setup
-You must run the startup script directly in your terminal the very first time to capture your TOTP QR Code.
+### Step 4: First-Time Launch & Credential Setup
+You must run the startup script directly in your terminal the very first time to capture your credentials.
 ```bash
 ./startup.sh
 ```
 **CRITICAL SETUP INSTRUCTION:**
-1. Look at your server terminal window. AIM-Connect will generate and print a massive **QR Code** directly in the console.
-2. Open **Google Authenticator** or **Authy** on your phone.
-3. Scan the QR code. You will see a new entry labeled `AIM-Connect`.
-4. (The system will securely save your secret token locally. You will never see the QR code again.)
+On first launch, AIM-Connect auto-generates three credentials and prints them to the console:
+
+1. **TOTP Secret (QR Code):** A QR code for Google Authenticator / Authy. Scan it with your phone.
+2. **Admin Password:** A secure random password. Save it in your password manager.
+3. **Stealth Passphrase:** A secret passphrase for the "Name" field on the login screen. Save this too — it's your third auth factor.
+
+> ⚠️ You will **never** see these credentials again after first launch. If you lose them, delete the corresponding `.hash` or `.secret` file and restart to regenerate.
+>
+> **To reset:** `rm passphrase.hash && ./startup.sh` (or `password.hash` / `totp.secret`)
 
 ### Step 5: Accessing the Dashboard
 1. Look at your terminal output to find your secure public URL (e.g., `https://random-string.ngrok.app`).
 2. Open that URL on your phone or remote browser.
-3. You will be greeted by the **AIM Secure Pad**.
-4. Check your authenticator app, type your Admin Password and your 6-digit pin into the pad, or use the convenient **Clipboard Icon (📋)** on mobile to paste the code.
+3. You will be greeted by the **AIM Secure** login screen with three fields.
+4. Enter your **Stealth Passphrase** in the "Name" field, your **Admin Password**, then your **6-digit TOTP pin** from your authenticator app.
 5. You are in!
 
 ### Step 6: PWA & Multi-Server Theming (Optional)
