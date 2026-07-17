@@ -1,5 +1,10 @@
 import pty
 import os
+from dotenv import load_dotenv
+
+# Force load .env from the parent directory so we don't rely on tmux inheritance
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+
 import fcntl
 import termios
 import struct
