@@ -181,10 +181,13 @@ body {
 .auth-container {
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   height: calc(var(--vh, 1vh) * 100);
   width: 100vw;
   background: radial-gradient(circle at center, #0B162C 0%, #050a14 100%);
+  overflow-y: auto;
+  padding: 20px 0;
+  box-sizing: border-box;
 }
 
 .auth-card {
@@ -200,6 +203,7 @@ body {
   flex-direction: column;
   align-items: center;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  margin: auto;
 }
 
 .auth-header {
