@@ -593,11 +593,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if line and not line.startswith("aim-"):
                     target_session = line
                     break
-                    
-        if target_session:
-            os.execvp("tmux", ["tmux", "attach", "-t", target_session])
-        else:
-            os.execvp("bash", ["bash"])
+        
+        if not target_session:
+            target_session = "aim-connect-main"
+            subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
+            
+        os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
     # Parent process
     loop = asyncio.get_event_loop()
