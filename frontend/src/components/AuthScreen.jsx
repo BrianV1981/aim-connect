@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { authenticateWebAuthn } from '../webauthn';
+
 export default function AuthScreen({
   passphrase, setPassphrase,
   password, setPassword,
@@ -5,6 +8,47 @@ export default function AuthScreen({
   pin, authError, e2eeSecret, setE2eeSecret,
   onPinInput, onBackspace, onPasteClick, onWebAuthnLogin
 }) {
+  const [webAuthnError, setWebAuthnError] = useState('');
+  const [isWebAuthnLoading, setIsWebAuthnLoading] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT') return; // Don't interfere if typing in inputs
+      
+      if (e.key >= '0' && e.key <= '9') {
+        onPinInput(e.key);
+      } else if (e.key === 'Backspace') {
+        onBackspace();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onPinInput, onBackspace]);
+
+  const handleWebAuthnLogin = async (e) => {
+    e.preventDefault();
+    if (!passphrase) {
+      setWebAuthnError('Please enter your Name (Stealth Passphrase) first.');
+      return;
+    }
+    
+    setIsWebAuthnLoading(true);
+    setWebAuthnError('');
+    
+    try {
+      const result = await authenticateWebAuthn(passphrase);
+      if (result.success) {
+        onWebAuthnLogin(result.token, e2eeSecret);
+      } else {
+        setWebAuthnError(`WebAuthn Error: ${result.error}`);
+      }
+    } catch (err) {
+      setWebAuthnError(err.message);
+    } finally {
+      setIsWebAuthnLoading(false);
+    }
+  };
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -64,6 +108,30 @@ export default function AuthScreen({
             value={e2eeSecret}
             onChange={(e) => setE2eeSecret(e.target.value)}
           />
+        </div>
+
+        <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+          <button 
+            onClick={handleWebAuthnLogin}
+            disabled={isWebAuthnLoading}
+            style={{
+              width: '100%',
+              background: 'rgba(59, 130, 246, 0.2)',
+              border: '1px solid #3b82f6',
+              color: '#60a5fa',
+              padding: '10px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            {isWebAuthnLoading ? 'Authenticating...' : '👤 Login with FaceID/TouchID'}
+          </button>
+          {webAuthnError && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '8px', textAlign: 'center' }}>{webAuthnError}</div>}
         </div>
 
         <div className="pin-display">
