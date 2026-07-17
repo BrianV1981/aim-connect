@@ -1,16 +1,5 @@
-// AES-GCM E2EE Utility for browser
-
 export async function deriveKey(secret) {
   const enc = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits", "deriveKey"]
-  );
-  
-  // Actually, backend uses simple SHA-256 for key derivation to keep it fast and compatible
   const hash = await window.crypto.subtle.digest("SHA-256", enc.encode(secret));
   
   return window.crypto.subtle.importKey(
@@ -30,7 +19,6 @@ export async function encryptBytes(dataBytes, key) {
     dataBytes
   );
   
-  // prepend IV
   const result = new Uint8Array(iv.length + ciphertext.byteLength);
   result.set(iv, 0);
   result.set(new Uint8Array(ciphertext), iv.length);
@@ -53,7 +41,6 @@ export async function decryptBytes(buffer, key) {
 export async function encryptMessage(messageStr, key) {
   const enc = new TextEncoder();
   const encryptedBuf = await encryptBytes(enc.encode(messageStr), key);
-  // Convert to Base64
   const bytes = new Uint8Array(encryptedBuf);
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
@@ -78,35 +65,60 @@ export class E2EESocketWrapper {
     this.socket = socket;
     this.secretStr = secretStr;
     this.key = null;
-    this.messageQueue = [];
-    this.isProcessing = false;
+    this.inQueue = [];
+    this.outQueue = [];
+    this.isProcessingIn = false;
+    this.isProcessingOut = false;
     this.onmessage = null;
     
-    // Intercept original socket
+    // Pass-through standard properties
+    this.readyState = socket.readyState;
+    this.socket.addEventListener('open', () => { this.readyState = this.socket.readyState; });
+    this.socket.addEventListener('close', () => { this.readyState = this.socket.readyState; });
+    this.socket.addEventListener('error', () => { this.readyState = this.socket.readyState; });
+    
     this.socket.onmessage = (event) => {
-      this.messageQueue.push(event);
-      this.processQueue();
+      this.inQueue.push(event);
+      this.processInQueue();
     };
   }
   
-  async init() {
-    this.key = await deriveKey(this.secretStr);
+  get readyState() {
+    return this.socket.readyState;
   }
   
-  async processQueue() {
-    if (this.isProcessing || this.messageQueue.length === 0) return;
-    this.isProcessing = true;
+  set readyState(val) {}
+  
+  async init() {
+    if (!this.key && this.secretStr) {
+      this.key = await deriveKey(this.secretStr);
+    }
+  }
+  
+  async processInQueue() {
+    if (this.isProcessingIn || this.inQueue.length === 0) return;
+    this.isProcessingIn = true;
     
-    while (this.messageQueue.length > 0) {
-      const event = this.messageQueue.shift();
+    while (this.inQueue.length > 0) {
+      const event = this.inQueue.shift();
       if (!this.onmessage) continue;
       
       try {
+        if (!this.secretStr) {
+          this.onmessage(event); // pass through if no secret
+          continue;
+        }
+        
         if (typeof event.data === 'string') {
           const decryptedStr = await decryptMessage(event.data, this.key);
           this.onmessage({ data: decryptedStr });
-        } else if (event.data instanceof ArrayBuffer) {
-          const decryptedBuf = await decryptBytes(event.data, this.key);
+        } else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+          // If it's a blob, we must read it
+          let buffer = event.data;
+          if (event.data instanceof Blob) {
+            buffer = await event.data.arrayBuffer();
+          }
+          const decryptedBuf = await decryptBytes(buffer, this.key);
           this.onmessage({ data: decryptedBuf });
         }
       } catch (err) {
@@ -114,16 +126,44 @@ export class E2EESocketWrapper {
       }
     }
     
-    this.isProcessing = false;
+    this.isProcessingIn = false;
   }
   
-  async send(data) {
-    if (!this.key) await this.init();
-    if (typeof data === 'string') {
-      const encryptedStr = await encryptMessage(data, this.key);
-      this.socket.send(encryptedStr);
-    } else {
-      console.warn("E2EESocketWrapper: send raw bytes not implemented");
+  async processOutQueue() {
+    if (this.isProcessingOut || this.outQueue.length === 0) return;
+    this.isProcessingOut = true;
+    
+    while (this.outQueue.length > 0) {
+      const data = this.outQueue.shift();
+      
+      try {
+        if (!this.secretStr) {
+          this.socket.send(data);
+          continue;
+        }
+        
+        if (!this.key) await this.init();
+        
+        if (typeof data === 'string') {
+          const encryptedStr = await encryptMessage(data, this.key);
+          this.socket.send(encryptedStr);
+        } else {
+          console.warn("E2EESocketWrapper: send raw bytes not implemented");
+        }
+      } catch (err) {
+         console.error("E2EE Encrypt error", err);
+      }
     }
+    
+    this.isProcessingOut = false;
+  }
+  
+  send(data) {
+    this.outQueue.push(data);
+    this.processOutQueue();
+  }
+  
+  close() {
+    this.socket.close();
   }
 }

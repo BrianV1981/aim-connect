@@ -9,6 +9,7 @@ import Keyboard from './Keyboard';
 import SettingsModal from './components/SettingsModal';
 import MacroLibraryModal from './components/MacroLibraryModal';
 import AuthScreen from './components/AuthScreen';
+import { E2EESocketWrapper } from './e2ee';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -17,6 +18,7 @@ function App() {
   const [passphrase, setPassphrase] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [e2eeSecret, setE2eeSecret] = useState('');
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
   const [showFiles, setShowFiles] = useState(false);
@@ -504,8 +506,11 @@ function App() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     
-    const socket = new WebSocket(wsUrl);
-    socket.binaryType = 'arraybuffer';
+    const rawSocket = new WebSocket(wsUrl);
+    rawSocket.binaryType = 'arraybuffer';
+    
+    const socket = new E2EESocketWrapper(rawSocket, e2eeSecret);
+    socket.init();
     
     socket.onopen = () => {
       // Send the API token to WS, not the original PIN
@@ -948,6 +953,7 @@ function App() {
         password={password} setPassword={setPassword}
         showPassword={showPassword} setShowPassword={setShowPassword}
         pin={pin} authError={authError}
+        e2eeSecret={e2eeSecret} setE2eeSecret={setE2eeSecret}
         onPinInput={handlePinInput}
         onBackspace={handleBackspace}
         onPasteClick={handlePasteClick}
