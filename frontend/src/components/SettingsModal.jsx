@@ -17,6 +17,7 @@ export default function SettingsModal({
   e2eeSecret, setE2eeSecret
 }) {
   const [registerStatus, setRegisterStatus] = useState('');
+  const [showE2eeSecret, setShowE2eeSecret] = useState(false);
 
   const handleRegister = async () => {
     try {
@@ -183,13 +184,31 @@ export default function SettingsModal({
           <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0', fontWeight: 'bold'}}>End-to-End Encryption</label>
           <div style={{marginBottom: '12px'}}>
             <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>E2EE Secret Phrase</label>
-            <input 
-              type="text" 
-              className="modal-input" 
-              placeholder="Leave blank for plaintext"
-              value={e2eeSecret}
-              onChange={e => setE2eeSecret(e.target.value)}
-            />
+            <div style={{ position: 'relative' }}>
+              <input 
+                type={showE2eeSecret ? "text" : "password"} 
+                className="modal-input" 
+                style={{ paddingRight: '40px' }}
+                placeholder="Leave blank for plaintext"
+                value={e2eeSecret}
+                onChange={e => setE2eeSecret(e.target.value)}
+              />
+              <button 
+                onClick={() => setShowE2eeSecret(!showE2eeSecret)}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer'
+                }}
+              >
+                {showE2eeSecret ? '👁️' : '🙈'}
+              </button>
+            </div>
             <p style={{fontSize: '12px', color: '#94a3b8', marginTop: '4px'}}>
               Changes apply on the next connection (e.g. reload or reconnect).
             </p>
