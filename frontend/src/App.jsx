@@ -10,6 +10,7 @@ import SettingsModal from './components/SettingsModal';
 import MacroLibraryModal from './components/MacroLibraryModal';
 import AuthScreen from './components/AuthScreen';
 import { E2EESocketWrapper } from './e2ee';
+import { authenticateWebAuthn } from './webauthn';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -472,6 +473,23 @@ function App() {
     if (ws.current) {
       ws.current.close();
       ws.current = null;
+    }
+  };
+
+  const handleWebAuthnLogin = async () => {
+    if (!passphrase) {
+      setAuthError('Please enter Name first');
+      return;
+    }
+    try {
+      setAuthError('Waiting for FaceID/TouchID...');
+      const token = await authenticateWebAuthn(passphrase);
+      apiTokenRef.current = token;
+      localStorage.setItem('aim-token', token);
+      setAuthError('');
+      authenticate(null, null); // proceed to WS connection
+    } catch (e) {
+      setAuthError(e.message || 'Biometric auth failed');
     }
   };
 
@@ -957,6 +975,7 @@ function App() {
         onPinInput={handlePinInput}
         onBackspace={handleBackspace}
         onPasteClick={handlePasteClick}
+        onWebAuthnLogin={handleWebAuthnLogin}
       />
     );
   }
@@ -1237,6 +1256,7 @@ function App() {
           voiceAutoEnter={voiceAutoEnter} setVoiceAutoEnter={setVoiceAutoEnter}
           voiceAutoSend={voiceAutoSend} setVoiceAutoSend={setVoiceAutoSend}
           voiceAutoExecute={voiceAutoExecute} setVoiceAutoExecute={setVoiceAutoExecute}
+          apiToken={apiTokenRef.current}
         />
       )}
     </div>
