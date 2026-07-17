@@ -713,28 +713,36 @@ def webauthn_register_verify(req: WebAuthnVerifyReq, request: Request, x_api_tok
 
 @app.post("/api/webauthn/authenticate/options")
 def webauthn_auth_options(req: WebAuthnAuthReq, request: Request):
-    options = webauthn_mgr.generate_authentication(req.username, rp_id=request.url.hostname)
+    user_name = req.username
+    if not users_db:
+        user_name = "admin"
+        
+    options = webauthn_mgr.generate_authentication(user_name, rp_id=request.url.hostname)
     if not options:
         raise HTTPException(status_code=404, detail="No credentials found")
     return {"options": options}
 
 @app.post("/api/webauthn/authenticate/verify")
 def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
+    user_name = req.username
+    if not users_db:
+        user_name = "admin"
+        
     origin = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
     # ngrok usually terminates HTTPS but forwards as HTTP. If headers indicate https, force it.
     if request.headers.get('x-forwarded-proto') == 'https':
         origin = f"https://{request.headers.get('host', request.url.netloc)}"
 
-    success = webauthn_mgr.verify_authentication(req.username, req.response, rp_id=request.url.hostname, origin=origin)
+    success = webauthn_mgr.verify_authentication(user_name, req.response, rp_id=request.url.hostname, origin=origin)
     if not success:
         raise HTTPException(status_code=401, detail="Authentication failed")
         
     # Generate token since WebAuthn succeeded
     new_token = secrets.token_hex(32)
-    role = "admin"
+    role = "admin" if not users_db else users_db.get(user_name, {}).get("role", "user")
     VALID_API_TOKENS[new_token] = {
         "expires": time.time() + 3600,
-        "user": req.username,
+        "user": user_name,
         "role": role
     }
     return {"token": new_token, "role": role}
