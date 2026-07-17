@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { registerWebAuthn } from '../webauthn';
+
 export default function SettingsModal({ 
   onClose, 
   autoCaps, setAutoCaps,
@@ -9,8 +12,25 @@ export default function SettingsModal({
   voiceContinuous, setVoiceContinuous,
   voiceAutoEnter, setVoiceAutoEnter,
   voiceAutoSend, setVoiceAutoSend,
-  voiceAutoExecute, setVoiceAutoExecute
+  voiceAutoExecute, setVoiceAutoExecute,
+  apiToken
 }) {
+  const [registerStatus, setRegisterStatus] = useState('');
+
+  const handleRegister = async () => {
+    try {
+      setRegisterStatus('Registering...');
+      const success = await registerWebAuthn(apiToken);
+      if (success) {
+        setRegisterStatus('Registered Successfully! You can now use FaceID/TouchID to log in.');
+      } else {
+        setRegisterStatus('Registration failed.');
+      }
+    } catch (e) {
+      setRegisterStatus('Error: ' + e.message);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
@@ -156,6 +176,30 @@ export default function SettingsModal({
             />
             <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Execute"</label>
           </div>
+        </div>
+
+        <div style={{marginBottom: '24px', padding: '16px', background: '#0f172a', borderRadius: '8px', border: '1px solid #334155'}}>
+          <h4 style={{marginTop: 0, color: '#e2e8f0', marginBottom: '12px'}}>Biometrics</h4>
+          <button 
+            onClick={handleRegister}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              width: '100%'
+            }}
+          >
+            Register FaceID / TouchID
+          </button>
+          {registerStatus && (
+            <p style={{ color: registerStatus.includes('Error') || registerStatus.includes('failed') ? '#ef4444' : '#10b981', fontSize: '14px', marginTop: '8px', textAlign: 'center' }}>
+              {registerStatus}
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>

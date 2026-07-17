@@ -736,3 +736,57 @@ else:
     @app.get("/")
     def read_root():
         return {"status": "aim-connect backend running! (Frontend not built in ../frontend/dist)"}
+
+# --- WebAuthn Endpoints ---
+from webauthn_manager import webauthn_mgr
+from pydantic import BaseModel
+
+class WebAuthnVerifyReq(BaseModel):
+    response: dict
+
+class WebAuthnAuthReq(BaseModel):
+    username: str = "admin"
+
+class WebAuthnAuthVerifyReq(BaseModel):
+    username: str = "admin"
+    response: dict
+
+@app.get("/api/webauthn/register/options", dependencies=[Depends(verify_token)])
+def webauthn_register_options(x_api_token: str = Header(None)):
+    role, username = _get_user_from_token(x_api_token)
+    user_key = username or "admin"
+    options = webauthn_mgr.generate_registration(user_key)
+    return {"options": options}
+
+@app.post("/api/webauthn/register/verify", dependencies=[Depends(verify_token)])
+def webauthn_register_verify(req: WebAuthnVerifyReq, x_api_token: str = Header(None)):
+    role, username = _get_user_from_token(x_api_token)
+    user_key = username or "admin"
+    success = webauthn_mgr.verify_registration(user_key, req.response)
+    if not success:
+        raise HTTPException(status_code=400, detail="Registration failed")
+    return {"status": "success"}
+
+@app.post("/api/webauthn/authenticate/options")
+def webauthn_auth_options(req: WebAuthnAuthReq):
+    options = webauthn_mgr.generate_authentication(req.username)
+    if not options:
+        raise HTTPException(status_code=404, detail="No credentials found")
+    return {"options": options}
+
+@app.post("/api/webauthn/authenticate/verify")
+def webauthn_auth_verify(req: WebAuthnAuthVerifyReq):
+    success = webauthn_mgr.verify_authentication(req.username, req.response)
+    if not success:
+        raise HTTPException(status_code=401, detail="Authentication failed")
+        
+    # Generate token since WebAuthn succeeded
+    new_token = secrets.token_hex(32)
+    role = "admin"
+    VALID_API_TOKENS[new_token] = {
+        "expires": time.time() + 3600,
+        "user": req.username,
+        "role": role
+    }
+    return {"token": new_token, "role": role}
+

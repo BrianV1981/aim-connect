@@ -3,7 +3,7 @@ export default function AuthScreen({
   password, setPassword,
   showPassword, setShowPassword,
   pin, authError, e2eeSecret, setE2eeSecret,
-  onPinInput, onBackspace, onPasteClick
+  onPinInput, onBackspace, onPasteClick, onWebAuthnLogin
 }) {
   return (
     <div className="auth-container">
