@@ -396,7 +396,7 @@ body {
 .file-content-area {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 0;
 }
 
 .file-list {
@@ -426,20 +426,6 @@ body {
 .file-name {
   font-size: 14px;
   color: #e2e8f0;
-}
-
-.file-editor {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  border: none;
-  font-family: 'Fira Code', monospace;
-  font-size: 13px;
-  color: #e2e8f0;
-  resize: none;
-  outline: none;
-  white-space: pre-wrap;
-  word-wrap: break-word;
 }
 
 /* Sovereign HTML Keyboard */
