@@ -18,6 +18,29 @@ export default function SettingsModal({
 }) {
   const [registerStatus, setRegisterStatus] = useState('');
   const [showE2eeSecret, setShowE2eeSecret] = useState(false);
+  const [e2eeStatus, setE2eeStatus] = useState('');
+
+  const handleApplyE2ee = async () => {
+    try {
+      setE2eeStatus('Updating backend...');
+      const res = await fetch('/api/settings/e2ee', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiToken}`
+        },
+        body: JSON.stringify({ secret: e2eeSecret })
+      });
+      if (res.ok) {
+        setE2eeStatus('Success! Reloading...');
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        setE2eeStatus('Failed to update backend');
+      }
+    } catch(e) {
+      setE2eeStatus('Error updating backend');
+    }
+  };
 
   const handleRegister = async () => {
     try {
@@ -188,7 +211,7 @@ export default function SettingsModal({
               <input 
                 type={showE2eeSecret ? "text" : "password"} 
                 className="modal-input" 
-                style={{ paddingRight: '40px' }}
+                style={{ paddingRight: '120px' }}
                 placeholder="Leave blank for plaintext"
                 value={e2eeSecret}
                 onChange={e => setE2eeSecret(e.target.value)}
@@ -197,7 +220,7 @@ export default function SettingsModal({
                 onClick={() => setShowE2eeSecret(!showE2eeSecret)}
                 style={{
                   position: 'absolute',
-                  right: '10px',
+                  right: '90px',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   background: 'transparent',
@@ -208,9 +231,27 @@ export default function SettingsModal({
               >
                 {showE2eeSecret ? '👁️' : '🙈'}
               </button>
+              <button 
+                onClick={handleApplyE2ee}
+                style={{
+                  position: 'absolute',
+                  right: '6px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: '#3b82f6',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                Apply
+              </button>
             </div>
             <p style={{fontSize: '12px', color: '#94a3b8', marginTop: '4px'}}>
-              Changes apply on the next connection (e.g. reload or reconnect).
+              {e2eeStatus || "Syncs the new encryption phrase to the server and reloads."}
             </p>
           </div>
         </div>
