@@ -10,6 +10,7 @@ export default function AuthScreen({
 }) {
   const [webAuthnError, setWebAuthnError] = useState('');
   const [isWebAuthnLoading, setIsWebAuthnLoading] = useState(false);
+  const [showE2eeSecret, setShowE2eeSecret] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -98,15 +99,32 @@ export default function AuthScreen({
           </button>
         </div>
 
-        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
           <input 
-            type="password" 
+            type={showE2eeSecret ? "text" : "password"} 
             className="modal-input" 
             style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '10px', background: '#0f172a', borderColor: '#334155' }}
             placeholder="E2EE Secret (Optional)"
             value={e2eeSecret}
             onChange={(e) => setE2eeSecret(e.target.value)}
           />
+          <button 
+            onClick={() => setShowE2eeSecret(!showE2eeSecret)}
+            style={{
+              position: 'absolute',
+              right: '30px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              fontSize: '16px',
+              padding: '4px'
+            }}
+          >
+            {showE2eeSecret ? '🫣' : '👁️'}
+          </button>
         </div>
 
         <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
