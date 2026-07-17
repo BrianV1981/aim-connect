@@ -1,0 +1,17 @@
+{
+  "name": "A.I.M. Connect",
+  "short_name": "A.I.M.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0B162C",
+  "theme_color": "#0B162C",
+  "description": "Sovereign Terminal & Server Management",
+  "icons": [
+    {
+      "src": "/aim-icon.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

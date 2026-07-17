@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 import logging
 import time
 import re
+from e2ee import encrypt_bytes, decrypt_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("aim-connect")
@@ -26,6 +27,8 @@ app = FastAPI()
 
 ALLOWED_IPS = os.environ.get("ALLOWED_IPS", "")
 ALLOW_HTTP = os.getenv("ALLOW_HTTP", "false").lower() == "true"
+ENABLE_E2EE = os.getenv("ENABLE_E2EE", "false").lower() == "true"
+E2EE_SECRET = os.getenv("E2EE_SECRET", "")
 auth_attempts = {}
 MAX_AUTH_ATTEMPTS = 5
 LOCKOUT_TIME = 300 # 5 minutes
@@ -610,6 +613,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 data = await loop.run_in_executor(None, os.read, fd, 1024)
                 if not data:
                     break
+                if ENABLE_E2EE and E2EE_SECRET:
+                    data = encrypt_bytes(data, E2EE_SECRET)
                 await websocket.send_bytes(data)
                 last_activity = time.time()
             except Exception as e:
@@ -623,6 +628,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 message = await websocket.receive_text()
                 last_activity = time.time()
                 try:
+                    if ENABLE_E2EE and E2EE_SECRET:
+                        message = decrypt_message(message, E2EE_SECRET)
                     data = json.loads(message)
                     if data.get("type") == "input":
                         os.write(fd, data["payload"].encode("utf-8"))
