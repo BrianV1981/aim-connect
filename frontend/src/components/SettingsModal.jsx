@@ -20,7 +20,50 @@ export default function SettingsModal({
   const [showE2eeSecret, setShowE2eeSecret] = useState(false);
   const [e2eeStatus, setE2eeStatus] = useState('');
 
-  const handleApplyE2ee = async () => {
+  // Local buffered state
+  const [localAutoCaps, setLocalAutoCaps] = useState(autoCaps);
+  const [localKeyboardMode, setLocalKeyboardMode] = useState(keyboardMode);
+  const [localTheme, setLocalTheme] = useState(theme);
+  const [localKeyboardFeedback, setLocalKeyboardFeedback] = useState(keyboardFeedback);
+  const [localTermFontSize, setLocalTermFontSize] = useState(termFontSize);
+  const [localTermTheme, setLocalTermTheme] = useState(termTheme);
+  const [localVoiceContinuous, setLocalVoiceContinuous] = useState(voiceContinuous);
+  const [localVoiceAutoEnter, setLocalVoiceAutoEnter] = useState(voiceAutoEnter);
+  const [localVoiceAutoSend, setLocalVoiceAutoSend] = useState(voiceAutoSend);
+  const [localVoiceAutoExecute, setLocalVoiceAutoExecute] = useState(voiceAutoExecute);
+  const [localE2eeSecret, setLocalE2eeSecret] = useState(e2eeSecret);
+
+  const handleSave = () => {
+    setAutoCaps(localAutoCaps);
+    localStorage.setItem('aim-kb-autocaps', JSON.stringify(localAutoCaps));
+    setKeyboardMode(localKeyboardMode);
+    localStorage.setItem('aim-kb-mode', localKeyboardMode);
+    setTheme(localTheme);
+    setKeyboardFeedback(localKeyboardFeedback);
+    localStorage.setItem('aim-kb-feedback', localKeyboardFeedback);
+    setTermFontSize(localTermFontSize);
+    localStorage.setItem('aim-term-fontsize', localTermFontSize);
+    setTermTheme(localTermTheme);
+    localStorage.setItem('aim-term-theme', localTermTheme);
+    setVoiceContinuous(localVoiceContinuous);
+    localStorage.setItem('aim-voice-continuous', JSON.stringify(localVoiceContinuous));
+    setVoiceAutoEnter(localVoiceAutoEnter);
+    localStorage.setItem('aim-voice-enter', JSON.stringify(localVoiceAutoEnter));
+    setVoiceAutoSend(localVoiceAutoSend);
+    localStorage.setItem('aim-voice-send', JSON.stringify(localVoiceAutoSend));
+    setVoiceAutoExecute(localVoiceAutoExecute);
+    localStorage.setItem('aim-voice-execute', JSON.stringify(localVoiceAutoExecute));
+    
+    // Check if E2EE secret changed
+    if (localE2eeSecret !== e2eeSecret) {
+      setE2eeSecret(localE2eeSecret);
+      handleApplyE2ee(localE2eeSecret);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleApplyE2ee = async (secretToApply) => {
     try {
       setE2eeStatus('Updating backend...');
       const res = await fetch('/api/settings/e2ee', {
@@ -29,7 +72,7 @@ export default function SettingsModal({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiToken}`
         },
-        body: JSON.stringify({ secret: e2eeSecret })
+        body: JSON.stringify({ secret: secretToApply })
       });
       if (res.ok) {
         setE2eeStatus('Success! Reloading...');
@@ -63,11 +106,8 @@ export default function SettingsModal({
         <div style={{marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px'}}>
           <input 
             type="checkbox" 
-            checked={autoCaps} 
-            onChange={e => {
-              setAutoCaps(e.target.checked);
-              localStorage.setItem('aim-kb-autocaps', JSON.stringify(e.target.checked));
-            }}
+            checked={localAutoCaps} 
+            onChange={e => setLocalAutoCaps(e.target.checked)}
             style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
           />
           <label style={{color: '#e2e8f0', margin: 0}}>Auto-Capitalization</label>
@@ -76,11 +116,8 @@ export default function SettingsModal({
           <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Keyboard Layout</label>
           <select 
             className="modal-input" 
-            value={keyboardMode}
-            onChange={e => {
-              setKeyboardMode(e.target.value);
-              localStorage.setItem('aim-kb-mode', e.target.value);
-            }}
+            value={localKeyboardMode}
+            onChange={e => setLocalKeyboardMode(e.target.value)}
           >
             <option value="standard">Standard (Alpha)</option>
             <option value="hacker">Hacker (Terminal Keys)</option>
@@ -90,8 +127,8 @@ export default function SettingsModal({
           <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Theme</label>
           <select 
             className="modal-input" 
-            value={theme}
-            onChange={e => setTheme(e.target.value)}
+            value={localTheme}
+            onChange={e => setLocalTheme(e.target.value)}
           >
             <option value="dark">Dark</option>
             <option value="light">Light (Coming Soon)</option>
@@ -101,11 +138,8 @@ export default function SettingsModal({
           <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Keyboard Feedback</label>
           <select 
             className="modal-input" 
-            value={keyboardFeedback}
-            onChange={e => {
-              setKeyboardFeedback(e.target.value);
-              localStorage.setItem('aim-kb-feedback', e.target.value);
-            }}
+            value={localKeyboardFeedback}
+            onChange={e => setLocalKeyboardFeedback(e.target.value)}
           >
             <option value="audio">Audio (Ticks)</option>
             <option value="haptic">Haptic (Vibration)</option>
@@ -117,17 +151,13 @@ export default function SettingsModal({
           <div style={{marginBottom: '12px'}}>
             <label style={{display: 'flex', justifyContent: 'space-between', color: '#e2e8f0', marginBottom: '4px'}}>
               <span>Font Size</span>
-              <span>{termFontSize}px</span>
+              <span>{localTermFontSize}px</span>
             </label>
             <input 
               type="range" 
               min="10" max="24" 
-              value={termFontSize}
-              onChange={e => {
-                const val = parseInt(e.target.value, 10);
-                setTermFontSize(val);
-                localStorage.setItem('aim-term-fontsize', val);
-              }}
+              value={localTermFontSize}
+              onChange={e => setLocalTermFontSize(parseInt(e.target.value, 10))}
               style={{width: '100%'}}
             />
           </div>
@@ -135,11 +165,8 @@ export default function SettingsModal({
             <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Terminal Theme</label>
             <select 
               className="modal-input" 
-              value={termTheme}
-              onChange={e => {
-                setTermTheme(e.target.value);
-                localStorage.setItem('aim-term-theme', e.target.value);
-              }}
+              value={localTermTheme}
+              onChange={e => setLocalTermTheme(e.target.value)}
             >
               <option value="standard">Standard Dark</option>
               <option value="high-contrast">High Contrast (B&W)</option>
@@ -153,11 +180,8 @@ export default function SettingsModal({
           <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
             <input 
               type="checkbox" 
-              checked={voiceContinuous} 
-              onChange={e => {
-                setVoiceContinuous(e.target.checked);
-                localStorage.setItem('aim-voice-continuous', JSON.stringify(e.target.checked));
-              }}
+              checked={localVoiceContinuous} 
+              onChange={e => setLocalVoiceContinuous(e.target.checked)}
               style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
             />
             <label style={{color: '#e2e8f0', margin: 0}}>Continuous Loop (Causes Android Beeps)</label>
@@ -166,11 +190,8 @@ export default function SettingsModal({
           <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
             <input 
               type="checkbox" 
-              checked={voiceAutoEnter} 
-              onChange={e => {
-                setVoiceAutoEnter(e.target.checked);
-                localStorage.setItem('aim-voice-enter', JSON.stringify(e.target.checked));
-              }}
+              checked={localVoiceAutoEnter} 
+              onChange={e => setLocalVoiceAutoEnter(e.target.checked)}
               style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
             />
             <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Enter"</label>
@@ -179,11 +200,8 @@ export default function SettingsModal({
           <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
             <input 
               type="checkbox" 
-              checked={voiceAutoSend} 
-              onChange={e => {
-                setVoiceAutoSend(e.target.checked);
-                localStorage.setItem('aim-voice-send', JSON.stringify(e.target.checked));
-              }}
+              checked={localVoiceAutoSend} 
+              onChange={e => setLocalVoiceAutoSend(e.target.checked)}
               style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
             />
             <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Send"</label>
@@ -192,11 +210,8 @@ export default function SettingsModal({
           <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
             <input 
               type="checkbox" 
-              checked={voiceAutoExecute} 
-              onChange={e => {
-                setVoiceAutoExecute(e.target.checked);
-                localStorage.setItem('aim-voice-execute', JSON.stringify(e.target.checked));
-              }}
+              checked={localVoiceAutoExecute} 
+              onChange={e => setLocalVoiceAutoExecute(e.target.checked)}
               style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
             />
             <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Execute"</label>
@@ -211,16 +226,16 @@ export default function SettingsModal({
               <input 
                 type={showE2eeSecret ? "text" : "password"} 
                 className="modal-input" 
-                style={{ paddingRight: '120px' }}
+                style={{ paddingRight: '40px' }}
                 placeholder="Leave blank for plaintext"
-                value={e2eeSecret}
-                onChange={e => setE2eeSecret(e.target.value)}
+                value={localE2eeSecret}
+                onChange={e => setLocalE2eeSecret(e.target.value)}
               />
               <button 
                 onClick={() => setShowE2eeSecret(!showE2eeSecret)}
                 style={{
                   position: 'absolute',
-                  right: '90px',
+                  right: '10px',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   background: 'transparent',
@@ -231,27 +246,9 @@ export default function SettingsModal({
               >
                 {showE2eeSecret ? '👁️' : '🙈'}
               </button>
-              <button 
-                onClick={handleApplyE2ee}
-                style={{
-                  position: 'absolute',
-                  right: '6px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: '#3b82f6',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px'
-                }}
-              >
-                Apply
-              </button>
             </div>
             <p style={{fontSize: '12px', color: '#94a3b8', marginTop: '4px'}}>
-              {e2eeStatus || "Syncs the new encryption phrase to the server and reloads."}
+              {e2eeStatus || "If changed, the app will auto-reload to sync with the backend."}
             </p>
           </div>
         </div>
@@ -281,7 +278,8 @@ export default function SettingsModal({
         </div>
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-          <button className="macro-btn action" onClick={onClose}>Close</button>
+          <button className="macro-btn" onClick={onClose} style={{background: '#334155'}}>Cancel</button>
+          <button className="macro-btn action" onClick={handleSave}>Save</button>
         </div>
       </div>
     </div>
