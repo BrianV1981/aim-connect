@@ -104,8 +104,12 @@ class WebAuthnManager:
             
         existing_creds = self.get_user_credentials(user_name)
         
-        credential_id = response_json.get("id")
-        stored_cred = next((c for c in existing_creds if c["id"] == credential_id), None)
+        credential_id = response_json.get("id", "")
+        
+        def normalize_b64(b64_str):
+            return b64_str.replace("+", "-").replace("/", "_").rstrip("=")
+            
+        stored_cred = next((c for c in existing_creds if normalize_b64(c["id"]) == normalize_b64(credential_id)), None)
         if not stored_cred:
             return False
             
