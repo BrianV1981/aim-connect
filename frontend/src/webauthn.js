@@ -9,7 +9,7 @@ export async function registerWebAuthn(apiToken) {
     
     if (!options) throw new Error("Could not get registration options");
     
-    const attResp = await startRegistration(options);
+    const attResp = await startRegistration({ optionsJSON: options });
     
     const verifyResp = await fetch('/api/webauthn/register/verify', {
       method: 'POST',
@@ -42,7 +42,7 @@ export async function authenticateWebAuthn(username) {
     
     const { options } = await resp.json();
     
-    const asseResp = await startAuthentication(options);
+    const asseResp = await startAuthentication({ optionsJSON: options });
     
     const verifyResp = await fetch('/api/webauthn/authenticate/verify', {
       method: 'POST',
