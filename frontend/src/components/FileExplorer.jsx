@@ -1,3 +1,5 @@
+import Editor from '@monaco-editor/react';
+
 export default function FileExplorer({ 
   fileItems, currentPath, isEditingFile, openFileContent, openFilePath,
   onLoadFiles, onLoadFileContent, onSaveFile, onCreateItem, onDeleteItem,
@@ -25,11 +27,18 @@ export default function FileExplorer({
       </div>
       <div className="file-content-area">
         {isEditingFile ? (
-          <textarea 
-            className="file-editor" 
+          <Editor 
+            height="100%"
+            path={openFilePath}
+            theme="vs-dark"
             value={openFileContent} 
-            onChange={e => onSetOpenFileContent(e.target.value)} 
-            spellCheck="false"
+            onChange={(value) => onSetOpenFileContent(value || '')}
+            options={{
+              minimap: { enabled: true },
+              wordWrap: "on",
+              automaticLayout: true,
+              fontSize: 14,
+            }}
           />
         ) : (
           <ul className="file-list">
