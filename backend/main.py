@@ -752,31 +752,37 @@ class WebAuthnAuthVerifyReq(BaseModel):
     response: dict
 
 @app.get("/api/webauthn/register/options", dependencies=[Depends(verify_token)])
-def webauthn_register_options(x_api_token: str = Header(None)):
+def webauthn_register_options(request: Request, x_api_token: str = Header(None)):
     role, username = _get_user_from_token(x_api_token)
     user_key = username or "admin"
-    options = webauthn_mgr.generate_registration(user_key)
+    options = webauthn_mgr.generate_registration(user_key, rp_id=request.url.hostname)
     return {"options": options}
 
 @app.post("/api/webauthn/register/verify", dependencies=[Depends(verify_token)])
-def webauthn_register_verify(req: WebAuthnVerifyReq, x_api_token: str = Header(None)):
+def webauthn_register_verify(req: WebAuthnVerifyReq, request: Request, x_api_token: str = Header(None)):
     role, username = _get_user_from_token(x_api_token)
     user_key = username or "admin"
-    success = webauthn_mgr.verify_registration(user_key, req.response)
+    origin = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    success = webauthn_mgr.verify_registration(user_key, req.response, rp_id=request.url.hostname, origin=origin)
     if not success:
         raise HTTPException(status_code=400, detail="Registration failed")
     return {"status": "success"}
 
 @app.post("/api/webauthn/authenticate/options")
-def webauthn_auth_options(req: WebAuthnAuthReq):
-    options = webauthn_mgr.generate_authentication(req.username)
+def webauthn_auth_options(req: WebAuthnAuthReq, request: Request):
+    options = webauthn_mgr.generate_authentication(req.username, rp_id=request.url.hostname)
     if not options:
         raise HTTPException(status_code=404, detail="No credentials found")
     return {"options": options}
 
 @app.post("/api/webauthn/authenticate/verify")
-def webauthn_auth_verify(req: WebAuthnAuthVerifyReq):
-    success = webauthn_mgr.verify_authentication(req.username, req.response)
+def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
+    origin = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    # ngrok usually terminates HTTPS but forwards as HTTP. If headers indicate https, force it.
+    if request.headers.get('x-forwarded-proto') == 'https':
+        origin = f"https://{request.headers.get('host', request.url.netloc)}"
+
+    success = webauthn_mgr.verify_authentication(req.username, req.response, rp_id=request.url.hostname, origin=origin)
     if not success:
         raise HTTPException(status_code=401, detail="Authentication failed")
         
