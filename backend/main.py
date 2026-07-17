@@ -375,6 +375,46 @@ def get_sessions(x_api_token: str = Header(None)) -> dict:
 class SessionRequest(BaseModel):
     name: str
 
+class E2EESettingsRequest(BaseModel):
+    secret: str
+
+@app.post("/api/settings/e2ee", dependencies=[Depends(verify_token)])
+def update_e2ee_settings(req: E2EESettingsRequest):
+    """Updates the backend E2EE_SECRET dynamically and writes it to .env"""
+    global ENABLE_E2EE, E2EE_SECRET
+    
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            
+    new_lines = []
+    found_enable = False
+    found_secret = False
+    
+    for line in lines:
+        if line.startswith("ENABLE_E2EE="):
+            new_lines.append("ENABLE_E2EE=true\n" if req.secret else "ENABLE_E2EE=false\n")
+            found_enable = True
+        elif line.startswith("E2EE_SECRET="):
+            new_lines.append(f'E2EE_SECRET="{req.secret}"\n')
+            found_secret = True
+        else:
+            new_lines.append(line)
+            
+    if not found_enable:
+        new_lines.append("ENABLE_E2EE=true\n" if req.secret else "ENABLE_E2EE=false\n")
+    if not found_secret:
+        new_lines.append(f'E2EE_SECRET="{req.secret}"\n')
+        
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+        
+    ENABLE_E2EE = bool(req.secret)
+    E2EE_SECRET = req.secret
+    return {"status": "success", "message": "E2EE settings updated on backend."}
+
 @app.post("/api/sessions", dependencies=[Depends(verify_token)])
 def create_session(req: SessionRequest) -> dict:
     """Spawns a new detached tmux session and enables global mouse support."""
