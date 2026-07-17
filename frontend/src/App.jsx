@@ -476,21 +476,14 @@ function App() {
     }
   };
 
-  const handleWebAuthnLogin = async () => {
-    if (!passphrase) {
-      setAuthError('Please enter Name first');
-      return;
+  const handleWebAuthnLogin = (token, passedE2eeSecret) => {
+    apiTokenRef.current = token;
+    localStorage.setItem('aim-token', token);
+    if (passedE2eeSecret !== undefined) {
+      setE2eeSecret(passedE2eeSecret);
     }
-    try {
-      setAuthError('Waiting for FaceID/TouchID...');
-      const token = await authenticateWebAuthn(passphrase);
-      apiTokenRef.current = token;
-      localStorage.setItem('aim-token', token);
-      setAuthError('');
-      authenticate(null, null); // proceed to WS connection
-    } catch (e) {
-      setAuthError(e.message || 'Biometric auth failed');
-    }
+    setAuthError('');
+    authenticate(null, null); // proceed to WS connection
   };
 
   const authenticate = async (token, pass) => {
