@@ -114,7 +114,7 @@ export class E2EESocketWrapper {
         }
         
         if (typeof event.data === 'string') {
-          if (event.data.includes('"type":"auth_success"')) {
+          if (event.data.includes('auth_success') && event.data.includes('type')) {
             this.onmessage({ data: event.data });
           } else {
             const decryptedStr = await decryptMessage(event.data, this.key);
@@ -154,7 +154,7 @@ export class E2EESocketWrapper {
         
         if (typeof data === 'string') {
           // Do not encrypt the initial auth message
-          if (data.includes('"type":"auth"')) {
+          if (data.includes('"auth"') && data.includes('"type"')) {
             this.socket.send(data);
           } else {
             const encryptedStr = await encryptMessage(data, this.key);
