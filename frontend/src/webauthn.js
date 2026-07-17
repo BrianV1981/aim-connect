@@ -21,11 +21,13 @@ export async function registerWebAuthn(apiToken) {
     });
     
     const verifyResult = await verifyResp.json();
-    return verifyResult.status === 'success';
+    if (verifyResult.status === 'success') {
+      return { success: true };
+    }
+    return { success: false, error: 'Server rejected verification' };
   } catch (error) {
     console.error("WebAuthn Registration Error:", error);
-    alert("WebAuthn Error: " + (error.message || error.toString()));
-    return false;
+    return { success: false, error: error.message || error.toString() };
   }
 }
 
@@ -54,9 +56,9 @@ export async function authenticateWebAuthn(username) {
     if (!verifyResp.ok) throw new Error("Authentication failed on server");
     
     const verifyResult = await verifyResp.json();
-    return verifyResult.token;
+    return { success: true, token: verifyResult.token };
   } catch (error) {
     console.error("WebAuthn Auth Error:", error);
-    throw error;
+    return { success: false, error: error.message || error.toString() };
   }
 }

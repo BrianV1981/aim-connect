@@ -20,11 +20,11 @@ export default function SettingsModal({
   const handleRegister = async () => {
     try {
       setRegisterStatus('Registering...');
-      const success = await registerWebAuthn(apiToken);
-      if (success) {
+      const result = await registerWebAuthn(apiToken);
+      if (result.success) {
         setRegisterStatus('Registered Successfully! You can now use FaceID/TouchID to log in.');
       } else {
-        setRegisterStatus('Registration failed.');
+        setRegisterStatus(`Registration failed: ${result.error}`);
       }
     } catch (e) {
       setRegisterStatus('Error: ' + e.message);
