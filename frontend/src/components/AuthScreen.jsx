@@ -52,13 +52,12 @@ export default function AuthScreen({
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <div className="auth-header">
-          <img src="/aim-icon.jpg" alt="A.I.M. Logo" style={{ width: '80px', height: '80px', borderRadius: '16px', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0, 255, 170, 0.2)' }} />
-          <h2>A.I.M. SECURE</h2>
-          <p>Enter Name, Password & Authenticator Code</p>
+        <div className="auth-header" style={{ marginBottom: '8px' }}>
+          <img src="/aim-icon.jpg" alt="A.I.M. Logo" style={{ width: '48px', height: '48px', borderRadius: '12px', marginBottom: '8px', boxShadow: '0 4px 12px rgba(0, 255, 170, 0.2)' }} />
+          <h2 style={{ fontSize: '18px', margin: '0 0 4px 0' }}>A.I.M. SECURE</h2>
         </div>
         
-        <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
           <input 
             type="text" 
             className="modal-input" 
@@ -70,11 +69,11 @@ export default function AuthScreen({
           />
         </div>
         
-        <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
+        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
           <input 
             type={showPassword ? "text" : "password"} 
             className="modal-input" 
-            style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '12px' }}
+            style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '10px' }}
             placeholder="Admin Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -99,18 +98,18 @@ export default function AuthScreen({
           </button>
         </div>
 
-        <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
           <input 
             type="password" 
             className="modal-input" 
-            style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '12px', background: '#0f172a', borderColor: '#334155' }}
+            style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '10px', background: '#0f172a', borderColor: '#334155' }}
             placeholder="E2EE Secret (Optional)"
             value={e2eeSecret}
             onChange={(e) => setE2eeSecret(e.target.value)}
           />
         </div>
 
-        <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+        <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
           <button 
             onClick={handleWebAuthnLogin}
             disabled={isWebAuthnLoading}
@@ -119,7 +118,7 @@ export default function AuthScreen({
               background: 'rgba(59, 130, 246, 0.2)',
               border: '1px solid #3b82f6',
               color: '#60a5fa',
-              padding: '10px',
+              padding: '8px',
               borderRadius: '8px',
               cursor: 'pointer',
               fontWeight: 'bold',
@@ -129,9 +128,9 @@ export default function AuthScreen({
               gap: '8px'
             }}
           >
-            {isWebAuthnLoading ? 'Authenticating...' : '👤 Login with FaceID/TouchID'}
+            {isWebAuthnLoading ? 'Authenticating...' : '👤 Login with FaceID / TouchID'}
           </button>
-          {webAuthnError && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '8px', textAlign: 'center' }}>{webAuthnError}</div>}
+          {webAuthnError && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', textAlign: 'center' }}>{webAuthnError}</div>}
         </div>
 
         <div className="pin-display">
