@@ -147,6 +147,29 @@ AIM-Connect ships with a hardened, multi-stage Dockerfile:
 
 ---
 
+## 🌐 Networking & Tunneling Alternatives (Fully Self-Hosted)
+
+By default, AIM-Connect uses Ngrok or Cloudflare Tunnels to easily bypass home NAT firewalls and provide HTTPS out of the box. However, if you want a **100% self-hosted, sovereign** setup without relying on third-party tunnel providers, you have three excellent options:
+
+### 1. Mesh VPN (Highest Security, No Exposure)
+Instead of exposing AIM-Connect to the public internet, install a mesh VPN like **Tailscale** or **WireGuard** on both your server and your phone.
+* **Setup:** Bind AIM-Connect to `0.0.0.0` or your Tailscale IP. Access it on your phone via the VPN IP (e.g., `http://100.x.x.x:8000`).
+* **Pros:** Zero public exposure, impossible to port-scan, and HTTPS is technically unnecessary since the VPN tunnel provides native End-to-End Encryption.
+* **Cons:** Requires the VPN app to be active on your client device.
+
+### 2. Nginx + Dynamic DNS + Port Forwarding
+If you want public browser access from any device (e.g., a library computer) without installing a VPN app.
+* **Setup:** Register a free Dynamic DNS domain (like DuckDNS). Forward port `443` on your home router to your server. Use **Nginx** as a reverse proxy with a free Let's Encrypt SSL certificate to terminate HTTPS and forward traffic to `localhost:8000`.
+* **Pros:** Completely sovereign, accessible anywhere, no third-party traffic inspection.
+* **Cons:** Exposes an open port on your home network (though AIM-Connect's 3FA protects the application layer).
+
+### 3. VPS Reverse Tunnel (FRP or SSH)
+If you cannot port-forward (e.g., Carrier-Grade NAT, strict corporate firewalls) but still want a public URL without Ngrok.
+* **Setup:** Rent a cheap $5/mo cloud VPS. Run **FRP (Fast Reverse Proxy)** or an SSH reverse tunnel from your home server to the VPS. Point your domain to the VPS.
+* **Pros:** Bypasses all firewalls, completely self-hosted infrastructure, hides your true home IP address.
+
+---
+
 ## 📖 How to Use the UI
 
 *   **Session Manager (Top Bar):** Use the dropdown to swap between active Tmux sessions. Tap `+` to spawn a new isolated workspace, or `🗑️` to kill the current one.
