@@ -19,7 +19,13 @@ function App() {
   const [passphrase, setPassphrase] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [e2eeSecret, setE2eeSecret] = useState('');
+  const [e2eeSecret, setE2eeSecretState] = useState(() => localStorage.getItem('aim-e2ee-secret') || '');
+  
+  const setE2eeSecret = (val) => {
+    setE2eeSecretState(val);
+    localStorage.setItem('aim-e2ee-secret', val);
+  };
+  
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
   const [showFiles, setShowFiles] = useState(false);
@@ -1250,6 +1256,7 @@ function App() {
           voiceAutoSend={voiceAutoSend} setVoiceAutoSend={setVoiceAutoSend}
           voiceAutoExecute={voiceAutoExecute} setVoiceAutoExecute={setVoiceAutoExecute}
           apiToken={apiTokenRef.current}
+          e2eeSecret={e2eeSecret} setE2eeSecret={setE2eeSecret}
         />
       )}
     </div>

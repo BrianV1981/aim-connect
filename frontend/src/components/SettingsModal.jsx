@@ -13,7 +13,8 @@ export default function SettingsModal({
   voiceAutoEnter, setVoiceAutoEnter,
   voiceAutoSend, setVoiceAutoSend,
   voiceAutoExecute, setVoiceAutoExecute,
-  apiToken
+  apiToken,
+  e2eeSecret, setE2eeSecret
 }) {
   const [registerStatus, setRegisterStatus] = useState('');
 
@@ -175,6 +176,23 @@ export default function SettingsModal({
               style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
             />
             <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Execute"</label>
+          </div>
+        </div>
+
+        <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
+          <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0', fontWeight: 'bold'}}>End-to-End Encryption</label>
+          <div style={{marginBottom: '12px'}}>
+            <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>E2EE Secret Phrase</label>
+            <input 
+              type="text" 
+              className="modal-input" 
+              placeholder="Leave blank for plaintext"
+              value={e2eeSecret}
+              onChange={e => setE2eeSecret(e.target.value)}
+            />
+            <p style={{fontSize: '12px', color: '#94a3b8', marginTop: '4px'}}>
+              Changes apply on the next connection (e.g. reload or reconnect).
+            </p>
           </div>
         </div>
 
