@@ -89,6 +89,10 @@ export class E2EESocketWrapper {
   
   set readyState(val) {}
   
+  set onopen(fn) { this.socket.onopen = fn; }
+  set onclose(fn) { this.socket.onclose = fn; }
+  set onerror(fn) { this.socket.onerror = fn; }
+  
   async init() {
     if (!this.key && this.secretStr) {
       this.key = await deriveKey(this.secretStr);
@@ -110,8 +114,12 @@ export class E2EESocketWrapper {
         }
         
         if (typeof event.data === 'string') {
-          const decryptedStr = await decryptMessage(event.data, this.key);
-          this.onmessage({ data: decryptedStr });
+          if (event.data.includes('"type":"auth_success"')) {
+            this.onmessage({ data: event.data });
+          } else {
+            const decryptedStr = await decryptMessage(event.data, this.key);
+            this.onmessage({ data: decryptedStr });
+          }
         } else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
           // If it's a blob, we must read it
           let buffer = event.data;
@@ -145,8 +153,13 @@ export class E2EESocketWrapper {
         if (!this.key) await this.init();
         
         if (typeof data === 'string') {
-          const encryptedStr = await encryptMessage(data, this.key);
-          this.socket.send(encryptedStr);
+          // Do not encrypt the initial auth message
+          if (data.includes('"type":"auth"')) {
+            this.socket.send(data);
+          } else {
+            const encryptedStr = await encryptMessage(data, this.key);
+            this.socket.send(encryptedStr);
+          }
         } else {
           console.warn("E2EESocketWrapper: send raw bytes not implemented");
         }
