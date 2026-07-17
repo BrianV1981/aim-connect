@@ -680,63 +680,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     for task in pending:
         task.cancel()
 
-frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
-if os.path.exists(frontend_path):
-    # Mount Vite static assets
-    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
-    
-    # Catch-all for SPA routing
-    @app.get("/{catchall:path}")
-    def serve_frontend(catchall: str):
-        base = os.path.realpath(frontend_path)
-        file_path = os.path.realpath(os.path.join(base, catchall))
-        if file_path != base and not file_path.startswith(base + os.sep):
-            return FileResponse(os.path.join(frontend_path, "index.html"), headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
-            
-        if not os.path.exists(file_path) or not os.path.isfile(file_path):
-            file_path = os.path.join(frontend_path, "index.html")
-            
-        if file_path.endswith("manifest.json"):
-            import json
-            from fastapi.responses import JSONResponse
-            with open(file_path, "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-            app_name = os.environ.get("AIM_APP_NAME")
-            if app_name:
-                manifest["name"] = app_name
-                manifest["short_name"] = app_name
-                import urllib.parse
-                safe_id = urllib.parse.quote(app_name.lower().replace(' ', '-'))
-                manifest["id"] = f"/?id={safe_id}"
-                manifest["start_url"] = f"/?id={safe_id}"
-            app_color = os.environ.get("AIM_APP_COLOR")
-            if app_color:
-                manifest["background_color"] = app_color
-                manifest["theme_color"] = app_color
-            return JSONResponse(manifest)
-
-        if file_path.endswith("index.html"):
-            headers = {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
-            }
-            app_name = os.environ.get("AIM_APP_NAME")
-            if app_name:
-                from fastapi.responses import HTMLResponse
-                with open(file_path, "r", encoding="utf-8") as f:
-                    html = f.read()
-                html = html.replace("<title>A.I.M. Connect</title>", f"<title>{app_name}</title>")
-                return HTMLResponse(content=html, headers=headers)
-            
-            return FileResponse(file_path, headers=headers)
-
-        return FileResponse(file_path)
-else:
-    @app.get("/")
-    def read_root():
-        return {"status": "aim-connect backend running! (Frontend not built in ../frontend/dist)"}
-
 # --- WebAuthn Endpoints ---
 from webauthn_manager import webauthn_mgr
 from pydantic import BaseModel
@@ -795,4 +738,62 @@ def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
         "role": role
     }
     return {"token": new_token, "role": role}
+
+
+frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+if os.path.exists(frontend_path):
+    # Mount Vite static assets
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
+    
+    # Catch-all for SPA routing
+    @app.get("/{catchall:path}")
+    def serve_frontend(catchall: str):
+        base = os.path.realpath(frontend_path)
+        file_path = os.path.realpath(os.path.join(base, catchall))
+        if file_path != base and not file_path.startswith(base + os.sep):
+            return FileResponse(os.path.join(frontend_path, "index.html"), headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
+            
+        if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            file_path = os.path.join(frontend_path, "index.html")
+            
+        if file_path.endswith("manifest.json"):
+            import json
+            from fastapi.responses import JSONResponse
+            with open(file_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            app_name = os.environ.get("AIM_APP_NAME")
+            if app_name:
+                manifest["name"] = app_name
+                manifest["short_name"] = app_name
+                import urllib.parse
+                safe_id = urllib.parse.quote(app_name.lower().replace(' ', '-'))
+                manifest["id"] = f"/?id={safe_id}"
+                manifest["start_url"] = f"/?id={safe_id}"
+            app_color = os.environ.get("AIM_APP_COLOR")
+            if app_color:
+                manifest["background_color"] = app_color
+                manifest["theme_color"] = app_color
+            return JSONResponse(manifest)
+
+        if file_path.endswith("index.html"):
+            headers = {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+            app_name = os.environ.get("AIM_APP_NAME")
+            if app_name:
+                from fastapi.responses import HTMLResponse
+                with open(file_path, "r", encoding="utf-8") as f:
+                    html = f.read()
+                html = html.replace("<title>A.I.M. Connect</title>", f"<title>{app_name}</title>")
+                return HTMLResponse(content=html, headers=headers)
+            
+            return FileResponse(file_path, headers=headers)
+
+        return FileResponse(file_path)
+else:
+    @app.get("/")
+    def read_root():
+        return {"status": "aim-connect backend running! (Frontend not built in ../frontend/dist)"}
 
