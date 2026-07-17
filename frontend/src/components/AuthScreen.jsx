@@ -2,7 +2,7 @@ export default function AuthScreen({
   passphrase, setPassphrase,
   password, setPassword,
   showPassword, setShowPassword,
-  pin, authError,
+  pin, authError, e2eeSecret, setE2eeSecret,
   onPinInput, onBackspace, onPasteClick
 }) {
   return (
@@ -53,6 +53,17 @@ export default function AuthScreen({
           >
             {showPassword ? '🫣' : '👁️'}
           </button>
+        </div>
+
+        <div style={{ marginBottom: '20px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+          <input 
+            type="password" 
+            className="modal-input" 
+            style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '12px', background: '#0f172a', borderColor: '#334155' }}
+            placeholder="E2EE Secret (Optional)"
+            value={e2eeSecret}
+            onChange={(e) => setE2eeSecret(e.target.value)}
+          />
         </div>
 
         <div className="pin-display">
