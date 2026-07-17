@@ -24,6 +24,7 @@ export async function registerWebAuthn(apiToken) {
     return verifyResult.status === 'success';
   } catch (error) {
     console.error("WebAuthn Registration Error:", error);
+    alert("WebAuthn Error: " + (error.message || error.toString()));
     return false;
   }
 }
