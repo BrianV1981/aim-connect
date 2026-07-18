@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Editor from '@monaco-editor/react';
 import { Terminal } from '@xterm/xterm';
 import { AnsiUp } from 'ansi_up';
 import { FitAddon } from '@xterm/addon-fit';
@@ -1074,12 +1075,21 @@ function App() {
         </div>
         <div className="file-content-area">
           {isEditingFile ? (
-            <textarea 
-              className="file-editor" 
-              value={openFileContent} 
-              onChange={e => setOpenFileContent(e.target.value)} 
-              spellCheck="false"
-            />
+            <div style={{ flex: 1, height: '100%', minHeight: '500px', width: '100%', position: 'relative' }}>
+              <Editor 
+                height="100%"
+                path={openFilePath}
+                theme="vs-dark"
+                value={openFileContent} 
+                onChange={(value) => setOpenFileContent(value || '')}
+                options={{
+                  minimap: { enabled: true },
+                  wordWrap: "on",
+                  automaticLayout: true,
+                  fontSize: 14,
+                }}
+              />
+            </div>
           ) : (
             <ul className="file-list">
               {fileItems.map((item, idx) => (
