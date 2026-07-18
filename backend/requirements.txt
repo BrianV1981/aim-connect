@@ -5,3 +5,5 @@ PyOTP==2.10.0
 qrcode==8.2
 bcrypt==5.0.0
 cryptography>=45.0.1
+python-dotenv
+webauthn
