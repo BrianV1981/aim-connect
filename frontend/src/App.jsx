@@ -1065,6 +1065,7 @@ function App() {
               value={activeSession} 
               onChange={handleSessionSwitch}
             >
+              <option value="" disabled>-- Select Session --</option>
               {sessions.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button className="macro-btn" onClick={createSession}>+</button>
