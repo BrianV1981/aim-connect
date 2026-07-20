@@ -952,24 +952,38 @@ function App() {
             .replace(/\bcomma\b/gi, ',')
             .replace(/\bperiod\b/gi, '.')
             .replace(/\bquestion mark\b/gi, '?')
-            // Parentheses fixes: replace spoken variants with symbols and remove space padding
-            .replace(/\s*\b(?:open|left)\s+paren(?:thesis)?\b\s*/gi, '(')
-            .replace(/\s*\b(?:close|right)\s+paren(?:thesis)?\b\s*/gi, ')')
-            // Quote fixes: replace spoken quote/unquote with " and remove space padding
-            .replace(/\s*\bquote\b\s*/gi, '"')
-            .replace(/\s*\bunquote\b\s*/gi, '"')
+            // Parentheses fixes: OPEN paren eats trailing space, preserves leading. CLOSE paren eats leading space, preserves trailing.
+            .replace(/\b(?:open|left)\s+paren(?:thesis)?\b\s*/gi, '(')
+            .replace(/\s*\b(?:close|right)\s+paren(?:thesis)?\b/gi, ')')
+            // Quote fixes: OPEN quote ("quote") eats trailing space. CLOSE quote ("unquote") eats leading space.
+            .replace(/\bquote\b\s*/gi, '"')
+            .replace(/\s*\bunquote\b/gi, '"')
             // Remove spaces BEFORE punctuation like period, comma, question mark
             .replace(/\s+([.,?!])/g, '$1');
           
           let prefix = "";
-          if (lastVoiceEndedWithSpace.current && /^[.,?!]/.test(finalPayload.trimStart())) {
-            prefix = "\b";
+          if (lastVoiceEndedWithSpace.current) {
+            const startsWithPunctuation = /^[.,?!)]/.test(finalPayload.trimStart());
+            const startsWithUnquote = finalPayload.startsWith('"') && lowerTrimmed.startsWith('unquote');
+            if (startsWithPunctuation || startsWithUnquote) {
+              prefix = "\b";
+            }
+          }
+          
+          // Determine if we should append a trailing space for the NEXT chunk.
+          // We SHOULD NOT append a trailing space if the payload ends with an OPENING symbol: "(", "/", "\", "-", or "quote"
+          let appendSpace = " ";
+          if (finalPayload.endsWith('(') || finalPayload.endsWith('/') || finalPayload.endsWith('\\') || finalPayload.endsWith('-')) {
+            appendSpace = "";
+          }
+          if (finalPayload.endsWith('"') && lowerTrimmed.endsWith('quote') && !lowerTrimmed.endsWith('unquote')) {
+            appendSpace = "";
           }
           
           // Send a space after the transcript to make chaining easier
-          ws.current.send(JSON.stringify({ type: 'input', payload: prefix + finalPayload + ' ' }));
+          ws.current.send(JSON.stringify({ type: 'input', payload: prefix + finalPayload + appendSpace }));
           
-          lastVoiceEndedWithSpace.current = true;
+          lastVoiceEndedWithSpace.current = (appendSpace === " ");
           // Determine if this dictation segment ended with a sentence terminator
           lastVoiceEndedSentence.current = /[.?!]\s*$/.test(finalPayload) || /[.?!]$/.test(finalPayload.trimEnd());
         }
