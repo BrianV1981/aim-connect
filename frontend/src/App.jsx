@@ -903,7 +903,7 @@ function App() {
         } else {
           // Handle verbal punctuation replacements
           // Collapse multiple spaces into single space before doing replacements
-          let finalPayload = transcript.replace(/\s+/g, ' ');
+          let finalPayload = transcript.trim().replace(/\s+/g, ' ');
 
           // If auto-capitalize is on, and the previous payload ended with a sentence terminator
           if (voiceAutoCapitalize && lastVoiceEndedSentence.current) {
