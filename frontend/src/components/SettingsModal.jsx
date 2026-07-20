@@ -175,7 +175,8 @@ export default function SettingsModal({
           </div>
         </div>
         <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
-          <label style={{display: 'block', marginBottom: '12px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice Dictation Settings</label>
+          <label style={{display: 'block', marginBottom: '4px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice Dictation Settings</label>
+          <div style={{fontSize: '12px', color: '#94a3b8', marginBottom: '12px'}}>Voice uses the browser Speech API (Chrome/Edge recommended; Brave often unsupported).</div>
           
           <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
             <input 
