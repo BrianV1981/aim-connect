@@ -1197,6 +1197,16 @@ function App() {
                   <span>Tap the <strong>+</strong> icon to spawn a brand new isolated workspace.</span>
                 </p>
               </div>
+              <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: '1px solid #1e293b', width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <h3 style={{ margin: 0, color: '#e2e8f0', fontSize: '18px', fontWeight: '500', letterSpacing: '0.5px' }}>Own your stack. Don't rent a seat.</h3>
+                <p style={{ margin: 0, fontSize: '14px', color: '#94a3b8', lineHeight: '1.5' }}>
+                  A.I.M. Connect is proudly 100% ad-free and open-source. If this tool helps you take back control, consider <a href="https://buymeacoffee.com/brianv1981" target="_blank" rel="noreferrer" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: '500' }}>buying me a coffee ☕</a> to keep the servers humming.
+                </p>
+                <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px' }}>
+                  <a href="https://github.com/BrianV1981/aim-connect" target="_blank" rel="noreferrer" style={{ color: '#64748b', textDecoration: 'none', fontSize: '13px', fontWeight: '500', transition: 'color 0.2s' }}>[ GitHub ]</a>
+                  <a href="https://github.com/BrianV1981/aim-ecosystem" target="_blank" rel="noreferrer" style={{ color: '#64748b', textDecoration: 'none', fontSize: '13px', fontWeight: '500', transition: 'color 0.2s' }}>[ A.I.M. Ecosystem ]</a>
+                </div>
+              </div>
             </div>
           )}
           
