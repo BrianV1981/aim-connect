@@ -586,6 +586,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     # Step 1: Enforce authentication
     authenticated = False
+    target_session_override = None
     try:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(auth_message)
@@ -599,6 +600,31 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 else:
                     authenticated = True
                     auth_attempts[client_ip] = (0, None)
+            elif "." in token:
+                import base64
+                import hmac
+                import hashlib
+                import re
+                parts = token.split(".")
+                if len(parts) == 2:
+                    payload_b64, signature_b64 = parts
+                    secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+                    if secret:
+                        def pad_b64(data):
+                            return data + "=" * (-len(data) % 4)
+                        try:
+                            expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+                            expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
+                            if signature_b64.rstrip("=") == expected_b64:
+                                payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
+                                email = payload.get("email")
+                                if email:
+                                    authenticated = True
+                                    auth_attempts[client_ip] = (0, None)
+                                    sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+                                    target_session_override = f"agent-{sanitized_email}"
+                        except Exception as e:
+                            logger.error(f"Failed to parse LeadDeed token: {e}")
             
             if not authenticated:
                 attempts, _ = auth_attempts.get(client_ip, (0, None))
@@ -631,19 +657,20 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         # Ensure mouse support is enabled globally for mobile scroll sync
         subprocess.run(["tmux", "set-option", "-g", "mouse", "on"])
             
-        # Find a tmux session that isn't one of our internal aim-* services
-        result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
-        target_session = None
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                if line and not line.startswith("aim-"):
-                    target_session = line
-                    break
-        
+        target_session = target_session_override
         if not target_session:
-            target_session = "aim-connect-main"
-            subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
+            # Find a tmux session that isn't one of our internal aim-* services
+            result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if line and not line.startswith("aim-"):
+                        target_session = line
+                        break
             
+            if not target_session:
+                target_session = "aim-connect-main"
+                
+        subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
         os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
     # Parent process
