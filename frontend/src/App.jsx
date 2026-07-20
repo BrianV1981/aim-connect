@@ -123,6 +123,11 @@ function App() {
     return defaultLibrary;
   });
   
+  const macroLibraryRef = useRef(macroLibrary);
+  useEffect(() => {
+    macroLibraryRef.current = macroLibrary;
+  }, [macroLibrary]);
+
   const [showMacroLibrary, setShowMacroLibrary] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState('dark');
@@ -618,13 +623,13 @@ function App() {
     if (updated.find(m => m.id === id)?.isServer) syncMacrosToServer(updated);
   };
 
-  const saveMacro = (editingId, label, cmd, isServer) => {
+  const saveMacro = (editingId, label, cmd, voiceTrigger, isServer) => {
     if (!label || !cmd) return;
     let updated;
     if (editingId) {
-      updated = macroLibrary.map(m => m.id === editingId ? { ...m, label, cmd, isServer } : m);
+      updated = macroLibrary.map(m => m.id === editingId ? { ...m, label, cmd, voiceTrigger, isServer } : m);
     } else {
-      updated = [...macroLibrary, { id: Date.now().toString(), label, cmd, isPinned: true, isServer }];
+      updated = [...macroLibrary, { id: Date.now().toString(), label, cmd, voiceTrigger, isPinned: true, isServer }];
     }
     setMacroLibrary(updated);
     localStorage.setItem('aim-macro-library', JSON.stringify(updated));
@@ -891,6 +896,9 @@ function App() {
       let transcript = event.results[lastIdx][0].transcript;
       const lowerTrimmed = transcript.trim().toLowerCase();
       
+      // Check for Macro Voice Triggers first
+      const matchingMacro = macroLibraryRef.current?.find(m => m.voiceTrigger && m.voiceTrigger.toLowerCase() === lowerTrimmed);
+      
       // Check for verbal action commands
       let isCommand = false;
       if (lowerTrimmed === "enter" && voiceAutoEnter) isCommand = true;
@@ -898,7 +906,12 @@ function App() {
       if (lowerTrimmed === "execute" && voiceAutoExecute) isCommand = true;
 
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        if (isCommand) {
+        if (matchingMacro) {
+          // If a macro Voice Trigger is matched, execute its payload exactly like clicking the macro button
+          ws.current.send(JSON.stringify({ type: 'input', payload: matchingMacro.cmd }));
+          lastVoiceEndedWithSpace.current = false;
+          lastVoiceEndedSentence.current = true;
+        } else if (isCommand) {
           ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
           lastVoiceEndedWithSpace.current = false;
           lastVoiceEndedSentence.current = true;
