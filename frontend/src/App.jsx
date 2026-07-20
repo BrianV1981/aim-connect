@@ -260,9 +260,7 @@ function App() {
         const res = await fetch('/api/sessions');
         const data = await res.json();
         setSessions(prev => JSON.stringify(prev) === JSON.stringify(data.sessions) ? prev : data.sessions);
-        if (data.sessions.length > 0 && !activeSession) {
-          setActiveSession(data.sessions[0]);
-        }
+        // Do not auto-assign activeSession to force the Welcome Screen on login
       } catch (err) {
         console.error(err);
       }
@@ -1177,7 +1175,32 @@ function App() {
               <button className="search-btn search-close" onClick={() => { setShowSearch(false); setSearchTerm(''); }}>✖</button>
             </div>
           )}
-          <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
+          <div className="welcome-screen" style={{ display: !activeSession ? 'flex' : 'none', height: '100%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#e2e8f0', padding: '20px', textAlign: 'center', userSelect: 'none' }}>
+            <div style={{ marginBottom: '24px', opacity: 0.9 }}>
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 17 10 11 4 5"></polyline>
+                <line x1="12" y1="19" x2="20" y2="19"></line>
+              </svg>
+            </div>
+            <h2 style={{ color: '#e2e8f0', marginBottom: '12px', fontSize: '24px', fontWeight: '600' }}>Welcome to A.I.M. Connect</h2>
+            <p style={{ maxWidth: '400px', lineHeight: '1.6', fontSize: '15px', color: '#94a3b8', marginBottom: '32px' }}>
+              You are securely authenticated, but no workspace is active in your viewport.
+            </p>
+            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '20px 24px', borderRadius: '12px', border: '1px solid #1e293b', textAlign: 'left' }}>
+              <p style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '12px', color: '#cbd5e1' }}>
+                <span style={{ fontSize: '20px' }}>👇</span> 
+                <span>Select an existing session from the <strong>dropdown menu</strong> above.</span>
+              </p>
+              <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px', color: '#cbd5e1' }}>
+                <span style={{ fontSize: '20px' }}>➕</span> 
+                <span>Tap the <strong>+</strong> icon to spawn a brand new isolated workspace.</span>
+              </p>
+            </div>
+          </div>
+          
+          <div style={{ display: activeSession ? 'block' : 'none', height: '100%', opacity: activeSession ? 1 : 0 }}>
+            <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
+          </div>
           {isNativeScrollMode && (
              <>
                 <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 1001, display: 'flex', gap: '8px' }}>
