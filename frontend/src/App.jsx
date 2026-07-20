@@ -915,8 +915,9 @@ function App() {
 
           if (voiceSlashes) {
             finalPayload = finalPayload
-              .replace(/\b(?:forward\s)?slash\b/gi, '/')
-              .replace(/\bback\s?slash\b/gi, '\\');
+              .replace(/\s*\b(?:forward\s)?slash\b\s*/gi, '/')
+              .replace(/\s*\bback\s?slash\b\s*/gi, '\\')
+              .replace(/\s*\bdash\b\s*/gi, '-');
           }
 
           finalPayload = finalPayload
@@ -925,6 +926,9 @@ function App() {
             .replace(/\bcomma\b/gi, ',')
             .replace(/\bperiod\b/gi, '.')
             .replace(/\bquestion mark\b/gi, '?')
+            // Parentheses fixes: replace spoken variants with symbols and remove space padding
+            .replace(/\s*\b(?:open|left)\s+paren(?:thesis)?\b\s*/gi, '(')
+            .replace(/\s*\b(?:close|right)\s+paren(?:thesis)?\b\s*/gi, ')')
             // Quote fixes: replace spoken quote/unquote with " and remove space padding
             .replace(/\s*\bquote\b\s*/gi, '"')
             .replace(/\s*\bunquote\b\s*/gi, '"')
