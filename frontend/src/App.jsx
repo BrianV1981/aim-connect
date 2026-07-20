@@ -39,6 +39,8 @@ function App() {
   const [voiceContinuous, setVoiceContinuous] = useState(() => JSON.parse(localStorage.getItem('aim-voice-continuous') ?? 'true'));
   const [voiceAutoEnter, setVoiceAutoEnter] = useState(() => JSON.parse(localStorage.getItem('aim-voice-enter') ?? 'true'));
   const [voiceAutoExecute, setVoiceAutoExecute] = useState(() => JSON.parse(localStorage.getItem('aim-voice-execute') ?? 'true'));
+  const [voiceAutoCapitalize, setVoiceAutoCapitalize] = useState(() => JSON.parse(localStorage.getItem('aim-voice-autocap') ?? 'true'));
+  const [voiceSlashes, setVoiceSlashes] = useState(() => JSON.parse(localStorage.getItem('aim-voice-slashes') ?? 'false'));
   const [voiceAutoSend, setVoiceAutoSend] = useState(() => JSON.parse(localStorage.getItem('aim-voice-send') ?? 'true'));
   const [scrollbackContent, setScrollbackContent] = useState('');
   const [rawScrollback, setRawScrollback] = useState('');
@@ -858,6 +860,7 @@ function App() {
 
   const shouldBeListeningRef = useRef(false);
   const lastVoiceEndedWithSpace = useRef(false);
+  const lastVoiceEndedSentence = useRef(true);
 
   const startDictation = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -898,29 +901,47 @@ function App() {
         if (isCommand) {
           ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
           lastVoiceEndedWithSpace.current = false;
+          lastVoiceEndedSentence.current = true;
         } else {
           // Handle verbal punctuation replacements
-          let finalPayload = transcript
+          // Collapse multiple spaces into single space before doing replacements
+          let finalPayload = transcript.replace(/\s+/g, ' ');
+
+          // If auto-capitalize is on, and the previous payload ended with a sentence terminator
+          if (voiceAutoCapitalize && lastVoiceEndedSentence.current) {
+            finalPayload = finalPayload.trimStart();
+            finalPayload = finalPayload.charAt(0).toUpperCase() + finalPayload.slice(1);
+          }
+
+          if (voiceSlashes) {
+            finalPayload = finalPayload
+              .replace(/\b(?:forward\s)?slash\b/gi, '/')
+              .replace(/\bback\s?slash\b/gi, '\\');
+          }
+
+          finalPayload = finalPayload
             .replace(/\bdot dot dot\b/gi, '...')
             .replace(/\bdot dot\b/gi, '..')
             .replace(/\bcomma\b/gi, ',')
             .replace(/\bperiod\b/gi, '.')
             .replace(/\bquestion mark\b/gi, '?')
-            .replace(/\bquote\s+/gi, '"')
-            .replace(/\s+\bunquote\b/gi, '"')
-            .replace(/\bquote\b/gi, '"')
-            .replace(/\bunquote\b/gi, '"')
+            // Quote fixes: replace spoken quote/unquote with " and remove space padding
+            .replace(/\s*\bquote\b\s*/gi, '"')
+            .replace(/\s*\bunquote\b\s*/gi, '"')
             // Remove spaces BEFORE punctuation like period, comma, question mark
             .replace(/\s+([.,?!])/g, '$1');
           
           let prefix = "";
-          if (lastVoiceEndedWithSpace.current && /^[.,?!]/.test(finalPayload)) {
+          if (lastVoiceEndedWithSpace.current && /^[.,?!]/.test(finalPayload.trimStart())) {
             prefix = "\b";
           }
           
           // Send a space after the transcript to make chaining easier
           ws.current.send(JSON.stringify({ type: 'input', payload: prefix + finalPayload + ' ' }));
+          
           lastVoiceEndedWithSpace.current = true;
+          // Determine if this dictation segment ended with a sentence terminator
+          lastVoiceEndedSentence.current = /[.?!]\s*$/.test(finalPayload) || /[.?!]$/.test(finalPayload.trimEnd());
         }
       }
     };
@@ -1274,6 +1295,8 @@ function App() {
           voiceAutoEnter={voiceAutoEnter} setVoiceAutoEnter={setVoiceAutoEnter}
           voiceAutoSend={voiceAutoSend} setVoiceAutoSend={setVoiceAutoSend}
           voiceAutoExecute={voiceAutoExecute} setVoiceAutoExecute={setVoiceAutoExecute}
+          voiceAutoCapitalize={voiceAutoCapitalize} setVoiceAutoCapitalize={setVoiceAutoCapitalize}
+          voiceSlashes={voiceSlashes} setVoiceSlashes={setVoiceSlashes}
           apiToken={apiTokenRef.current}
           e2eeSecret={e2eeSecret} setE2eeSecret={setE2eeSecret}
         />
