@@ -877,6 +877,8 @@ function App() {
     }
 
     shouldBeListeningRef.current = true;
+    lastVoiceEndedWithSpace.current = false;
+    lastVoiceEndedSentence.current = true; // Always capitalize the first word of a brand new dictation session
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = false;
