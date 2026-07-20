@@ -7,15 +7,17 @@ export default function MacroLibraryModal({
   const [editingMacroId, setEditingMacroId] = useState(null);
   const [newMacroLabel, setNewMacroLabel] = useState('');
   const [newMacroCmd, setNewMacroCmd] = useState('');
+  const [newMacroVoiceTrigger, setNewMacroVoiceTrigger] = useState('');
   const [newMacroIsServer, setNewMacroIsServer] = useState(false);
 
   const handleSave = () => {
     if (!newMacroLabel || !newMacroCmd) return;
     const processedCmd = newMacroCmd.replace(/\\r/g, '\r').replace(/\\n/g, '\n');
-    onSaveMacro(editingMacroId, newMacroLabel, processedCmd, newMacroIsServer);
+    onSaveMacro(editingMacroId, newMacroLabel, processedCmd, newMacroVoiceTrigger, newMacroIsServer);
     setShowMacroModal(false);
     setNewMacroLabel('');
     setNewMacroCmd('');
+    setNewMacroVoiceTrigger('');
     setNewMacroIsServer(false);
     setEditingMacroId(null);
   };
@@ -68,7 +70,7 @@ export default function MacroLibraryModal({
         <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '95%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ color: '#e2e8f0', margin: 0 }}>Macro Library</h3>
-            <button className="macro-btn action add-macro" onClick={() => { setEditingMacroId(null); setNewMacroLabel(''); setNewMacroCmd(''); setNewMacroIsServer(false); setShowMacroModal(true); }}>+ New</button>
+            <button className="macro-btn action add-macro" onClick={() => { setEditingMacroId(null); setNewMacroLabel(''); setNewMacroCmd(''); setNewMacroVoiceTrigger(''); setNewMacroIsServer(false); setShowMacroModal(true); }}>+ New</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '60vh', overflowY: 'auto' }}>
             {macroLibrary.map(macro => (
@@ -81,7 +83,10 @@ export default function MacroLibraryModal({
                     style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
                   />
                   <div>
-                    <div style={{ color: '#e2e8f0', fontWeight: 'bold', fontSize: '14px' }}>{macro.isServer ? "☁️ " : "📱 "}{macro.label}</div>
+                    <div style={{ color: '#e2e8f0', fontWeight: 'bold', fontSize: '14px' }}>
+                      {macro.isServer ? "☁️ " : "📱 "}{macro.label}
+                      {macro.voiceTrigger && <span style={{ marginLeft: '8px', fontSize: '11px', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 6px', borderRadius: '12px' }}>🎙️ "{macro.voiceTrigger}"</span>}
+                    </div>
                     <div style={{ color: '#94a3b8', fontSize: '12px', fontFamily: 'monospace' }}>{macro.cmd.replace(/\r/g, '\\r').replace(/\x0c/g, '\\x0c')}</div>
                   </div>
                 </div>
@@ -90,6 +95,7 @@ export default function MacroLibraryModal({
                     setEditingMacroId(macro.id);
                     setNewMacroLabel(macro.label);
                     setNewMacroCmd(macro.cmd.replace(/\r/g, '\\r').replace(/\n/g, '\\n'));
+                    setNewMacroVoiceTrigger(macro.voiceTrigger || '');
                     setNewMacroIsServer(!!macro.isServer);
                     setShowMacroModal(true);
                   }}>✏️</button>
@@ -127,6 +133,15 @@ export default function MacroLibraryModal({
             />
             <p style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '12px' }}>
               Hint: Add \r to the end to auto-press Enter.
+            </p>
+            <input 
+              className="modal-input" 
+              placeholder="Optional: Voice Trigger (e.g. ship it)" 
+              value={newMacroVoiceTrigger} 
+              onChange={e => setNewMacroVoiceTrigger(e.target.value)} 
+            />
+            <p style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '12px' }}>
+              If you speak this exact phrase, the command will execute instantly.
             </p>
             <div style={{marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px'}}>
               <input 
