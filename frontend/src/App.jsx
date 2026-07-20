@@ -85,12 +85,15 @@ function App() {
     { id: 'pre-ctrlc', label: '^C', cmd: '\x03', isPinned: true },
     { id: 'pre-esc', label: 'Esc', cmd: '\x1b', isPinned: true },
     { id: 'pre-tab', label: 'Tab', cmd: '\x09', isPinned: true },
+    { id: 'pre-bksp', label: 'Bksp', cmd: '\x7f', isPinned: true, voiceTrigger: 'backspace' },
+    { id: 'pre-delword', label: 'Del Word', cmd: '\x17', isPinned: true, voiceTrigger: 'delete word' },
     { id: 'pre-pgup', label: 'PgUp', cmd: '\x1b[5~', isPinned: true },
     { id: 'pre-pgdn', label: 'PgDn', cmd: '\x1b[6~', isPinned: true },
     { id: 'pre-up', label: '↑', cmd: '\x1b[A', isPinned: true },
     { id: 'pre-down', label: '↓', cmd: '\x1b[B', isPinned: true },
     { id: 'pre-left', label: '←', cmd: '\x1b[D', isPinned: true },
     { id: 'pre-right', label: '→', cmd: '\x1b[C', isPinned: true },
+    { id: 'pre-dropdown', label: 'Drop Down', cmd: '\\\r', isPinned: true, voiceTrigger: 'drop down' },
     { id: '1', label: 'Clear', cmd: '\x0c', isPinned: true },
     { id: '2', label: 'top', cmd: 'top\r', isPinned: true },
     { id: '3', label: 'ls', cmd: 'ls -la\r', isPinned: true },
@@ -535,6 +538,8 @@ function App() {
     const socket = new E2EESocketWrapper(rawSocket, e2eeSecret);
     socket.init();
     
+    let pingInterval;
+
     socket.onopen = () => {
       // Send the API token to WS, not the original PIN
       socket.send(JSON.stringify({ type: 'auth', token: apiTokenRef.current }));
@@ -550,6 +555,13 @@ function App() {
             reconnectAttempts.current = 0;
             setConnState('connected');
             setIsAuthenticated(true);
+            
+            // Keep-alive ping every 30s to prevent Nginx proxy timeouts
+            pingInterval = setInterval(() => {
+              if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'ping' }));
+              }
+            }, 30000);
             return;
           } else if (msg.type === 'auth_failed') {
             setAuthError('Invalid or expired PIN');
@@ -572,6 +584,7 @@ function App() {
     };
 
     socket.onclose = (event) => {
+      if (pingInterval) clearInterval(pingInterval);
       if (event.code === 1008) {
         if (term.current) term.current.writeln('\x1b[31m\n[Session expired. Please log in again.]\x1b[0m');
         setConnState('disconnected');
