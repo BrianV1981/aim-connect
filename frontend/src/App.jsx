@@ -927,9 +927,18 @@ function App() {
 
     recognition.onerror = (event) => {
       console.error("Speech recognition error", event.error);
-      if (event.error === 'not-allowed') {
+      const hard = ["not-allowed", "network", "service-not-allowed", "audio-capture", "language-not-supported"];
+      if (hard.includes(event.error)) {
         shouldBeListeningRef.current = false;
         setIsListening(false);
+        const msg = {
+          "not-allowed": "Microphone permission denied. Allow mic for this site and try again.",
+          "network": "Voice recognition failed (network/service). Brave often cannot use Web Speech — try Chrome or Edge.",
+          "service-not-allowed": "This browser blocks speech recognition. Try Chrome or Edge.",
+          "audio-capture": "Could not capture microphone audio.",
+          "language-not-supported": "Speech language not supported in this browser."
+        }[event.error] || `Voice error: ${event.error}`;
+        alert(msg);
       }
     };
 
