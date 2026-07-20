@@ -13,6 +13,8 @@ export default function SettingsModal({
   voiceAutoEnter, setVoiceAutoEnter,
   voiceAutoSend, setVoiceAutoSend,
   voiceAutoExecute, setVoiceAutoExecute,
+  voiceAutoCapitalize, setVoiceAutoCapitalize,
+  voiceSlashes, setVoiceSlashes,
   apiToken,
   e2eeSecret, setE2eeSecret
 }) {
@@ -31,6 +33,8 @@ export default function SettingsModal({
   const [localVoiceAutoEnter, setLocalVoiceAutoEnter] = useState(voiceAutoEnter);
   const [localVoiceAutoSend, setLocalVoiceAutoSend] = useState(voiceAutoSend);
   const [localVoiceAutoExecute, setLocalVoiceAutoExecute] = useState(voiceAutoExecute);
+  const [localVoiceAutoCapitalize, setLocalVoiceAutoCapitalize] = useState(voiceAutoCapitalize);
+  const [localVoiceSlashes, setLocalVoiceSlashes] = useState(voiceSlashes);
   const [localE2eeSecret, setLocalE2eeSecret] = useState(e2eeSecret);
 
   const handleSave = () => {
@@ -53,6 +57,10 @@ export default function SettingsModal({
     localStorage.setItem('aim-voice-send', JSON.stringify(localVoiceAutoSend));
     setVoiceAutoExecute(localVoiceAutoExecute);
     localStorage.setItem('aim-voice-execute', JSON.stringify(localVoiceAutoExecute));
+    setVoiceAutoCapitalize(localVoiceAutoCapitalize);
+    localStorage.setItem('aim-voice-autocap', JSON.stringify(localVoiceAutoCapitalize));
+    setVoiceSlashes(localVoiceSlashes);
+    localStorage.setItem('aim-voice-slashes', JSON.stringify(localVoiceSlashes));
     
     // Check if E2EE secret changed
     if (localE2eeSecret !== e2eeSecret) {
@@ -216,6 +224,26 @@ export default function SettingsModal({
               style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
             />
             <label style={{color: '#e2e8f0', margin: 0}}>Verbal Command: "Execute"</label>
+          </div>
+
+          <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+            <input 
+              type="checkbox" 
+              checked={localVoiceAutoCapitalize} 
+              onChange={e => setLocalVoiceAutoCapitalize(e.target.checked)}
+              style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+            />
+            <label style={{color: '#e2e8f0', margin: 0}}>Auto Capitalize Sentences</label>
+          </div>
+
+          <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+            <input 
+              type="checkbox" 
+              checked={localVoiceSlashes} 
+              onChange={e => setLocalVoiceSlashes(e.target.checked)}
+              style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+            />
+            <label style={{color: '#e2e8f0', margin: 0}}>Verbal Slashes (/ \)</label>
           </div>
         </div>
 
