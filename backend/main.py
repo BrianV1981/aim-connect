@@ -644,6 +644,57 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     is_admin_connection = token in VALID_API_TOKENS
 
+    if target_session_override and target_session_override.startswith("agent-"):
+        # =====================================================================
+        # PUBLIC AGENT CONNECTIONS (HEADLESS CHAT API MODE)
+        # =====================================================================
+        import tempfile
+        import shlex
+        import asyncio
+        
+        workspace_dir = f"/tmp/aim_workspaces/{target_session_override}"
+        os.makedirs(workspace_dir, exist_ok=True)
+        
+        with open(os.path.join(workspace_dir, "AGENTS.md"), "w") as f:
+            f.write("# Genesis AI Persona\\n\\nYou are Genesis AI, a sovereign intelligence node.\\n\\n## Rules:\\n1. Always respond in sleek Markdown.\\n2. You are sandboxed. Do not attempt to read or write files outside of `/workspace`.\\n3. Act as a high-tier conversational AI.\\n")
+        
+        while True:
+            try:
+                message = await websocket.receive_text()
+                if ENABLE_E2EE and E2EE_SECRET:
+                    message = decrypt_message(message, E2EE_SECRET)
+                data = json.loads(message)
+                
+                if data.get("type") == "input":
+                    prompt = data["payload"].strip()
+                    if not prompt:
+                        continue
+                        
+                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write /workspace
+                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --bind {workspace_dir} /workspace --chdir /workspace agy -c -p {shlex.quote(prompt)}"
+                    
+                    proc = await asyncio.create_subprocess_shell(
+                        bwrap_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await proc.communicate()
+                    clean_output = stdout.decode()
+                    
+                    if ENABLE_E2EE and E2EE_SECRET:
+                        encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                        await websocket.send_bytes(encrypted)
+                    else:
+                        await websocket.send_text(clean_output)
+                        
+            except Exception as e:
+                logger.error(f"Chat API loop error: {e}")
+                break
+        return
+
+    # =====================================================================
+    # ADMIN CONNECTIONS (RAW PTY & TMUX MODE)
+    # =====================================================================
     # For the bridge, we'll try to hook into the user's tmux session
     pid, fd = pty.fork()
     if pid == 0:
@@ -674,19 +725,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 
         result = subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
         if result.returncode == 0:
-            if target_session.startswith("agent-"):
-                import tempfile
-                workspace_dir = f"/tmp/aim_workspaces/{target_session}"
-                os.makedirs(workspace_dir, exist_ok=True)
-                
-                with open(os.path.join(workspace_dir, "AGENTS.md"), "w") as f:
-                    f.write("# Genesis AI Persona\\n\\nYou are Genesis AI, a sovereign intelligence node.\\n\\n## Rules:\\n1. Always respond in sleek Markdown.\\n2. You are sandboxed. Do not attempt to read or write files outside of `/workspace`.\\n3. Act as a high-tier conversational AI.\\n")
-                
-                # Bubblewrap Sandbox: Read-only root filesystem, but read-write /workspace
-                bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --bind {workspace_dir} /workspace --chdir /workspace bash -c 'agy'"
-                subprocess.run(["tmux", "send-keys", "-t", target_session, bwrap_cmd, "Enter"])
-            else:
-                subprocess.run(["tmux", "send-keys", "-t", target_session, "agy", "Enter"])
+            subprocess.run(["tmux", "send-keys", "-t", target_session, "agy", "Enter"])
         os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
     # Parent process
