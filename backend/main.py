@@ -652,12 +652,43 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         import shlex
         
         
-        workspace_dir = f"/tmp/aim_workspaces/{target_session_override}"
-        os.makedirs(workspace_dir, exist_ok=True)
+        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{target_session_override}"
         
-        with open(os.path.join(workspace_dir, "AGENTS.md"), "w") as f:
-            f.write("# Genesis AI Persona\\n\\nYou are Genesis AI, a sovereign intelligence node.\\n\\n## Rules:\\n1. Always respond in sleek Markdown.\\n2. You are sandboxed. Do not attempt to read or write files outside of `/workspace`.\\n3. Act as a high-tier conversational AI.\\n")
+        # We NO LONGER build out workspaces dynamically.
+        # The workspace must be pre-built and insulated by the administrator.
+        if not os.path.exists(workspace_dir):
+            logger.error(f"Workspace {workspace_dir} does not exist. Rejecting connection.")
+            await websocket.send_text("**System Error:** Your Sovereign Workspace has not been provisioned by the Administrator.")
+            await websocket.close()
+            return
         
+        socket_path = os.path.join(workspace_dir, "agent.sock")
+        
+        daemon_running = False
+        if os.path.exists(socket_path):
+            try:
+                test_reader, test_writer = await asyncio.open_unix_connection(socket_path)
+                test_writer.close()
+                await test_writer.wait_closed()
+                daemon_running = True
+            except Exception:
+                os.remove(socket_path)
+                
+        if not daemon_running:
+            bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --bind {workspace_dir} {workspace_dir} --chdir {workspace_dir} /home/kingb/aim-connect/backend/venv/bin/python /home/kingb/aim-connect/backend/agent_daemon.py"
+            env = os.environ.copy()
+            env["SOCKET_PATH"] = socket_path
+            proc = await asyncio.create_subprocess_exec(
+                "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,
+                env=env
+            )
+            await proc.wait()
+            
+            for _ in range(20):
+                if os.path.exists(socket_path):
+                    break
+                await asyncio.sleep(0.5)
+
         while True:
             try:
                 message = await websocket.receive_text()
@@ -670,26 +701,42 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     if not prompt:
                         continue
                         
-                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write /tmp
-                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --chdir {workspace_dir} /home/kingb/.local/bin/agy -c -p {shlex.quote(prompt)}"
-                    
-                    proc = await asyncio.create_subprocess_shell(
-                        bwrap_cmd,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-                    stdout, stderr = await proc.communicate()
-                    clean_output = stdout.decode()
-                    
-                    # If agy threw an error in stderr (e.g. timeout), append it to help debugging
-                    if proc.returncode != 0 and not clean_output:
-                        clean_output = f"**Agent Error:**\\n```\\n{stderr.decode()}\\n```"
-                    
-                    if ENABLE_E2EE and E2EE_SECRET:
-                        encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                        await websocket.send_bytes(encrypted)
-                    else:
-                        await websocket.send_text(clean_output)
+                    try:
+                        reader, writer = await asyncio.open_unix_connection(socket_path)
+                        # Send prompt (ensure newline for readline)
+                        writer.write((prompt + "\\n").encode('utf-8'))
+                        await writer.drain()
+                        
+                        response_buffer = b""
+                        while True:
+                            chunk = await reader.read(4096)
+                            if not chunk:
+                                break
+                            
+                            if b"\\x00" in chunk:
+                                parts = chunk.split(b"\\x00")
+                                response_buffer += parts[0]
+                                break
+                            else:
+                                response_buffer += chunk
+                                
+                        writer.close()
+                        await writer.wait_closed()
+                        
+                        clean_output = response_buffer.decode('utf-8')
+                        
+                        if ENABLE_E2EE and E2EE_SECRET:
+                            encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                            await websocket.send_bytes(encrypted)
+                        else:
+                            await websocket.send_text(clean_output)
+                            
+                    except Exception as e:
+                        error_msg = f"**Daemon Connection Error:** {str(e)}"
+                        if ENABLE_E2EE and E2EE_SECRET:
+                            await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
+                        else:
+                            await websocket.send_text(error_msg)
                         
             except Exception as e:
                 logger.error(f"Chat API loop error: {e}")
