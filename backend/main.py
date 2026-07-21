@@ -42,8 +42,8 @@ _last_used_totp = None  # TOTP replay protection
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else ["http://localhost:5173", "http://localhost:8000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -554,6 +554,109 @@ def save_macros(req: MacroSaveRequest):
     except Exception as e:
         return {"error": str(e)}
 
+from fastapi.responses import HTMLResponse
+import glob
+import os
+
+from fastapi import Query
+
+@app.get("/history/{agent_id}")
+async def get_history(agent_id: str, token: str = Query(None), limit: int = Query(3, description="Number of reincarnations to show")):
+    if not token:
+        return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Access Denied.</h1>", status_code=401)
+        
+    try:
+        import base64
+        import hmac
+        import hashlib
+        import re
+        import json
+        
+        parts = token.split(".")
+        if len(parts) != 2:
+            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Invalid Token Format.</h1>", status_code=401)
+            
+        payload_b64, signature_b64 = parts
+        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+        if not secret:
+            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>500 INTERNAL ERROR: Missing Secret.</h1>", status_code=500)
+            
+        def pad_b64(data):
+            return data + "=" * (-len(data) % 4)
+            
+        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
+        
+        if signature_b64.rstrip("=") != expected_b64:
+            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Invalid Signature.</h1>", status_code=401)
+            
+        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
+        email = payload.get("e")
+        if not email:
+            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Missing Email.</h1>", status_code=401)
+            
+        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+        expected_agent_id = f"agent-{sanitized_email}"
+        
+        if expected_agent_id != agent_id:
+            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>403 FORBIDDEN: Agent ID Mismatch.</h1>", status_code=403)
+            
+    except Exception as e:
+        return HTMLResponse(f"<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
+
+    workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
+    agent_brain_dir = os.path.join(workspace_dir, "brain")
+    
+    if not os.path.exists(agent_brain_dir):
+        return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>No history found for this agent.</h1>", status_code=404)
+        
+    dirs = glob.glob(os.path.join(agent_brain_dir, "*"))
+    dirs = [d for d in dirs if os.path.isdir(d)]
+    if not dirs:
+        return HTMLResponse("<h1>Agent brain is empty.</h1>", status_code=404)
+        
+    # Sort by modification time descending (newest first)
+    dirs.sort(key=os.path.getmtime, reverse=True)
+    
+    # Take the top N (limit) and reverse it back to chronological (oldest to newest)
+    target_dirs = dirs[:limit]
+    target_dirs.reverse()
+        
+    html = f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}} h2{{color: #00ff88; text-transform: uppercase; border-bottom: 1px solid #00ff88; padding-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0,255,136,0.5);}} .user{{background: #111a15; padding: 1.5rem; border-radius: 4px; margin-bottom: 1rem; border-left: 3px solid #0088ff; color: #a0c4ff;}} .agent{{background: #0d1410; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem; border-left: 3px solid #00ff88; white-space: pre-wrap; box-shadow: -2px 0 10px rgba(0, 255, 136, 0.1);}} strong{{color: #fff; text-transform: uppercase; letter-spacing: 1px;}} .meta{{font-size: 0.8rem; color: #00ff88; margin-bottom: 15px; opacity: 0.7;}} .boundary{{text-align: center; color: #00ff88; padding: 15px 0; border-top: 1px dashed #00FFA3; border-bottom: 1px dashed #00FFA3; margin: 40px 0; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><div class='meta'>TARGET IDENTIFIER: {agent_id}<br/>ACCESS LEVEL: ADMINISTRATOR</div>"
+    
+    for i, d in enumerate(target_dirs):
+        log_file = os.path.join(d, ".system_generated", "logs", "transcript.jsonl")
+        if not os.path.exists(log_file):
+            continue
+            
+        session_id = os.path.basename(d)
+        import datetime
+        mtime = os.path.getmtime(log_file)
+        dt_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+        
+        if i > 0:
+            html += f"<div class='boundary'>--- SYSTEM REBOOT: CONTEXT DROPPED ---<br/>REINCARNATION INITIATED: {dt_str}</div>"
+        else:
+            html += f"<div style='text-align: center; color: #00ff88; padding: 10px 0; margin-bottom: 30px; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.5;'>--- BEGIN SESSION ARCHIVE: {dt_str} ---</div>"
+            
+        with open(log_file, "r") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                    if entry.get("type") == "USER_INPUT":
+                        content = entry.get("content", "")
+                        html += f"<div class='user'><strong>[OPERATOR INPUT]</strong><br/><br/>{content}</div>"
+                    elif entry.get("source") == "MODEL" and entry.get("type") == "PLANNER_RESPONSE":
+                        content = entry.get("content")
+                        tool_calls = entry.get("tool_calls")
+                        if content and not tool_calls:
+                            html += f"<div class='agent'><strong>[A.I.M. SYSTEM RESPONSE]</strong><br/><br/>{content}</div>"
+                except Exception:
+                    pass
+                
+    html += "</body></html>"
+    return HTMLResponse(html)
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """
@@ -662,32 +765,40 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await websocket.close()
             return
         
-        socket_path = os.path.join(workspace_dir, "agent.sock")
+        agent_brain_dir = os.path.join(workspace_dir, "brain")
+        agent_conv_dir = os.path.join(workspace_dir, "conversations")
+        os.makedirs(agent_brain_dir, exist_ok=True)
+        os.makedirs(agent_conv_dir, exist_ok=True)
         
-        daemon_running = False
-        if os.path.exists(socket_path):
-            try:
-                test_reader, test_writer = await asyncio.open_unix_connection(socket_path)
-                test_writer.close()
-                await test_writer.wait_closed()
-                daemon_running = True
-            except Exception:
-                os.remove(socket_path)
-                
-        if not daemon_running:
-            bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --bind {workspace_dir} {workspace_dir} --chdir {workspace_dir} /home/kingb/aim-connect/backend/venv/bin/python /home/kingb/aim-connect/backend/agent_daemon.py"
-            env = os.environ.copy()
-            env["SOCKET_PATH"] = socket_path
-            proc = await asyncio.create_subprocess_exec(
-                "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,
-                env=env
+        proc = await asyncio.create_subprocess_exec(
+            "tmux", "has-session", "-t", target_session_override,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.wait()
+        
+        if proc.returncode != 0:
+            logger.info(f"Starting TMUX session for {target_session_override}...")
+            bwrap_cmd = (
+                f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                f"--bind {workspace_dir} {workspace_dir} "
+                f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
+                f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
+                f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
+                f"--bind /tmp /home/kingb/.gemini/antigravity-cli/log "
+                f"--bind /tmp /home/kingb/.gemini/antigravity-cli/crashes "
+                f"--chdir {workspace_dir} /home/kingb/.local/bin/agy"
             )
-            await proc.wait()
-            
-            for _ in range(20):
-                if os.path.exists(socket_path):
-                    break
-                await asyncio.sleep(0.5)
+            start_proc = await asyncio.create_subprocess_exec(
+                "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd
+            )
+            await start_proc.wait()
+            # Give the CLI a moment to initialize the UI and block on the Trust prompt
+            await asyncio.sleep(5)
+            import subprocess
+            # Send Enter to auto-accept "Do you trust this folder?"
+            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+            await asyncio.sleep(2)
 
         while True:
             try:
@@ -702,29 +813,65 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         continue
                         
                     try:
-                        reader, writer = await asyncio.open_unix_connection(socket_path)
-                        # Send prompt (ensure newline for readline)
-                        writer.write((prompt + "\\n").encode('utf-8'))
-                        await writer.drain()
+                        import glob
                         
-                        response_buffer = b""
-                        while True:
-                            chunk = await reader.read(4096)
-                            if not chunk:
-                                break
+                        dirs = glob.glob(os.path.join(agent_brain_dir, "*"))
+                        log_file = None
+                        last_pos = 0
+                        if dirs:
+                            newest_dir = max(dirs, key=os.path.getmtime)
+                            log_file = os.path.join(newest_dir, ".system_generated", "logs", "transcript.jsonl")
+                            if os.path.exists(log_file):
+                                with open(log_file, "r") as f:
+                                    f.seek(0, 2)
+                                    last_pos = f.tell()
+                        
+                        # 1. Send the prompt to the background TMUX session safely using the buffer system
+                        import subprocess
+                        subprocess.run(["tmux", "set-buffer", prompt])
+                        subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
+                        
+                        # Wait for the UI to process the paste before dropping out of insert mode
+                        await asyncio.sleep(0.5)
+                        subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Escape"])
+                        
+                        # Give the UI time to register Escape before hitting Enter
+                        await asyncio.sleep(0.2)
+                        subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+                        
+                        # 2. Wait for the agent to think and write the response
+                        if not log_file:
+                            clean_output = "**Error:** Agent brain directory not initialized yet."
+                        else:
+                            clean_output = "**Error:** Agent timed out or failed to write transcript."
+                            start_time = time.time()
                             
-                            if b"\\x00" in chunk:
-                                parts = chunk.split(b"\\x00")
-                                response_buffer += parts[0]
-                                break
-                            else:
-                                response_buffer += chunk
+                            # Wait up to 5 minutes for the agent to finish its tool loops
+                            while time.time() - start_time < 300:
+                                if os.path.exists(log_file):
+                                    with open(log_file, "r") as f:
+                                        f.seek(last_pos)
+                                        lines = f.readlines()
+                                        last_pos = f.tell()
+                                        
+                                        found_response = False
+                                        for line in lines:
+                                            try:
+                                                log_data = json.loads(line)
+                                                if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
+                                                    content = log_data.get("content")
+                                                    tool_calls = log_data.get("tool_calls")
+                                                    # Only accept the response if it contains text and NO tool calls (final turn)
+                                                    if content and not tool_calls:
+                                                        clean_output = content
+                                                        found_response = True
+                                            except Exception:
+                                                pass
+                                                
+                                        if found_response:
+                                            break
+                                await asyncio.sleep(1)
                                 
-                        writer.close()
-                        await writer.wait_closed()
-                        
-                        clean_output = response_buffer.decode('utf-8')
-                        
                         if ENABLE_E2EE and E2EE_SECRET:
                             encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
                             await websocket.send_bytes(encrypted)
@@ -732,7 +879,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             await websocket.send_text(clean_output)
                             
                     except Exception as e:
-                        error_msg = f"**Daemon Connection Error:** {str(e)}"
+                        error_msg = f"**Tmux Bridge Error:** {str(e)}"
                         if ENABLE_E2EE and E2EE_SECRET:
                             await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
                         else:
