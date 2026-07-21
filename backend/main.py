@@ -1126,3 +1126,68 @@ else:
     def read_root():
         return {"status": "aim-connect backend running! (Frontend not built in ../frontend/dist)"}
 
+import os
+import re
+import json
+import base64
+import hmac
+import hashlib
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import Query
+
+# To be added to main.py
+@app.get("/download/{agent_id}")
+async def download_file(agent_id: str, filepath: str = Query(...), token: str = Query(None)):
+    if not token:
+        return HTMLResponse("<h1>401 UNAUTHORIZED: Access Denied.</h1>", status_code=401)
+        
+    try:
+        parts = token.split(".")
+        if len(parts) != 2:
+            return HTMLResponse("<h1>401 UNAUTHORIZED: Invalid Token Format.</h1>", status_code=401)
+            
+        payload_b64, signature_b64 = parts
+        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+        if not secret:
+            return HTMLResponse("<h1>500 INTERNAL ERROR: Missing Secret.</h1>", status_code=500)
+            
+        def pad_b64(data):
+            return data + "=" * (-len(data) % 4)
+            
+        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
+        
+        if signature_b64.rstrip("=") != expected_b64:
+            return HTMLResponse("<h1>401 UNAUTHORIZED: Invalid Signature.</h1>", status_code=401)
+            
+        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
+        email = payload.get("e")
+        if not email:
+            return HTMLResponse("<h1>401 UNAUTHORIZED: Missing Email.</h1>", status_code=401)
+            
+        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+        expected_agent_id = f"agent-{sanitized_email}"
+        
+        if expected_agent_id != agent_id:
+            return HTMLResponse("<h1>403 FORBIDDEN: Agent ID Mismatch.</h1>", status_code=403)
+            
+    except Exception as e:
+        return HTMLResponse("<h1>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
+
+    workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
+    
+    # Security: Ensure the requested filepath is an absolute path within the workspace
+    if not filepath.startswith("/"):
+        # If relative, assume it's relative to workspace
+        target_path = os.path.abspath(os.path.join(workspace_dir, filepath))
+    else:
+        target_path = os.path.abspath(filepath)
+        
+    if not target_path.startswith(os.path.abspath(workspace_dir)):
+        return HTMLResponse("<h1>403 FORBIDDEN: Path Traversal Detected.</h1>", status_code=403)
+        
+    if not os.path.isfile(target_path):
+        return HTMLResponse("<h1>404 NOT FOUND: File does not exist.</h1>", status_code=404)
+        
+    filename = os.path.basename(target_path)
+    return FileResponse(target_path, filename=filename)
