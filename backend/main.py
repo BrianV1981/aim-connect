@@ -617,7 +617,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
                             if signature_b64.rstrip("=") == expected_b64:
                                 payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
-                                email = payload.get("email")
+                                email = payload.get("e")
                                 if email:
                                     authenticated = True
                                     auth_attempts[client_ip] = (0, None)
@@ -641,6 +641,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         logger.error(f"Auth failed: {e}")
         await websocket.close(code=1008, reason="Auth Timeout or Error")
         return
+
+    is_admin_connection = token in VALID_API_TOKENS
 
     # For the bridge, we'll try to hook into the user's tmux session
     pid, fd = pty.fork()
@@ -670,14 +672,28 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if not target_session:
                 target_session = "aim-connect-main"
                 
-        subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
+        result = subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
+        if result.returncode == 0:
+            if target_session.startswith("agent-"):
+                import tempfile
+                workspace_dir = f"/tmp/aim_workspaces/{target_session}"
+                os.makedirs(workspace_dir, exist_ok=True)
+                
+                with open(os.path.join(workspace_dir, "AGENTS.md"), "w") as f:
+                    f.write("# Genesis AI Persona\\n\\nYou are Genesis AI, a sovereign intelligence node.\\n\\n## Rules:\\n1. Always respond in sleek Markdown.\\n2. You are sandboxed. Do not attempt to read or write files outside of `/workspace`.\\n3. Act as a high-tier conversational AI.\\n")
+                
+                # Bubblewrap Sandbox: Read-only root filesystem, but read-write /workspace
+                bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --bind {workspace_dir} /workspace --chdir /workspace bash -c 'agy'"
+                subprocess.run(["tmux", "send-keys", "-t", target_session, bwrap_cmd, "Enter"])
+            else:
+                subprocess.run(["tmux", "send-keys", "-t", target_session, "agy", "Enter"])
         os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
     # Parent process
     loop = asyncio.get_event_loop()
     
     last_activity = time.time()
-    INACTIVITY_TIMEOUT = 900 # 15 minutes
+    INACTIVITY_TIMEOUT = 86400 # 24 hours
 
     async def read_from_pty():
         nonlocal last_activity
@@ -815,10 +831,11 @@ def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
     new_token = secrets.token_hex(32)
     role = "admin" if not users_db else users_db.get(user_name, {}).get("role", "user")
     VALID_API_TOKENS[new_token] = {
-        "expires": time.time() + 3600,
+        "expires": time.time() + TOKEN_TTL,
         "user": user_name,
         "role": role
     }
+    save_tokens()
     return {"token": new_token, "role": role}
 
 
