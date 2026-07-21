@@ -650,7 +650,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         # =====================================================================
         import tempfile
         import shlex
-        import asyncio
+        
         
         workspace_dir = f"/tmp/aim_workspaces/{target_session_override}"
         os.makedirs(workspace_dir, exist_ok=True)
@@ -670,8 +670,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     if not prompt:
                         continue
                         
-                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write /workspace
-                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --bind {workspace_dir} /workspace --chdir /workspace agy -c -p {shlex.quote(prompt)}"
+                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write /workspace and /tmp
+                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --bind {workspace_dir} /workspace --chdir /workspace /home/kingb/.local/bin/agy -c -p {shlex.quote(prompt)}"
                     
                     proc = await asyncio.create_subprocess_shell(
                         bwrap_cmd,
@@ -680,6 +680,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     )
                     stdout, stderr = await proc.communicate()
                     clean_output = stdout.decode()
+                    
+                    # If agy threw an error in stderr (e.g. timeout), append it to help debugging
+                    if proc.returncode != 0 and not clean_output:
+                        clean_output = f"**Agent Error:**\\n```\\n{stderr.decode()}\\n```"
                     
                     if ENABLE_E2EE and E2EE_SECRET:
                         encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
