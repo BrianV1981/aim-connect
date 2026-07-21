@@ -670,8 +670,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     if not prompt:
                         continue
                         
-                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write /workspace and /tmp
-                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --bind {workspace_dir} /workspace --chdir /workspace /home/kingb/.local/bin/agy -c -p {shlex.quote(prompt)}"
+                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write /tmp
+                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --chdir {workspace_dir} /home/kingb/.local/bin/agy -c -p {shlex.quote(prompt)}"
                     
                     proc = await asyncio.create_subprocess_shell(
                         bwrap_cmd,
