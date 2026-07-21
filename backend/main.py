@@ -652,11 +652,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         import shlex
         
         
-        workspace_dir = f"/tmp/aim_workspaces/{target_session_override}"
+        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{target_session_override}"
         os.makedirs(workspace_dir, exist_ok=True)
         
         with open(os.path.join(workspace_dir, "AGENTS.md"), "w") as f:
-            f.write("# Genesis AI Persona\\n\\nYou are Genesis AI, a sovereign intelligence node.\\n\\n## Rules:\\n1. Always respond in sleek Markdown.\\n2. You are sandboxed. Do not attempt to read or write files outside of `/workspace`.\\n3. Act as a high-tier conversational AI.\\n")
+            f.write("# Genesis AI Persona\\n\\nYou are Genesis AI, a sovereign intelligence node.\\n\\n## Rules:\\n1. Always respond in sleek Markdown.\\n2. You are sandboxed. Do not attempt to read or write files outside of your workspace.\\n3. Act as a high-tier conversational AI.\\n")
         
         while True:
             try:
@@ -670,8 +670,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     if not prompt:
                         continue
                         
-                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write /tmp
-                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --chdir {workspace_dir} /home/kingb/.local/bin/agy -c -p {shlex.quote(prompt)}"
+                    # Bubblewrap Sandbox: Read-only root filesystem, but read-write persistent workspace folder
+                    bwrap_cmd = f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp --bind {workspace_dir} {workspace_dir} --chdir {workspace_dir} /home/kingb/.local/bin/agy -c -p {shlex.quote(prompt)}"
                     
                     proc = await asyncio.create_subprocess_shell(
                         bwrap_cmd,
