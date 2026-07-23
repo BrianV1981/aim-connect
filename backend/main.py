@@ -16,10 +16,13 @@ import secrets
 import shutil
 import bcrypt
 from pydantic import BaseModel
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+import sqlite3
+import csv
+from io import StringIO
 import logging
 import time
 import re
@@ -415,6 +418,68 @@ def update_e2ee_settings(req: E2EESettingsRequest):
     ENABLE_E2EE = bool(req.secret)
     E2EE_SECRET = req.secret
     return {"status": "success", "message": "E2EE settings updated on backend."}
+
+@app.post("/api/sync_csv/{agent_id}", dependencies=[Depends(verify_token)])
+async def sync_csv(agent_id: str, file: UploadFile = File(...)):
+    """
+    Multi-Tenant Database Ingestion:
+    Receives a CSV file and inserts it directly into the isolated SQLite database
+    belonging exclusively to the specified agent_id contract workspace.
+    """
+    base_agent_name = agent_id.replace('@', '_').replace('.', '_')
+    workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}"
+    
+    if not os.path.exists(workspace_dir):
+        raise HTTPException(status_code=404, detail=f"Sovereign workspace for {agent_id} not found.")
+        
+    data_dir = os.path.join(workspace_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    
+    db_path = os.path.join(data_dir, "contract_data.db")
+    
+    # Read the file
+    content = await file.read()
+    text = content.decode("utf-8")
+    
+    # Parse CSV
+    reader = csv.reader(StringIO(text))
+    header = next(reader, None)
+    if not header:
+        raise HTTPException(status_code=400, detail="Uploaded CSV file is empty or missing a header row.")
+        
+    # Sanitize column names for SQLite
+    cols = [re.sub(r'\W+', '_', col.strip().lower()).strip('_') or f"col_{i}" for i, col in enumerate(header)]
+    
+    # SQLite logic
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    table_name = "csv_imports"
+    cols_def = ", ".join([f"{col} TEXT" for col in cols])
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (id INTEGER PRIMARY KEY AUTOINCREMENT, {cols_def})")
+    
+    placeholders = ", ".join(["?"] * len(cols))
+    insert_sql = f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
+    
+    rows = []
+    for row in reader:
+        # Pad row with None if it's shorter than header
+        row = row + [None] * (len(cols) - len(row))
+        # Truncate row if it's longer
+        row = row[:len(cols)]
+        rows.append(row)
+        
+    cursor.executemany(insert_sql, rows)
+    conn.commit()
+    conn.close()
+    
+    return {
+        "status": "success",
+        "message": f"Successfully ingested {len(rows)} rows into {agent_id}'s isolated database.",
+        "rows_inserted": len(rows),
+        "database": db_path
+    }
+
 
 @app.post("/api/sessions", dependencies=[Depends(verify_token)])
 def create_session(req: SessionRequest) -> dict:
