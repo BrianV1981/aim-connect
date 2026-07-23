@@ -1,5 +1,69 @@
 # Changelog
 
+## [v1.7.2] - 2026-07-20
+- Fix: Refactored workspace isolation to use persistent root directories (Closes #119)
+
+
+## [v1.7.1] - 2026-07-20
+- fix: revert LeadDeed integration per user request (Closes #114)
+
+
+## [v1.7.0] - 2026-07-20
+- feat: add LeadDeed magic-link JWT validation and dynamic session spawning (Closes #112)
+
+
+## [v1.6.3] - 2026-07-20
+- fix: add placeholder to session select dropdown to prevent visual desync (Closes #110)
+
+
+## [v1.6.2] - 2026-07-20
+- fix: correct dictation spacing for quotation marks and update README (Closes #108)
+
+
+## [v1.6.1] - 2026-07-20
+- fix: add WS keep-alive and default text macros (Closes #106)
+
+
+## [v1.6.0] - 2026-07-20
+- feat: add Voice Triggers to Macro Library (Closes #104)
+
+
+## [v1.5.0] - 2026-07-20
+- feat: add verbal punctuation for dashes and parentheses, strip slash padding (Closes #102)
+
+
+## [v1.4.2] - 2026-07-20
+- fix: reset capitalization state memory when toggling microphone on (Closes #100)
+
+
+## [v1.4.1] - 2026-07-20
+- fix: strip native transcript spacing to prevent double spaces during continuous dictation (Closes #98)
+
+
+## [v1.4.0] - 2026-07-20
+- feat: add aim-ecosystem and support footer to welcome screen (Closes #96)
+
+
+## [v1.3.1] - 2026-07-20
+- fix: resolve xterm rendering glitch by replacing display:none with absolute overlay (Closes #94)
+
+
+## [v1.3.0] - 2026-07-20
+- feat: add stylized welcome screen and disable auto-session attach on login (Closes #93)
+
+
+## [v1.2.2] - 2026-07-20
+- fix: improve voice dictation regex pipeline for quotes, slashes, spacing, and autocaps (Closes #91)
+
+
+## [v1.2.1] - 2026-07-20
+- fix: surface hard speech recognition errors and halt continuous loops (Closes #89)
+
+
+## [v1.2.0] - 2026-07-17
+- Feature: Monaco Editor Integration (Closes #82)
+
+
 All notable changes to this project will be documented in this file.
 
 ## [1.1.0] - 2026-07-15

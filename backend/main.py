@@ -596,15 +596,22 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
             return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Missing Email.</h1>", status_code=401)
             
         sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
-        expected_agent_id = f"agent-{sanitized_email}"
+        expected_base = f"agent-{sanitized_email}"
         
-        if expected_agent_id != agent_id:
+        if not agent_id.startswith(expected_base):
             return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>403 FORBIDDEN: Agent ID Mismatch.</h1>", status_code=403)
+            
+        parts = agent_id.split('-')
+        if len(parts) >= 3 and parts[0] == 'agent':
+            base_agent = f"{parts[0]}-{parts[1]}"
+            sub_id = '-'.join(parts[2:])
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
+        else:
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
             
     except Exception as e:
         return HTMLResponse(f"<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
 
-    workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
     agent_brain_dir = os.path.join(workspace_dir, "brain")
     
     if not os.path.exists(agent_brain_dir):
@@ -689,6 +696,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         data = json.loads(auth_message)
         if data.get("type") == "auth":
             token = data.get("token", "")
+            sub_session_id = data.get("sub_session_id")
+            
             if token in VALID_API_TOKENS:
                 token_data = VALID_API_TOKENS[token]
                 expires = token_data if isinstance(token_data, (int, float)) else token_data.get("expires", 0)
@@ -705,6 +714,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 parts = token.split(".")
                 if len(parts) == 2:
                     payload_b64, signature_b64 = parts
+                    print(f"DEBUG TOKEN INCOMING: {token}")
                     secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
                     if secret:
                         def pad_b64(data):
@@ -719,7 +729,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     authenticated = True
                                     auth_attempts[client_ip] = (0, None)
                                     sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
-                                    target_session_override = f"agent-{sanitized_email}"
+                                    if sub_session_id and re.match(r'^[a-zA-Z0-9_-]+$', sub_session_id):
+                                        target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
+                                    else:
+                                        target_session_override = f"agent-{sanitized_email}"
                         except Exception as e:
                             logger.error(f"Failed to parse LeadDeed token: {e}")
             
@@ -748,19 +761,38 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         import tempfile
         import shlex
         
+        base_agent_name = target_session_override.split('-')[1] # The sanitized email part
+        is_sub_session = target_session_override != f"agent-{base_agent_name}"
         
-        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{target_session_override}"
-        
-        # We NO LONGER build out workspaces dynamically.
-        # The workspace must be pre-built and insulated by the administrator.
-        if not os.path.exists(workspace_dir):
-            logger.error(f"Workspace {workspace_dir} does not exist. Rejecting connection.")
-            await websocket.send_text("**System Error:** Your Sovereign Workspace has not been provisioned by the Administrator.")
-            await websocket.close()
-            return
-        
-        agent_brain_dir = os.path.join(workspace_dir, "brain")
-        agent_conv_dir = os.path.join(workspace_dir, "conversations")
+        if is_sub_session:
+            sub_id = target_session_override.split('-', 2)[2]
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}/fleet_workspaces/{sub_id}"
+            os.makedirs(workspace_dir, exist_ok=True)
+            
+            # Auto-inject the Fleet Protocol AGENTS.md into their isolated bubble
+            agents_md_path = os.path.join(workspace_dir, "AGENTS.md")
+            if not os.path.exists(agents_md_path):
+                with open(agents_md_path, "w") as f:
+                    f.write("# 🛸 A.I.M. FLEET AGENT\n\n"
+                            "You are an isolated Sub-Node spawned by the primary J.O.S.H.U.A. user.\n"
+                            "You are operating in a strict, isolated bubble-wrapped directory. You cannot see the primary node's files.\n"
+                            "You have full capabilities to run scripts and browse the web, but you must complete your specific task and report back.\n"
+                            "Do not attempt to traverse upwards into the host OS root.\n")
+            
+            agent_brain_dir = os.path.join(workspace_dir, "brain")
+            agent_conv_dir = os.path.join(workspace_dir, "conversations")
+        else:
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}"
+            # The workspace must be pre-built and insulated by the administrator.
+            if not os.path.exists(workspace_dir):
+                logger.error(f"Workspace {workspace_dir} does not exist. Rejecting connection.")
+                await websocket.send_text("**System Error:** Your Sovereign Workspace has not been provisioned by the Administrator.")
+                await websocket.close()
+                return
+            
+            agent_brain_dir = os.path.join(workspace_dir, "brain")
+            agent_conv_dir = os.path.join(workspace_dir, "conversations")
+
         os.makedirs(agent_brain_dir, exist_ok=True)
         os.makedirs(agent_conv_dir, exist_ok=True)
         
@@ -773,6 +805,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         
         if proc.returncode != 0:
             logger.info(f"Starting TMUX session for {target_session_override}...")
+            
+            # Configure CLI args: all agents get standard capabilities
+            cli_args = "/home/kingb/.local/bin/agy"
+            
             bwrap_cmd = (
                 f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
                 f"--bind {workspace_dir} {workspace_dir} "
@@ -781,7 +817,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
                 f"--bind /tmp /home/kingb/.gemini/antigravity-cli/log "
                 f"--bind /tmp /home/kingb/.gemini/antigravity-cli/crashes "
-                f"--chdir {workspace_dir} /home/kingb/.local/bin/agy"
+                f"--chdir {workspace_dir} {cli_args}"
             )
             start_proc = await asyncio.create_subprocess_exec(
                 "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd
@@ -799,6 +835,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 message = await websocket.receive_text()
                 if ENABLE_E2EE and E2EE_SECRET:
                     message = decrypt_message(message, E2EE_SECRET)
+                print(f"DEBUG INCOMING WEBSOCKET MSG: {message}")
                 data = json.loads(message)
                 
                 if data.get("type") == "input":
@@ -1018,15 +1055,15 @@ class WebAuthnAuthVerifyReq(BaseModel):
 def webauthn_register_options(request: Request, x_api_token: str = Header(None)):
     role, username = _get_user_from_token(x_api_token)
     user_key = username or "admin"
-    options = webauthn_mgr.generate_registration(user_key, rp_id=request.url.hostname)
+    options = webauthn_mgr.generate_registration(user_key, rp_id="leaddeeds.com")
     return {"options": options}
 
 @app.post("/api/webauthn/register/verify", dependencies=[Depends(verify_token)])
 def webauthn_register_verify(req: WebAuthnVerifyReq, request: Request, x_api_token: str = Header(None)):
     role, username = _get_user_from_token(x_api_token)
     user_key = username or "admin"
-    origin = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
-    success = webauthn_mgr.verify_registration(user_key, req.response, rp_id=request.url.hostname, origin=origin)
+    origin = request.headers.get("origin") or f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    success = webauthn_mgr.verify_registration(user_key, req.response, rp_id="leaddeeds.com", origin=origin)
     if not success:
         raise HTTPException(status_code=400, detail="Registration failed")
     return {"status": "success"}
@@ -1037,7 +1074,7 @@ def webauthn_auth_options(req: WebAuthnAuthReq, request: Request):
     if not users_db:
         user_name = "admin"
         
-    options = webauthn_mgr.generate_authentication(user_name, rp_id=request.url.hostname)
+    options = webauthn_mgr.generate_authentication(user_name, rp_id="leaddeeds.com")
     if not options:
         raise HTTPException(status_code=404, detail="No credentials found")
     return {"options": options}
@@ -1048,12 +1085,10 @@ def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
     if not users_db:
         user_name = "admin"
         
-    origin = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
-    # ngrok usually terminates HTTPS but forwards as HTTP. If headers indicate https, force it.
-    if request.headers.get('x-forwarded-proto') == 'https':
+    origin = request.headers.get("origin") or f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    if request.headers.get('x-forwarded-proto') == 'https' and not request.headers.get("origin"):
         origin = f"https://{request.headers.get('host', request.url.netloc)}"
-
-    success = webauthn_mgr.verify_authentication(user_name, req.response, rp_id=request.url.hostname, origin=origin)
+    success = webauthn_mgr.verify_authentication(user_name, req.response, rp_id="leaddeeds.com", origin=origin)
     if not success:
         raise HTTPException(status_code=401, detail="Authentication failed")
         
@@ -1135,7 +1170,56 @@ import hashlib
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi import Query
 
-# To be added to main.py
+@app.get("/api/fleet/sessions/{agent_id}")
+async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
+    if not token:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+    try:
+        parts = token.split(".")
+        if len(parts) != 2:
+            return JSONResponse({"error": "Invalid Token Format"}, status_code=401)
+            
+        payload_b64, signature_b64 = parts
+        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+        if not secret:
+            return JSONResponse({"error": "Missing Secret"}, status_code=500)
+            
+        def pad_b64(data):
+            return data + "=" * (-len(data) % 4)
+            
+        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
+        
+        if signature_b64.rstrip("=") != expected_b64:
+            return JSONResponse({"error": "Invalid Signature"}, status_code=401)
+            
+        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
+        email = payload.get("e")
+        if not email:
+            return JSONResponse({"error": "Missing Email"}, status_code=401)
+            
+        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+        expected_agent_id = f"agent-{sanitized_email}"
+        
+        if expected_agent_id != agent_id:
+            return JSONResponse({"error": "Agent ID Mismatch"}, status_code=403)
+            
+    except Exception as e:
+        return JSONResponse({"error": "Token Parsing Failed"}, status_code=401)
+
+    import subprocess
+    result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
+    sessions = []
+    if result.returncode == 0:
+        for line in result.stdout.splitlines():
+            # Match only sub-sessions like agent-email-chat123, but exclude the main agent-email session
+            if line and line.startswith(f"{agent_id}-"):
+                sub_id = line[len(f"{agent_id}-"):]
+                sessions.append({"id": sub_id, "full_name": line})
+                
+    return {"sessions": sessions}
+
 @app.get("/download/{agent_id}")
 async def download_file(agent_id: str, filepath: str = Query(...), token: str = Query(None)):
     if not token:
@@ -1171,10 +1255,17 @@ async def download_file(agent_id: str, filepath: str = Query(...), token: str = 
         if expected_agent_id != agent_id:
             return HTMLResponse("<h1>403 FORBIDDEN: Agent ID Mismatch.</h1>", status_code=403)
             
+        # Determine if it's a primary node or sub-session based on agent_id
+        parts = agent_id.split('-')
+        if len(parts) >= 3 and parts[0] == 'agent':
+            base_agent = f"{parts[0]}-{parts[1]}"
+            sub_id = '-'.join(parts[2:])
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
+        else:
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
+            
     except Exception as e:
         return HTMLResponse("<h1>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
-
-    workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
     
     # Security: Ensure the requested filepath is an absolute path within the workspace
     if not filepath.startswith("/"):

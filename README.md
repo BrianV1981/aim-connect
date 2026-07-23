@@ -150,26 +150,52 @@ AIM-Connect ships with a hardened, multi-stage Dockerfile:
 
 ---
 
-## 🌐 Networking & Tunneling Alternatives (Fully Self-Hosted)
+## 🌐 Networking & Tunneling Playbook (Sovereign OS Access)
 
-By default, AIM-Connect uses Ngrok or Cloudflare Tunnels to easily bypass home NAT firewalls and provide HTTPS out of the box. However, if you want a **100% self-hosted, sovereign** setup without relying on third-party tunnel providers, you have three excellent options:
+By default, AIM-Connect uses Ngrok to quickly bypass home NAT firewalls and provide HTTPS. However, Ngrok's free tier has strict bandwidth caps (~1GB/month) which live pseudo-terminals will quickly exhaust. 
 
-### 1. Mesh VPN (Highest Security, No Exposure)
-Instead of exposing AIM-Connect to the public internet, install a mesh VPN like **Tailscale** or **WireGuard** on both your server and your phone.
-* **Setup:** Bind AIM-Connect to `0.0.0.0` or your Tailscale IP. Access it on your phone via the VPN IP (e.g., `http://100.x.x.x:8000`).
-* **Pros:** Zero public exposure, impossible to port-scan, and HTTPS is technically unnecessary since the VPN tunnel provides native End-to-End Encryption.
-* **Cons:** Requires the VPN app to be active on your client device.
+If you are building a production-grade Web OS, or just need to bypass a ban, here is the complete playbook of your tunneling options:
 
-### 2. Nginx + Dynamic DNS + Port Forwarding
-If you want public browser access from any device (e.g., a library computer) without installing a VPN app.
-* **Setup:** Register a free Dynamic DNS domain (like DuckDNS). Forward port `443` on your home router to your server. Use **Nginx** as a reverse proxy with a free Let's Encrypt SSL certificate to terminate HTTPS and forward traffic to `localhost:8000`.
-* **Pros:** Completely sovereign, accessible anywhere, no third-party traffic inspection.
-* **Cons:** Exposes an open port on your home network (though AIM-Connect's 3FA protects the application layer).
+### 🏆 Tier 1: Production SaaS (Permanent & Unlimited)
+These options provide completely unrestricted bandwidth, no splash screens, and permanent static URLs.
 
-### 3. VPS Reverse Tunnel (FRP or SSH)
-If you cannot port-forward (e.g., Carrier-Grade NAT, strict corporate firewalls) but still want a public URL without Ngrok.
-* **Setup:** Rent a cheap $5/mo cloud VPS. Run **FRP (Fast Reverse Proxy)** or an SSH reverse tunnel from your home server to the VPS. Point your domain to the VPS.
-* **Pros:** Bypasses all firewalls, completely self-hosted infrastructure, hides your true home IP address.
+**1. Authenticated Cloudflare Tunnels (Zero-Config Firewall Punching)**
+If your node is behind a strict router/firewall and you don't have a public IP, this is the ultimate solution.
+*   **Setup:** Download `cloudflared`, run `cloudflared login`, and permanently bind port `8000` to a domain you own in Cloudflare.
+*   **Pros:** 100% free, unlimited bandwidth, static domain (e.g., `api.yourdomain.com`), enterprise DDoS protection, bypasses all NATs without opening router ports.
+*   **Cons:** Requires a free Cloudflare account and a registered domain name.
+
+**2. Nginx + Let's Encrypt (The Native Standard)**
+If the physical machine running AIM-Connect has a static Public IP address (e.g., a Cloud VPS or Business ISP).
+*   **Setup:** Point a real domain to your IP. Install Nginx and configure it as a reverse proxy to route traffic directly to port `8000`. Secure it with an auto-renewing SSL certificate via Certbot.
+*   **Pros:** Native speed, zero third-party proxies, completely self-hosted infrastructure.
+*   **Cons:** Exposes an open port on your network (though AIM-Connect's 3FA protects the application layer).
+
+### 🛠️ Tier 2: Temporary Hacks (Local Dev & Bypassing Bans)
+If you hit an Ngrok limit but just need to get back online instantly without registering a domain.
+
+**1. Localtunnel (The Ngrok Alternative)**
+*   **Run:** `npx -y localtunnel --port 8000 --subdomain my-custom-name`
+*   **Pros:** Free, unrestricted bandwidth, incredibly easy to run via Node.js.
+*   **Cons:** **The Splash Screen.** Localtunnel injects a phishing-protection screen on first visit. To use WebSockets, you *must* open the proxy URL in a separate browser tab and click "Click to Continue" to whitelist your IP before logging into the AIM dashboard.
+
+**2. Pinggy / Serveo (Zero-Install SSH Proxies)**
+*   **Run:** `ssh -p 443 -R0:localhost:8000 a.pinggy.io` or `ssh -R 80:localhost:8000 serveo.net`
+*   **Pros:** Literally requires zero installation—it's built into SSH. Instantly gives you a public HTTPS URL.
+*   **Cons:** The free tiers have strict session timeouts (e.g., 60 minutes) and the URLs change randomly upon restart.
+
+**3. Cloudflare "Quick Tunnels" (Anonymous)**
+*   **Run:** `cloudflared tunnel --url http://localhost:8000`
+*   **Pros:** Free, no account required.
+*   **Cons:** Extremely flaky. Generates a random `trycloudflare.com` URL that changes every restart and often hangs during initialization.
+
+### 🛡️ Tier 3: Sovereign Mesh (Highest Security, No Public URLs)
+If you want to use AIM-Connect but refuse to expose it to the public internet whatsoever.
+
+**1. Mesh VPN (Tailscale / WireGuard)**
+*   **Setup:** Install Tailscale on your server and your phone. Access AIM-Connect via the internal VPN IP (e.g., `http://100.x.x.x:8000`).
+*   **Pros:** Zero public exposure, mathematically impossible to port-scan.
+*   **Cons:** Requires the VPN app to be active on your client device, completely defeating the "Clientless SSH" philosophy if you are using a public or borrowed computer.
 
 ---
 
