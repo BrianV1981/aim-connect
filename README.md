@@ -197,6 +197,24 @@ If you want to use AIM-Connect but refuse to expose it to the public internet wh
 *   **Pros:** Zero public exposure, mathematically impossible to port-scan.
 *   **Cons:** Requires the VPN app to be active on your client device, completely defeating the "Clientless SSH" philosophy if you are using a public or borrowed computer.
 
+### ⚠️ Troubleshooting: WSL & Cloudflare Tunnels (DNS Cache NXDOMAIN)
+If you are running `cloudflared` on Windows Subsystem for Linux (WSL) and your tunnel fails to resolve locally (e.g., `Name or service not known` or `i/o timeout` on the frontend):
+
+**The Problem:**
+WSL automatically provisions its `/etc/resolv.conf` to forward DNS queries to your Windows host's virtual switch (e.g., `nameserver 10.255.255.254`). If you attempt to access your new Cloudflare Tunnel domain *before* it has fully propagated globally, your Windows host will aggressively cache a negative response (`NXDOMAIN`). WSL inherits this poisoned cache, meaning your host can no longer resolve its own tunnel, silently breaking your frontend connection.
+
+**The Fix:**
+You must bypass the Windows host's DNS cache entirely by hardcoding public DNS servers inside your WSL Linux environment.
+1. Unlink the auto-generated file: `sudo rm /etc/resolv.conf`
+2. Create a new static file: `sudo nano /etc/resolv.conf`
+3. Add direct nameservers:
+   ```text
+   nameserver 1.1.1.1
+   nameserver 8.8.8.8
+   ```
+4. Prevent WSL from overwriting it on reboot by adding `generateResolvConf = false` to your `/etc/wsl.conf` under the `[network]` block.
+This forces WSL to query the public internet directly, instantly resolving the connection.
+
 ---
 
 ## 📖 How to Use the UI
