@@ -876,6 +876,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             
             bwrap_cmd = (
                 f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                f"--tmpfs /home/kingb "
+                f"--ro-bind /home/kingb/.local /home/kingb/.local "
+                f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
+                f"--bind /home/kingb/.gemini/antigravity-cli/bin /home/kingb/.gemini/antigravity-cli/bin "
                 f"--bind {workspace_dir} {workspace_dir} "
                 f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
                 f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
