@@ -457,6 +457,72 @@ async def sync_csv(agent_id: str, file: UploadFile = File(...)):
         "message": f"Successfully dropped {safe_filename} into {agent_id}'s _ingest folder. The Subconscious Daemon is now vectorizing it into the Engram DB.",
         "file": file_path
     }
+class IntegrationRequest(BaseModel):
+    gmail_address: str
+    gmail_app_password: str
+
+@app.get("/api/integrations/{agent_id}", dependencies=[Depends(verify_token)])
+def get_integrations(agent_id: str):
+    base_agent_name = agent_id.replace('@', '_').replace('.', '_')
+    if not base_agent_name.startswith("agent-"):
+        base_agent_name = "agent-" + base_agent_name
+    env_path = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}/.env"
+    
+    data = {"gmail_address": "", "has_password": False}
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("GMAIL_ADDRESS="):
+                    data["gmail_address"] = line.split("=", 1)[1].strip().strip('"\'')
+                elif line.startswith("GMAIL_APP_PASSWORD="):
+                    val = line.split("=", 1)[1].strip().strip('"\'')
+                    if val:
+                        data["has_password"] = True
+    return data
+
+@app.post("/api/integrations/{agent_id}", dependencies=[Depends(verify_token)])
+def save_integrations(agent_id: str, req: IntegrationRequest):
+    base_agent_name = agent_id.replace('@', '_').replace('.', '_')
+    if not base_agent_name.startswith("agent-"):
+        base_agent_name = "agent-" + base_agent_name
+    workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}"
+    
+    if not os.path.exists(workspace_dir):
+        raise HTTPException(status_code=404, detail="Agent workspace not found")
+        
+    env_path = os.path.join(workspace_dir, ".env")
+    
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            
+    new_lines = []
+    found_email = False
+    found_pass = False
+    
+    for line in lines:
+        if line.startswith("GMAIL_ADDRESS="):
+            new_lines.append(f'GMAIL_ADDRESS="{req.gmail_address}"\n')
+            found_email = True
+        elif line.startswith("GMAIL_APP_PASSWORD="):
+            if req.gmail_app_password: # Only update if provided
+                new_lines.append(f'GMAIL_APP_PASSWORD="{req.gmail_app_password}"\n')
+            else:
+                new_lines.append(line)
+            found_pass = True
+        else:
+            new_lines.append(line)
+            
+    if not found_email:
+        new_lines.append(f'GMAIL_ADDRESS="{req.gmail_address}"\n')
+    if not found_pass and req.gmail_app_password:
+        new_lines.append(f'GMAIL_APP_PASSWORD="{req.gmail_app_password}"\n')
+        
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+        
+    return {"status": "success"}
 
 
 @app.post("/api/sessions", dependencies=[Depends(verify_token)])
