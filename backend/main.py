@@ -1263,6 +1263,51 @@ def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
 
 
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+
+@app.delete("/api/fleet/sessions/{agent_id}")
+async def delete_fleet_session(agent_id: str, token: str = Query(None)):
+    if not token:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+    try:
+        parts = token.split(".")
+        if len(parts) != 2:
+            return JSONResponse({"error": "Invalid Token Format"}, status_code=401)
+            
+        payload_b64, signature_b64 = parts
+        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+        if not secret:
+            return JSONResponse({"error": "No signing secret"}, status_code=500)
+            
+        import base64
+        import hmac
+        import hashlib
+        def pad_b64(data): return data + "=" * (-len(data) % 4)
+        
+        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
+        if signature_b64.rstrip("=") != expected_b64:
+            return JSONResponse({"error": "Invalid Signature"}, status_code=401)
+            
+        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
+        email = payload.get("e")
+        if not email:
+            return JSONResponse({"error": "Invalid payload"}, status_code=401)
+            
+        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+        expected_base = f"agent-{sanitized_email}"
+        
+        if not agent_id.startswith(expected_base):
+            return JSONResponse({"error": "Unauthorized access to this agent"}, status_code=403)
+            
+        import subprocess
+        subprocess.run(["tmux", "kill-session", "-t", agent_id], capture_output=True)
+        return {"status": "killed", "agent_id": agent_id}
+        
+    except Exception as e:
+        logger.error(f"Fleet delete error: {e}")
+        return JSONResponse({"error": "Token parsing failed"}, status_code=401)
+
 @app.get("/api/fleet/sessions/{agent_id}")
 async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
     if not token:
