@@ -11,6 +11,7 @@ import SettingsModal from './components/SettingsModal';
 import MacroLibraryModal from './components/MacroLibraryModal';
 import AuthScreen from './components/AuthScreen';
 import DeleteSessionModal from './components/DeleteSessionModal';
+import IntegrationsModal from './components/IntegrationsModal';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
 
@@ -31,6 +32,7 @@ function App() {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
   const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
+  const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('');
@@ -1097,6 +1099,7 @@ function App() {
             </select>
             <button className="macro-btn" onClick={createSession}>+</button>
             <button className="macro-btn" onClick={killSession}>🗑️</button>
+            <button className="macro-btn" onClick={() => setIsIntegrationsModalOpen(true)} title="Integrations Vault">🔌</button>
           </div>
         )}
         {sessions.length === 0 && (
@@ -1415,6 +1418,13 @@ function App() {
         onConfirm={confirmKillSession}
         sessionName={activeSession}
       />
+      
+      <IntegrationsModal
+        isOpen={isIntegrationsModalOpen}
+        onClose={() => setIsIntegrationsModalOpen(false)}
+        activeSession={activeSession}
+      />
+
     </div>
   );
 }
