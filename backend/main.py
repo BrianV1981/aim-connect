@@ -826,12 +826,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     # Step 1: Enforce authentication
     authenticated = False
     target_session_override = None
+    client_gemini_api_key = None
     try:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(auth_message)
         if data.get("type") == "auth":
             token = data.get("token", "")
             sub_session_id = data.get("sub_session_id")
+            client_gemini_api_key = data.get("gemini_api_key")
             
             if token in VALID_API_TOKENS:
                 token_data = VALID_API_TOKENS[token]
@@ -953,9 +955,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             # Configure CLI args: all agents get standard capabilities
             cli_args = "/home/kingb/.local/bin/agy"
             
+            env_injections = ""
+            if client_gemini_api_key:
+                env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
+
             bwrap_cmd = (
                 f"bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp "
                 f"--tmpfs /home/kingb "
+                f"{env_injections}"
                 f"--ro-bind /home/kingb/.local /home/kingb/.local "
                 f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
                 f"--bind /home/kingb/.gemini/antigravity-cli/bin /home/kingb/.gemini/antigravity-cli/bin "
