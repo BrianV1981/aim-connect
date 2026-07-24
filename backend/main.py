@@ -423,8 +423,8 @@ def update_e2ee_settings(req: E2EESettingsRequest):
 async def sync_csv(agent_id: str, file: UploadFile = File(...)):
     """
     Multi-Tenant Database Ingestion:
-    Receives a CSV file and inserts it directly into the isolated SQLite database
-    belonging exclusively to the specified agent_id contract workspace.
+    Receives a CSV/Data file and drops it into the agent's insulated _ingest folder,
+    then triggers the Subconscious Daemon to vectorize and chunk the data into the Engram DB.
     """
     base_agent_name = agent_id.replace('@', '_').replace('.', '_')
     workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}"
@@ -432,52 +432,30 @@ async def sync_csv(agent_id: str, file: UploadFile = File(...)):
     if not os.path.exists(workspace_dir):
         raise HTTPException(status_code=404, detail=f"Sovereign workspace for {agent_id} not found.")
         
-    data_dir = os.path.join(workspace_dir, "data")
-    os.makedirs(data_dir, exist_ok=True)
+    ingest_dir = os.path.join(workspace_dir, "brain", "memory-wiki", "_ingest")
+    os.makedirs(ingest_dir, exist_ok=True)
     
-    db_path = os.path.join(data_dir, "contract_data.db")
+    # Save the raw file to the _ingest folder
+    safe_filename = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', file.filename)
+    file_path = os.path.join(ingest_dir, safe_filename)
     
-    # Read the file
     content = await file.read()
-    text = content.decode("utf-8")
-    
-    # Parse CSV
-    reader = csv.reader(StringIO(text))
-    header = next(reader, None)
-    if not header:
-        raise HTTPException(status_code=400, detail="Uploaded CSV file is empty or missing a header row.")
+    with open(file_path, "wb") as f:
+        f.write(content)
         
-    # Sanitize column names for SQLite
-    cols = [re.sub(r'\W+', '_', col.strip().lower()).strip('_') or f"col_{i}" for i, col in enumerate(header)]
+    # Trigger the Subconscious Daemon to process the new data
+    daemon_cmd = f"cd {workspace_dir} && /home/kingb/.local/bin/agy wiki process"
     
-    # SQLite logic
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    table_name = "csv_imports"
-    cols_def = ", ".join([f"{col} TEXT" for col in cols])
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (id INTEGER PRIMARY KEY AUTOINCREMENT, {cols_def})")
-    
-    placeholders = ", ".join(["?"] * len(cols))
-    insert_sql = f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
-    
-    rows = []
-    for row in reader:
-        # Pad row with None if it's shorter than header
-        row = row + [None] * (len(cols) - len(row))
-        # Truncate row if it's longer
-        row = row[:len(cols)]
-        rows.append(row)
+    try:
+        # Run in background so we don't block the API response
+        subprocess.Popen(daemon_cmd, shell=True, executable="/bin/bash")
+    except Exception as e:
+        logger.error(f"Failed to trigger Subconscious Daemon for {agent_id}: {e}")
         
-    cursor.executemany(insert_sql, rows)
-    conn.commit()
-    conn.close()
-    
     return {
         "status": "success",
-        "message": f"Successfully ingested {len(rows)} rows into {agent_id}'s isolated database.",
-        "rows_inserted": len(rows),
-        "database": db_path
+        "message": f"Successfully dropped {safe_filename} into {agent_id}'s _ingest folder. The Subconscious Daemon is now vectorizing it into the Engram DB.",
+        "file": file_path
     }
 
 
@@ -494,10 +472,36 @@ def create_session(req: SessionRequest) -> dict:
     return {"error": result.stderr}
 
 @app.delete("/api/sessions/{name}", dependencies=[Depends(verify_token)])
-def kill_session(name: str):
+def kill_session(name: str, delete_workspace: bool = False):
     import subprocess
+    import shutil
+    import re
     result = subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True, text=True)
-    if result.returncode == 0:
+    
+    if delete_workspace:
+        # Obliterate the workspace directory for the agent/subagent
+        workspace_dir = None
+        parts = name.split('-')
+        if name.startswith('agent-'):
+            if len(parts) >= 3:
+                base_agent = f"{parts[0]}-{parts[1]}"
+                sub_id = '-'.join(parts[2:])
+                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
+            else:
+                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{name}"
+        else:
+            # Fallback for generic non-agent workspaces, if needed, though usually this targets agents
+            workspace_dir = f"/home/kingb/aim-connect/workspace/{name}"
+            
+        if workspace_dir and os.path.exists(workspace_dir):
+            try:
+                shutil.rmtree(workspace_dir)
+                logger.info(f"Obliterated workspace directory: {workspace_dir}")
+            except Exception as e:
+                logger.error(f"Failed to delete workspace directory {workspace_dir}: {e}")
+                return {"status": "success", "warning": f"Session killed, but failed to delete workspace: {e}"}
+
+    if result.returncode == 0 or "can't find session" in result.stderr:
         return {"status": "success"}
     return {"error": result.stderr}
 
@@ -860,6 +864,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
         os.makedirs(agent_brain_dir, exist_ok=True)
         os.makedirs(agent_conv_dir, exist_ok=True)
+        os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "logs"), exist_ok=True)
+        os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "crashes"), exist_ok=True)
+        os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "implicit"), exist_ok=True)
+        open(os.path.join(agent_brain_dir, "summary_store.db"), "a").close()
+        try:
+            import shutil
+            shutil.copy("/home/kingb/.gemini/antigravity-cli/antigravity-oauth-token", os.path.join(agent_brain_dir, "antigravity-oauth-token"))
+        except Exception:
+            open(os.path.join(agent_brain_dir, "antigravity-oauth-token"), "a").close()
         
         proc = await asyncio.create_subprocess_exec(
             "tmux", "has-session", "-t", target_session_override,
@@ -875,7 +888,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             cli_args = "/home/kingb/.local/bin/agy"
             
             bwrap_cmd = (
-                f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                f"bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp "
                 f"--tmpfs /home/kingb "
                 f"--ro-bind /home/kingb/.local /home/kingb/.local "
                 f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
@@ -884,8 +897,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
                 f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
                 f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
-                f"--bind /tmp /home/kingb/.gemini/antigravity-cli/log "
-                f"--bind /tmp /home/kingb/.gemini/antigravity-cli/crashes "
+                f"--bind {agent_brain_dir}/.system_generated/logs /home/kingb/.gemini/antigravity-cli/log "
+                f"--bind {agent_brain_dir}/.system_generated/crashes /home/kingb/.gemini/antigravity-cli/crashes "
+                f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
+                f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
+                f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.gemini/antigravity-cli/antigravity-oauth-token "
                 f"--chdir {workspace_dir} {cli_args}"
             )
             start_proc = await asyncio.create_subprocess_exec(
@@ -925,13 +941,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     f.seek(0, 2)
                                     last_pos = f.tell()
                         
-                        # 1. Send the prompt to the background TMUX session safely using the buffer system
+                        # Send the prompt to the background TMUX session using the buffer system
                         import subprocess
                         subprocess.run(["tmux", "set-buffer", prompt])
                         subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
                         
-                        # Wait for the UI to process the paste before submitting
-                        await asyncio.sleep(0.5)
+                        # Dynamically sleep based on message length to prevent Prompt Toolkit from swallowing Enter
+                        # 0.5s minimum, scales up for massive payloads to allow rendering to complete
+                        sleep_time = max(0.5, len(prompt) / 20000.0)
+                        await asyncio.sleep(sleep_time)
+                        
+                        # Instantly submit using the correct Enter key
                         subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                         
                         # 2. Wait for the agent to think and write the response
