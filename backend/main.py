@@ -930,12 +930,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         subprocess.run(["tmux", "set-buffer", prompt])
                         subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
                         
-                        # Wait for the UI to process the paste before dropping out of insert mode
+                        # Wait for the UI to process the paste before submitting
                         await asyncio.sleep(0.5)
-                        subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Escape"])
-                        
-                        # Give the UI time to register Escape before hitting Enter
-                        await asyncio.sleep(0.2)
                         subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                         
                         # 2. Wait for the agent to think and write the response
