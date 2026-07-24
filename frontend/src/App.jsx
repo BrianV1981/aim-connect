@@ -10,6 +10,7 @@ import Keyboard from './Keyboard';
 import SettingsModal from './components/SettingsModal';
 import MacroLibraryModal from './components/MacroLibraryModal';
 import AuthScreen from './components/AuthScreen';
+import DeleteSessionModal from './components/DeleteSessionModal';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
 
@@ -29,6 +30,7 @@ function App() {
   
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
+  const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('');
@@ -300,12 +302,16 @@ function App() {
 
   const killSession = async () => {
     if (!activeSession) return;
-    if (!window.confirm(`Kill session ${activeSession}?`)) return;
+    setIsDeleteSessionModalOpen(true);
+  };
+
+  const confirmKillSession = async (sessionToKill) => {
+    setIsDeleteSessionModalOpen(false);
     try {
       // Find another session to switch to FIRST to prevent PTY crash
       const res = await fetch('/api/sessions');
       const data = await res.json();
-      const otherSessions = data.sessions.filter(s => s !== activeSession);
+      const otherSessions = data.sessions.filter(s => s !== sessionToKill);
       
       if (otherSessions.length > 0) {
         const nextSession = otherSessions[0];
@@ -317,9 +323,9 @@ function App() {
         setActiveSession('');
       }
       
-      // Give tmux a millisecond to switch clients, then kill the original session
+      // Give tmux a millisecond to switch clients, then kill the original session and its workspace
       setTimeout(async () => {
-        await fetch(`/api/sessions/${activeSession}`, { method: 'DELETE' });
+        await fetch(`/api/sessions/${sessionToKill}?delete_workspace=true`, { method: 'DELETE' });
         const finalRes = await fetch('/api/sessions');
         const finalData = await finalRes.json();
         setSessions(finalData.sessions);
@@ -736,8 +742,23 @@ function App() {
       }
     }
 
-    term.current.writeln('\x1b[32m[Access Granted - aim-connect]\x1b[0m');
-
+    term.current.writeln('');
+    term.current.writeln('\x1b[1;36m      :::::::::::  ::::::::   ::::::::  :::    ::: :::    :::     :::     \x1b[0m');
+    term.current.writeln('\x1b[1;36m          :+:     :+:    :+: :+:    :+: :+:    :+: :+:    :+:   :+: :+:   \x1b[0m');
+    term.current.writeln('\x1b[1;36m          +:+     +:+    +:+ +:+        +:+    +:+ +:+    +:+  +:+   +:+  \x1b[0m');
+    term.current.writeln('\x1b[1;36m          +#+     +#+    +:+ +#++:++#++ +#++:++#++ +#+    +:+ +#++:++#++: \x1b[0m');
+    term.current.writeln('\x1b[1;36m          +#+     +#+    +#+        +#+ +#+    +#+ +#+    +#+ +#+     +#+ \x1b[0m');
+    term.current.writeln('\x1b[1;36m      #+# #+#     #+#    #+# #+#    #+# #+#    #+# #+#    #+# #+#     #+# \x1b[0m');
+    term.current.writeln('\x1b[1;36m       #####       ########   ########  ###    ###  ########  ###     ### \x1b[0m');
+    term.current.writeln('');
+    term.current.writeln('\x1b[1;34m    A.I.M. SOVEREIGN NODE - TERMINAL INTERFACE\x1b[0m');
+    term.current.writeln('\x1b[90m    ===========================================\x1b[0m');
+    term.current.writeln('\x1b[32m    [+] Connection Established\x1b[0m');
+    term.current.writeln('\x1b[32m    [+] E2EE Handshake Verified\x1b[0m');
+    term.current.writeln('\x1b[32m    [+] Primary Node Initialized\x1b[0m');
+    term.current.writeln('');
+    term.current.writeln('\x1b[37m    Welcome, Operator. The Sovereign AI is ready.\x1b[0m');
+    term.current.writeln('');
     term.current.onData((data) => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify({ type: 'input', payload: data }));
@@ -941,8 +962,9 @@ function App() {
 
           if (voiceSlashes) {
             finalPayload = finalPayload
-              .replace(/\s*\b(?:forward\s)?slash\b\s*/gi, '/')
+              // CRITICAL: Backslash MUST be processed before slash to prevent "back slash" becoming "back/"
               .replace(/\s*\bback\s?slash\b\s*/gi, '\\')
+              .replace(/\s*\b(?:forward\s)?slash\b\s*/gi, '/')
               .replace(/\s*\bdash\b\s*/gi, '-');
           }
 
@@ -960,6 +982,11 @@ function App() {
             .replace(/\s*\bunquote\b/gi, '"')
             // Remove spaces BEFORE punctuation like period, comma, question mark
             .replace(/\s+([.,?!])/g, '$1');
+
+          // IN-CHUNK AUTO-CAPITALIZATION: If auto-capitalize is on, ensure any word immediately following a sentence terminator inside the same chunk gets capitalized.
+          if (voiceAutoCapitalize) {
+            finalPayload = finalPayload.replace(/([.?!])\s+([a-z])/g, (match, p1, p2) => p1 + ' ' + p2.toUpperCase());
+          }
           
           let prefix = "";
           if (lastVoiceEndedWithSpace.current) {
@@ -1381,6 +1408,13 @@ function App() {
           e2eeSecret={e2eeSecret} setE2eeSecret={setE2eeSecret}
         />
       )}
+
+      <DeleteSessionModal 
+        isOpen={isDeleteSessionModalOpen} 
+        onClose={() => setIsDeleteSessionModalOpen(false)} 
+        onConfirm={confirmKillSession}
+        sessionName={activeSession}
+      />
     </div>
   );
 }
