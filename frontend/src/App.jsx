@@ -327,7 +327,7 @@ function App() {
       
       // Give tmux a millisecond to switch clients, then kill the original session and its workspace
       setTimeout(async () => {
-        await fetch(`/api/sessions/${sessionToKill}?delete_workspace=true`, { method: 'DELETE' });
+        await fetch(`/api/sessions/${sessionToKill}?delete_workspace=false`, { method: 'DELETE' });
         const finalRes = await fetch('/api/sessions');
         const finalData = await finalRes.json();
         setSessions(finalData.sessions);

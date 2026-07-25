@@ -30,7 +30,7 @@ export default function DeleteSessionModal({ isOpen, onClose, onConfirm, session
         </h2>
         
         <p style={{ fontSize: '1.1rem', lineHeight: '1.5' }}>
-          You are about to obliterate the session: <strong>{sessionName}</strong>
+          You are about to kill the session: <strong>{sessionName}</strong>
         </p>
         
         <div style={{
@@ -40,17 +40,17 @@ export default function DeleteSessionModal({ isOpen, onClose, onConfirm, session
           borderLeft: '4px solid #ff4444',
           margin: '20px 0'
         }}>
-          <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', color: '#ff6b6b' }}>This action will permanently delete:</p>
+          <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', color: '#ff6b6b' }}>This action will permanently terminate:</p>
           <ul style={{ margin: 0, paddingLeft: '20px', color: '#ffb3b3' }}>
             <li style={{ marginBottom: '8px' }}>The active agent process and tmux session</li>
-            <li style={{ marginBottom: '8px' }}>The entire isolated workspace directory</li>
-            <li style={{ marginBottom: '8px' }}>All artifacts, code, and files generated in this workspace</li>
-            <li>All conversation history and logs for this session</li>
           </ul>
+          <p style={{ margin: '15px 0 0 0', fontWeight: 'bold', color: '#5cb85c', fontSize: '0.9rem' }}>
+            (Note: The workspace directory and all generated artifacts will be safely preserved.)
+          </p>
         </div>
         
         <p style={{ color: '#ccc', marginBottom: '25px', fontWeight: 'bold' }}>
-          This action cannot be undone. Are you absolutely sure?
+          This action will end the current session. Are you sure?
         </p>
         
         <div style={{ display: 'flex', gap: '15px', justifyContent: 'flex-end' }}>
@@ -84,7 +84,7 @@ export default function DeleteSessionModal({ isOpen, onClose, onConfirm, session
               gap: '8px'
             }}
           >
-            🗑️ Yes, Delete Everything
+            🗑️ Yes, End Session
           </button>
         </div>
       </div>
