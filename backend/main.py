@@ -827,6 +827,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     authenticated = False
     target_session_override = None
     client_gemini_api_key = None
+    client_gemini_model = None
+    client_harness = "opencode"
     try:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(auth_message)
@@ -834,6 +836,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             token = data.get("token", "")
             sub_session_id = data.get("sub_session_id")
             client_gemini_api_key = data.get("gemini_api_key")
+            client_gemini_model = data.get("gemini_model")
+            client_harness = data.get("harness", "opencode")
             
             if token in VALID_API_TOKENS:
                 token_data = VALID_API_TOKENS[token]
@@ -936,11 +940,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "crashes"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "implicit"), exist_ok=True)
         open(os.path.join(agent_brain_dir, "summary_store.db"), "a").close()
-        try:
-            import shutil
-            shutil.copy("/home/kingb/.gemini/antigravity-cli/antigravity-oauth-token", os.path.join(agent_brain_dir, "antigravity-oauth-token"))
-        except Exception:
-            open(os.path.join(agent_brain_dir, "antigravity-oauth-token"), "a").close()
+        # CRITICAL SECURITY FIX: Never copy the master OAuth token!
+        # Write a dummy valid JSON payload to bypass the agy interactive login prompt when using BYOK API keys
+        with open(os.path.join(agent_brain_dir, "antigravity-oauth-token"), "w") as f:
+            f.write('{"access_token": "ya29.dummy", "token_type": "Bearer", "refresh_token": "1//dummy", "expiry": "2099-01-01T00:00:00Z"}')
         
         proc = await asyncio.create_subprocess_exec(
             "tmux", "has-session", "-t", target_session_override,
@@ -952,8 +955,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         if proc.returncode != 0:
             logger.info(f"Starting TMUX session for {target_session_override}...")
             
-            # Configure CLI args: all agents get standard capabilities
-            cli_args = "/home/kingb/.local/bin/agy"
+            # Configure CLI args based on selected harness
+            if client_harness == "opencode":
+                cli_args = "/bin/bash ./aim"
+            elif client_harness == "grok":
+                cli_args = "/bin/bash ./aim"  # Default to aim until grok build is available
+            elif client_harness == "admin":
+                cli_args = "/home/kingb/.local/bin/agy"
+            else:
+                cli_args = "/home/kingb/.local/bin/agy"
+                
+            if client_gemini_model:
+                cli_args += f" --model {client_gemini_model}"
             
             env_injections = ""
             if client_gemini_api_key:
@@ -1111,7 +1124,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 
         result = subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
         if result.returncode == 0:
-            subprocess.run(["tmux", "send-keys", "-t", target_session, "agy", "Enter"])
+            if client_harness == "opencode":
+                admin_cli = "cd /home/kingb/aim-opencode && ./aim"
+            elif client_harness == "grok":
+                admin_cli = "cd /home/kingb/aim-opencode && ./aim"
+            elif client_harness == "admin":
+                admin_cli = "agy"
+            else:
+                admin_cli = "agy"
+            subprocess.run(["tmux", "send-keys", "-t", target_session, admin_cli, "Enter"])
         os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
     # Parent process

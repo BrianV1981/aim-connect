@@ -29,6 +29,7 @@ function App() {
     localStorage.setItem('aim-e2ee-secret', val);
   };
   
+  const [selectedHarness, setSelectedHarness] = useState('opencode');
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState('');
   const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
@@ -156,6 +157,7 @@ function App() {
   const authRef = useRef(false);
   const pinRef = useRef('');
   const passwordRef = useRef('');
+  const harnessRef = useRef('admin');
   const apiTokenRef = useRef(localStorage.getItem('aim-token') || null);
   const reconnectAttempts = useRef(0);
   const [connState, setConnState] = useState('disconnected');
@@ -453,9 +455,9 @@ function App() {
   // Trigger auth when 6 digits are reached
   useEffect(() => {
     if (pin.length === 6) {
-      authenticate(pin, password);
+      authenticate(pin, password, selectedHarness);
     }
-  }, [pin, password]);
+  }, [pin, password, selectedHarness]);
 
   // Support pasting TOTP codes directly
   useEffect(() => {
@@ -506,15 +508,19 @@ function App() {
       setE2eeSecret(passedE2eeSecret);
     }
     setAuthError('');
-    authenticate(null, null); // proceed to WS connection
+    authenticate(null, null, selectedHarness); // proceed to WS connection
   };
 
-  const authenticate = async (token, pass) => {
+  const authenticate = async (token, pass, selectedHarness = 'admin') => {
     if (token !== null && (!pass || !passphrase)) {
         setAuthError(!passphrase ? 'Please enter Name first' : 'Please enter Admin Password first');
         setPin('');
         return;
     }
+    
+    // Store the harness to pass to the WS later
+    harnessRef.current = selectedHarness;
+    
     if (token && pass) {
       try {
         const res = await window.fetch('/api/auth', {
@@ -550,7 +556,7 @@ function App() {
 
     socket.onopen = () => {
       // Send the API token to WS, not the original PIN
-      socket.send(JSON.stringify({ type: 'auth', token: apiTokenRef.current }));
+      socket.send(JSON.stringify({ type: 'auth', token: apiTokenRef.current, harness: harnessRef.current }));
     };
 
     socket.onmessage = (event) => {
@@ -1075,6 +1081,7 @@ function App() {
         showPassword={showPassword} setShowPassword={setShowPassword}
         pin={pin} authError={authError}
         e2eeSecret={e2eeSecret} setE2eeSecret={setE2eeSecret}
+        selectedHarness={selectedHarness} setSelectedHarness={setSelectedHarness}
         onPinInput={handlePinInput}
         onBackspace={handleBackspace}
         onPasteClick={handlePasteClick}
