@@ -548,13 +548,17 @@ def kill_session(name: str, delete_workspace: bool = False):
         # Obliterate the workspace directory for the agent/subagent
         workspace_dir = None
         parts = name.split('-')
-        if name.startswith('agent-'):
-            if len(parts) >= 3:
-                base_agent = f"{parts[0]}-{parts[1]}"
+        if name.startswith('agent-') and len(parts) >= 2:
+            base_agent = f"agent-{parts[1]}"
+            user_root_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
+            if len(parts) == 3:
+                harness = parts[2]
+                workspace_dir = f"{user_root_dir}/harness-{harness}"
+            elif len(parts) > 3:
                 sub_id = '-'.join(parts[2:])
-                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
+                workspace_dir = f"{user_root_dir}/fleet_workspaces/{sub_id}"
             else:
-                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{name}"
+                workspace_dir = user_root_dir
         else:
             # Fallback for generic non-agent workspaces, if needed, though usually this targets agents
             workspace_dir = f"/home/kingb/aim-connect/workspace/{name}"
@@ -871,9 +875,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     auth_attempts[client_ip] = (0, None)
                                     sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
                                     if sub_session_id and re.match(r'^[a-zA-Z0-9_-]+$', sub_session_id):
-                                        target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
+                                        target_session_override = f"agent-{sanitized_email}-{client_harness}-{sub_session_id}"
                                     else:
-                                        target_session_override = f"agent-{sanitized_email}"
+                                        target_session_override = f"agent-{sanitized_email}-{client_harness}"
                         except Exception as e:
                             logger.error(f"Failed to parse LeadDeed token: {e}")
             
@@ -902,12 +906,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         import tempfile
         import shlex
         
-        base_agent_name = target_session_override.split('-')[1] # The sanitized email part
-        is_sub_session = target_session_override != f"agent-{base_agent_name}"
+        parts = target_session_override.split('-')
+        base_agent_name = parts[1] # The sanitized email part
+        current_harness = parts[2] if len(parts) > 2 else "opencode"
+        is_sub_session = len(parts) > 3
+        
+        user_root_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}"
+        shared_data_dir = os.path.join(user_root_dir, "shared_database")
+        os.makedirs(shared_data_dir, exist_ok=True)
         
         if is_sub_session:
-            sub_id = target_session_override.split('-', 2)[2]
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}/fleet_workspaces/{sub_id}"
+            sub_id = "-".join(parts[3:])
+            workspace_dir = os.path.join(user_root_dir, "fleet_workspaces", f"{current_harness}-{sub_id}")
             os.makedirs(workspace_dir, exist_ok=True)
             
             # Auto-inject the Fleet Protocol AGENTS.md into their isolated bubble
@@ -923,19 +933,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             agent_brain_dir = os.path.join(workspace_dir, "brain")
             agent_conv_dir = os.path.join(workspace_dir, "conversations")
         else:
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}"
+            workspace_dir = os.path.join(user_root_dir, f"harness-{current_harness}")
             # The workspace must be pre-built and insulated by the administrator.
-            if not os.path.exists(workspace_dir):
-                logger.error(f"Workspace {workspace_dir} does not exist. Rejecting connection.")
+            if not os.path.exists(user_root_dir):
+                logger.error(f"User root {user_root_dir} does not exist. Rejecting connection.")
                 await websocket.send_text("**System Error:** Your Sovereign Workspace has not been provisioned by the Administrator.")
                 await websocket.close()
                 return
+            os.makedirs(workspace_dir, exist_ok=True)
             
             agent_brain_dir = os.path.join(workspace_dir, "brain")
             agent_conv_dir = os.path.join(workspace_dir, "conversations")
 
         os.makedirs(agent_brain_dir, exist_ok=True)
         os.makedirs(agent_conv_dir, exist_ok=True)
+        os.makedirs(os.path.join(workspace_dir, "opencode_data"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "logs"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "crashes"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "implicit"), exist_ok=True)
@@ -956,14 +968,32 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             logger.info(f"Starting TMUX session for {target_session_override}...")
             
             # Configure CLI args based on selected harness
-            cli_args = "/home/kingb/.local/bin/agy --log-file /dev/null"
+            if client_harness == "opencode":
+                cli_args = "/home/kingb/.opencode/bin/opencode"
+            else:
+                cli_args = "/home/kingb/.local/bin/agy --log-file /dev/null"
                 
             if client_gemini_model:
-                cli_args += f" --model {client_gemini_model}"
+                # Map frontend model identifiers to actual supported model names for opencode
+                model_mapping = {
+                    "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
+                    "gemini-3.5-flash": "gemini-flash-latest",
+                    "gemini-3.1-pro": "gemini-2.5-pro",
+                    "opencode": "gemini-flash-lite-latest",
+                    "grok": "gemini-flash-lite-latest"
+                }
+                mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
+                
+                if client_harness == "opencode" and "/" not in mapped_model:
+                    cli_args += f" --model google/{mapped_model}"
+                else:
+                    cli_args += f" --model {mapped_model}"
             
             env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
             if client_gemini_api_key:
                 env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
+                if client_harness == "opencode":
+                    env_injections += f"--setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
 
             bwrap_cmd = (
                 f"bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp "
@@ -971,8 +1001,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 f"{env_injections}"
                 f"--ro-bind /home/kingb/.local /home/kingb/.local "
                 f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
+                f"--ro-bind /home/kingb/.opencode /home/kingb/.opencode "
+                f"--bind {workspace_dir}/opencode_data /home/kingb/.local/share/opencode "
                 f"--bind /home/kingb/.gemini/antigravity-cli/bin /home/kingb/.gemini/antigravity-cli/bin "
                 f"--bind {workspace_dir} {workspace_dir} "
+                f"--bind {shared_data_dir} {workspace_dir}/shared_database "
                 f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
                 f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
                 f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
@@ -981,7 +1014,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
                 f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
                 f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.gemini/antigravity-cli/antigravity-oauth-token "
-                f"--dir /home/kingb/.opencode "
                 f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.opencode/opencode-oauth-token "
                 f"--chdir {workspace_dir} {cli_args}"
             )
@@ -1010,64 +1042,156 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         continue
                         
                     try:
-                        import glob
-                        
-                        log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-                        log_file = None
-                        last_pos = 0
-                        if log_files:
-                            log_file = max(log_files, key=os.path.getmtime)
-                            if os.path.exists(log_file):
-                                with open(log_file, "r") as f:
-                                    f.seek(0, 2)
-                                    last_pos = f.tell()
-                        
-                        # Send the prompt to the background TMUX session using the buffer system
-                        import subprocess
-                        subprocess.run(["tmux", "set-buffer", prompt])
-                        subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
-                        
-                        # Dynamically sleep based on message length to prevent Prompt Toolkit from swallowing Enter
-                        # 0.5s minimum, scales up for massive payloads to allow rendering to complete
-                        sleep_time = max(0.5, len(prompt) / 20000.0)
-                        await asyncio.sleep(sleep_time)
-                        
-                        # Instantly submit using the correct Enter key
-                        subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
-                        
-                        # 2. Wait for the agent to think and write the response
-                        if not log_file:
-                            clean_output = "**Error:** Agent brain directory not initialized yet."
-                        else:
-                            clean_output = "**Error:** Agent timed out or failed to write transcript."
-                            start_time = time.time()
+                        # Handle different harnesses for extracting responses
+                        if client_harness == "opencode":
+                            import subprocess
                             
-                            # Wait up to 5 minutes for the agent to finish its tool loops
-                            while time.time() - start_time < 300:
+                            def get_clean_screen():
+                                res = subprocess.run(["tmux", "capture-pane", "-p", "-t", target_session_override], capture_output=True, text=True)
+                                lines = res.stdout.splitlines()
+                                clean_lines = []
+                                for line in lines:
+                                    # Strip all opencode TUI artifacts
+                                    if "╹▀▀▀" in line: continue
+                                    if "ctrl+p commands" in line: continue
+                                    if "Build · Gemini" in line: continue
+                                    if line.strip().startswith("┃"): continue
+                                    if line.strip().startswith("▣"): continue
+                                    if "opencode" in line and "aim-connect" in line: continue
+                                    
+                                    # Strip massive horizontal dividers that cause frontend scrollbars
+                                    if "────────" in line: continue
+                                    if "━━━━━━━━" in line: continue
+                                    
+                                    clean_lines.append(line.rstrip())
+                                return "\n".join(clean_lines)
+
+                            # Maximize window size to prevent scrolling truncation and allow fluid frontend wrapping
+                            subprocess.run(["tmux", "resize-window", "-t", target_session_override, "-x", "200", "-y", "1000"])
+                            await asyncio.sleep(0.5)
+
+                            baseline_text = get_clean_screen()
+                            
+                            # Manually write user prompt to transcript.jsonl for opencode
+                            log_dir = os.path.join(agent_brain_dir, target_session_override, ".system_generated", "logs")
+                            os.makedirs(log_dir, exist_ok=True)
+                            transcript_path = os.path.join(log_dir, "transcript.jsonl")
+                            with open(transcript_path, "a") as f:
+                                f.write(json.dumps({"type": "USER_INPUT", "content": prompt}) + "\n")
+                            
+                            # Send prompt
+                            subprocess.run(["tmux", "set-buffer", prompt])
+                            subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
+                            await asyncio.sleep(0.5)
+                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+                            
+                            # Wait for it to respond and stop updating
+                            clean_output = ""
+                            last_text = ""
+                            same_count = 0
+                            
+                            for _ in range(120): # up to 120 seconds
+                                await asyncio.sleep(1)
+                                current_text = get_clean_screen()
+                                
+                                if current_text != last_text:
+                                    last_text = current_text
+                                    same_count = 0
+                                elif current_text and current_text != baseline_text:
+                                    same_count += 1
+                                    
+                                # If output has been stable for 2 seconds, assume it's done typing
+                                if same_count >= 2 and current_text != baseline_text:
+                                    baseline_lines = baseline_text.splitlines()
+                                    current_lines = current_text.splitlines()
+                                    
+                                    # Tail match to extract only newly appended lines (ignores header changes)
+                                    tail = []
+                                    for line in reversed(baseline_lines):
+                                        if line.strip():
+                                            tail.insert(0, line)
+                                            if len(tail) == 3:
+                                                break
+                                                
+                                    match_idx = -1
+                                    if tail:
+                                        for i in range(len(current_lines) - len(tail) + 1):
+                                            if current_lines[i:i+len(tail)] == tail:
+                                                match_idx = i + len(tail)
+                                                
+                                        # Fallback to single line tail match
+                                        if match_idx == -1:
+                                            last_line = tail[-1]
+                                            for i in reversed(range(len(current_lines))):
+                                                if current_lines[i] == last_line:
+                                                    match_idx = i + 1
+                                                    break
+                                                    
+                                    if match_idx != -1:
+                                        new_lines = current_lines[match_idx:]
+                                        clean_output = "\n".join(new_lines).strip()
+                                    else:
+                                        # Ultimate fallback
+                                        baseline_set = set(baseline_lines)
+                                        clean_output = "\n".join([l for l in current_lines if l not in baseline_set]).strip()
+                                        
+                                    break
+                                    
+                            if not clean_output:
+                                clean_output = "**System:** Sent to OpenCode terminal, but timed out waiting for stable output."
+                            elif not clean_output.startswith("**System:**"):
+                                # Manually write agent response to transcript.jsonl for opencode
+                                with open(transcript_path, "a") as f:
+                                    f.write(json.dumps({"source": "MODEL", "type": "PLANNER_RESPONSE", "content": clean_output}) + "\n")
+                        else:
+                            # AGY Logic
+                            import glob
+                            log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+                            log_file = None
+                            last_pos = 0
+                            if log_files:
+                                log_file = max(log_files, key=os.path.getmtime)
                                 if os.path.exists(log_file):
                                     with open(log_file, "r") as f:
-                                        f.seek(last_pos)
-                                        lines = f.readlines()
+                                        f.seek(0, 2)
                                         last_pos = f.tell()
-                                        
-                                        found_response = False
-                                        for line in lines:
-                                            try:
-                                                log_data = json.loads(line)
-                                                if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
-                                                    content = log_data.get("content")
-                                                    tool_calls = log_data.get("tool_calls")
-                                                    # Only accept the response if it contains text and NO tool calls (final turn)
-                                                    if content and not tool_calls:
-                                                        clean_output = content
-                                                        found_response = True
-                                            except Exception:
-                                                pass
-                                                
-                                        if found_response:
-                                            break
-                                await asyncio.sleep(1)
-                                
+                            
+                            import subprocess
+                            subprocess.run(["tmux", "set-buffer", prompt])
+                            subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
+                            sleep_time = max(0.5, len(prompt) / 20000.0)
+                            await asyncio.sleep(sleep_time)
+                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+                            
+                            if not log_file:
+                                clean_output = "**Error:** Agent brain directory not initialized yet."
+                            else:
+                                clean_output = "**Error:** Agent timed out or failed to write transcript."
+                                start_time = time.time()
+                                while time.time() - start_time < 300:
+                                    if os.path.exists(log_file):
+                                        with open(log_file, "r") as f:
+                                            f.seek(last_pos)
+                                            lines = f.readlines()
+                                            last_pos = f.tell()
+                                            
+                                            found_response = False
+                                            for line in lines:
+                                                try:
+                                                    log_data = json.loads(line)
+                                                    if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
+                                                        content = log_data.get("content")
+                                                        tool_calls = log_data.get("tool_calls")
+                                                        if content and not tool_calls:
+                                                            clean_output = content
+                                                            found_response = True
+                                                except Exception:
+                                                    pass
+                                                    
+                                            if found_response:
+                                                break
+                                    await asyncio.sleep(1.0)
+                                    
                         if ENABLE_E2EE and E2EE_SECRET:
                             encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
                             await websocket.send_bytes(encrypted)
@@ -1360,10 +1484,12 @@ async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
     sessions = []
     if result.returncode == 0:
         for line in result.stdout.splitlines():
-            # Match only sub-sessions like agent-email-chat123, but exclude the main agent-email session
+            # Match only sub-sessions like agent-email-chat-123, but exclude the main agent-email-harness session
             if line and line.startswith(f"{agent_id}-"):
-                sub_id = line[len(f"{agent_id}-"):]
-                sessions.append({"id": sub_id, "full_name": line})
+                sub_id_part = line[len(f"{agent_id}-"):]
+                # A regular session is just 'harness' (no hyphens). A sub-session is 'harness-subid' (has hyphen).
+                if "-" in sub_id_part:
+                    sessions.append({"id": sub_id_part, "full_name": line})
                 
     return {"sessions": sessions}
 
