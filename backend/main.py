@@ -981,6 +981,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 f"--bind {agent_brain_dir}/.system_generated/implicit /home/operator/.gemini/antigravity-cli/implicit "
                 f"--bind {agent_brain_dir}/summary_store.db /home/operator/.gemini/antigravity-cli/summary_store.db "
                 f"--bind {agent_brain_dir}/antigravity-oauth-token /home/operator/.gemini/antigravity-cli/antigravity-oauth-token "
+                f"--dir /home/operator/.opencode "
                 f"--bind {agent_brain_dir}/antigravity-oauth-token /home/operator/.opencode/opencode-oauth-token "
                 f"--chdir {workspace_dir} {cli_args}"
             )
