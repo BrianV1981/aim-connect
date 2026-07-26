@@ -1090,7 +1090,7 @@ function App() {
         jwtMode={hasJwt}
         onJwtLaunch={() => {
           setIsAuthenticated(true);
-          authenticate(null, null);
+          authenticate(null, null, selectedHarness);
         }}
       />
     );
