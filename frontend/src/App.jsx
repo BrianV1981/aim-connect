@@ -169,7 +169,9 @@ function App() {
   useEffect(() => {
     if (apiTokenRef.current && !isAuthenticated) {
       setIsAuthenticated(true);
-      authenticate(null, null);
+      const urlParams = new URLSearchParams(window.location.search);
+      const harnessFromUrl = urlParams.get('harness') || 'admin';
+      authenticate(null, null, harnessFromUrl);
     }
   }, []);
 
