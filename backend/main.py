@@ -753,8 +753,16 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
 
     html = f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}} h2{{color: #00ff88; text-transform: uppercase; border-bottom: 1px solid #00ff88; padding-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0,255,136,0.5);}} .user{{background: #111a15; padding: 1.5rem; border-radius: 4px; margin-bottom: 1rem; border-left: 3px solid #0088ff; color: #a0c4ff;}} .agent{{background: #0d1410; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem; border-left: 3px solid #00ff88; white-space: pre-wrap; box-shadow: -2px 0 10px rgba(0, 255, 136, 0.1);}} strong{{color: #fff; text-transform: uppercase; letter-spacing: 1px;}} .meta{{font-size: 0.8rem; color: #00ff88; margin-bottom: 15px; opacity: 0.7;}} .boundary{{text-align: center; color: #00ff88; padding: 15px 0; border-top: 1px dashed #00FFA3; border-bottom: 1px dashed #00FFA3; margin: 40px 0; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><div class='meta'>TARGET IDENTIFIER: {agent_id}<br/>ACCESS LEVEL: ADMINISTRATOR</div>"
     
-    opencode_db_path = os.path.join(workspace_dir, "opencode_data", "opencode.db")
-    if os.path.exists(opencode_db_path):
+    opencode_db_path_base = os.path.join(workspace_dir, "harness-opencode", "opencode_data", "opencode.db")
+    opencode_db_path_sub = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+    
+    opencode_db_path = None
+    if os.path.exists(opencode_db_path_base):
+        opencode_db_path = opencode_db_path_base
+    elif os.path.exists(opencode_db_path_sub):
+        opencode_db_path = opencode_db_path_sub
+        
+    if opencode_db_path:
         import sqlite3
         import html as escape_html
         conn = sqlite3.connect(opencode_db_path)
