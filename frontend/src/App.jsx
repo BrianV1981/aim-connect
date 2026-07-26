@@ -511,7 +511,7 @@ function App() {
     authenticate(null, null, selectedHarness); // proceed to WS connection
   };
 
-  const authenticate = async (token, pass, selectedHarness = 'admin') => {
+  const authenticate = async (token, pass, selectedHarness = 'opencode') => {
     if (token !== null && (!pass || !passphrase)) {
         setAuthError(!passphrase ? 'Please enter Name first' : 'Please enter Admin Password first');
         setPin('');
