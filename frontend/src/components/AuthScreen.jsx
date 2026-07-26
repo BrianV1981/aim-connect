@@ -7,8 +7,7 @@ export default function AuthScreen({
   showPassword, setShowPassword,
   pin, authError, e2eeSecret, setE2eeSecret,
   selectedHarness, setSelectedHarness,
-  onPinInput, onBackspace, onPasteClick, onWebAuthnLogin,
-  jwtMode, onJwtLaunch
+  onPinInput, onBackspace, onPasteClick, onWebAuthnLogin
 }) {
   const [webAuthnError, setWebAuthnError] = useState('');
   const [isWebAuthnLoading, setIsWebAuthnLoading] = useState(false);
@@ -60,165 +59,128 @@ export default function AuthScreen({
           <h2 style={{ fontSize: '18px', margin: '0 0 4px 0' }}>A.I.M. SECURE</h2>
         </div>
         
-        {!jwtMode && (
-          <>
-            <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
-              <input 
-                type="text" 
-                className="modal-input" 
-                style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '12px' }}
-                placeholder="Name"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-                autoComplete="username"
-              />
-            </div>
-            
-            <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
-              <input 
-                type={showPassword ? "text" : "password"} 
-                className="modal-input" 
-                style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '10px' }}
-                placeholder="Admin Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-              <button 
-                onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  right: '30px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  padding: '4px'
-                }}
-              >
-                {showPassword ? '🫣' : '👁️'}
-              </button>
-            </div>
+        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+          <input 
+            type="text" 
+            className="modal-input" 
+            style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '12px' }}
+            placeholder="Name"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            autoComplete="username"
+          />
+        </div>
+        
+        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
+          <input 
+            type={showPassword ? "text" : "password"} 
+            className="modal-input" 
+            style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '10px' }}
+            placeholder="Admin Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+          <button 
+            onClick={() => setShowPassword(!showPassword)}
+            style={{
+              position: 'absolute',
+              right: '30px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              fontSize: '16px',
+              padding: '4px'
+            }}
+          >
+            {showPassword ? '🫣' : '👁️'}
+          </button>
+        </div>
 
-            <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
-              <input 
-                type={showE2eeSecret ? "text" : "password"} 
-                className="modal-input" 
-                style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '10px', background: '#0f172a', borderColor: '#334155' }}
-                placeholder="E2EE Secret (Optional)"
-                value={e2eeSecret}
-                onChange={(e) => setE2eeSecret(e.target.value)}
-              />
-              <button 
-                onClick={() => setShowE2eeSecret(!showE2eeSecret)}
-                style={{
-                  position: 'absolute',
-                  right: '30px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  padding: '4px'
-                }}
-              >
-                {showE2eeSecret ? '🫣' : '👁️'}
-              </button>
-            </div>
-          </>
-        )}
+        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
+          <input 
+            type={showE2eeSecret ? "text" : "password"} 
+            className="modal-input" 
+            style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '10px', background: '#0f172a', borderColor: '#334155' }}
+            placeholder="E2EE Secret (Optional)"
+            value={e2eeSecret}
+            onChange={(e) => setE2eeSecret(e.target.value)}
+          />
+          <button 
+            onClick={() => setShowE2eeSecret(!showE2eeSecret)}
+            style={{
+              position: 'absolute',
+              right: '30px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              fontSize: '16px',
+              padding: '4px'
+            }}
+          >
+            {showE2eeSecret ? '🫣' : '👁️'}
+          </button>
+        <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+          <select 
+            value={selectedHarness} 
+            onChange={(e) => setSelectedHarness(e.target.value)}
+            className="modal-input"
+            style={{ width: '100%', textAlign: 'center', padding: '10px', background: '#0f172a', borderColor: '#334155', color: '#f8fafc', cursor: 'pointer' }}
+          >
+            <option value="opencode">OpenCode (Joshua OS)</option>
+            <option value="grok">Grok Build (Upcoming)</option>
+            <option value="admin">Admin (agy OS)</option>
+          </select>
+        </div>
 
-        {jwtMode && (
-          <div style={{ padding: '0 20px', marginBottom: '16px', textAlign: 'center' }}>
-            <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>Authenticated via LeadDeeds</p>
-          </div>
-        )}
+        <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
+          <button 
+            onClick={handleWebAuthnLogin}
+            disabled={isWebAuthnLoading}
+            style={{
+              width: '100%',
+              background: 'rgba(59, 130, 246, 0.2)',
+              border: '1px solid #3b82f6',
+              color: '#60a5fa',
+              padding: '8px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            {isWebAuthnLoading ? 'Authenticating...' : '👤 Login with FaceID / TouchID'}
+          </button>
+          {webAuthnError && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', textAlign: 'center' }}>{webAuthnError}</div>}
+        </div>
 
-          <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
-            <select 
-              value={selectedHarness} 
-              onChange={(e) => setSelectedHarness(e.target.value)}
-              className="modal-input"
-              style={{ width: '100%', textAlign: 'center', padding: '10px', background: '#0f172a', borderColor: '#334155', color: '#f8fafc', cursor: 'pointer' }}
-            >
-              <option value="opencode">OpenCode (Joshua OS)</option>
-              <option value="grok">Grok Build (Upcoming)</option>
-              <option value="admin">Admin (agy OS)</option>
-            </select>
-          </div>
-          
-        {jwtMode ? (
-          <div style={{ padding: '0 20px', width: '100%', boxSizing: 'border-box' }}>
-            <button 
-              onClick={onJwtLaunch}
-              style={{
-                width: '100%',
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                border: 'none',
-                color: '#fff',
-                padding: '16px',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontSize: '18px',
-                boxShadow: '0 4px 15px rgba(59, 130, 246, 0.4)',
-                marginTop: '10px'
-              }}
-            >
-              🚀 LAUNCH
+        <div className="pin-display">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className={`pin-dot ${i < pin.length ? 'filled' : ''}`}></div>
+          ))}
+        </div>
+        
+        {authError && <div className="auth-error">{authError}</div>}
+
+        <div className="keypad">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+            <button key={num} className="key" onClick={() => onPinInput(num.toString())}>
+              {num}
             </button>
-          </div>
-        ) : (
-          <>
-            <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
-              <button 
-                onClick={handleWebAuthnLogin}
-                disabled={isWebAuthnLoading}
-                style={{
-                  width: '100%',
-                  background: 'rgba(59, 130, 246, 0.2)',
-                  border: '1px solid #3b82f6',
-                  color: '#60a5fa',
-                  padding: '8px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                {isWebAuthnLoading ? 'Authenticating...' : '👤 Login with FaceID / TouchID'}
-              </button>
-              {webAuthnError && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', textAlign: 'center' }}>{webAuthnError}</div>}
-            </div>
-
-            <div className="pin-display">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className={`pin-dot ${i < pin.length ? 'filled' : ''}`}></div>
-              ))}
-            </div>
-            
-            {authError && <div className="auth-error">{authError}</div>}
-
-            <div className="keypad">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                <button key={num} className="key" onClick={() => onPinInput(num.toString())}>
-                  {num}
-                </button>
-              ))}
-              <button className="key action" style={{ fontSize: '24px' }} onClick={onPasteClick}>📋</button>
-              <button className="key" onClick={() => onPinInput('0')}>0</button>
-              <button className="key action" onClick={onBackspace}>⌫</button>
-            </div>
-          </>
-        )}
+          ))}
+          <button className="key action" style={{ fontSize: '24px' }} onClick={onPasteClick}>📋</button>
+          <button className="key" onClick={() => onPinInput('0')}>0</button>
+          <button className="key action" onClick={onBackspace}>⌫</button>
+        </div>
       </div>
       <div style={{ position: 'absolute', bottom: '10px', right: '10px', color: '#64748b', fontSize: '10px', zIndex: 10 }}>v1.1.0</div>
     </div>
