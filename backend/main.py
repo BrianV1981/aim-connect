@@ -744,7 +744,7 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
         if len(parts) >= 3 and parts[0] == 'agent':
             base_agent = f"{parts[0]}-{parts[1]}"
             sub_id = '-'.join(parts[2:])
-            if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web"]:
+            if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli"]:
                 workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
             else:
                 workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
@@ -1012,6 +1012,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             # Configure CLI args based on selected harness
             if client_harness == "opencode":
                 cli_args = "/home/kingb/.opencode/bin/opencode"
+            elif client_harness == "admin-cli":
+                cli_args = "/home/kingb/.local/bin/agy --dangerously-skip-permissions --log-file /dev/null"
             else:
                 cli_args = "/home/kingb/.local/bin/agy --log-file /dev/null"
                 
@@ -1022,6 +1024,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     "gemini-3.5-flash": "gemini-flash-latest",
                     "gemini-3.1-pro": "gemini-2.5-pro",
                     "opencode": "gemini-flash-lite-latest",
+                    "admin-cli": "gemini-flash-lite-latest",
                     "grok": "gemini-flash-lite-latest"
                 }
                 mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
