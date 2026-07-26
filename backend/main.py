@@ -1017,7 +1017,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             else:
                 cli_args = "/home/kingb/.local/bin/agy --log-file /dev/null"
                 
-            if client_gemini_model:
+            if client_gemini_model and client_harness != "admin-cli":
                 # Map frontend model identifiers to actual supported model names for opencode
                 model_mapping = {
                     "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
@@ -1035,7 +1035,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     cli_args += f" --model {mapped_model}"
             
             env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
-            if client_gemini_api_key:
+            if client_gemini_api_key and client_harness != "admin-cli":
                 env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
                 if client_harness == "opencode":
                     env_injections += f"--setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
