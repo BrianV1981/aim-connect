@@ -165,11 +165,12 @@ function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
+  const [hasJwt, setHasJwt] = useState(false);
+
   // Auto-auth on load if token exists
   useEffect(() => {
     if (apiTokenRef.current && !isAuthenticated) {
-      setIsAuthenticated(true);
-      authenticate(null, null);
+      setHasJwt(true);
     }
   }, []);
 
@@ -1086,6 +1087,11 @@ function App() {
         onBackspace={handleBackspace}
         onPasteClick={handlePasteClick}
         onWebAuthnLogin={handleWebAuthnLogin}
+        jwtMode={hasJwt}
+        onJwtLaunch={() => {
+          setIsAuthenticated(true);
+          authenticate(null, null);
+        }}
       />
     );
   }
