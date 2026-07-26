@@ -744,7 +744,10 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
         if len(parts) >= 3 and parts[0] == 'agent':
             base_agent = f"{parts[0]}-{parts[1]}"
             sub_id = '-'.join(parts[2:])
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
+            if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web"]:
+                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
+            else:
+                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
         else:
             workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
             
