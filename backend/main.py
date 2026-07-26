@@ -751,48 +751,79 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
     except Exception as e:
         return HTMLResponse(f"<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
 
-    agent_brain_dir = os.path.join(workspace_dir, "brain")
-    
-    if not os.path.exists(agent_brain_dir):
-        return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>No history found for this agent.</h1>", status_code=404)
-        
-    log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-    if not log_files:
-        return HTMLResponse("<h1>Agent brain is empty.</h1>", status_code=404)
-        
-    # Sort by modification time of the actual transcript files descending (newest first)
-    log_files.sort(key=os.path.getmtime, reverse=True)
-    
-    # Take the top N (limit) and reverse it back to chronological (oldest to newest)
-    target_files = log_files[:limit]
-    target_files.reverse()
-        
     html = f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}} h2{{color: #00ff88; text-transform: uppercase; border-bottom: 1px solid #00ff88; padding-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0,255,136,0.5);}} .user{{background: #111a15; padding: 1.5rem; border-radius: 4px; margin-bottom: 1rem; border-left: 3px solid #0088ff; color: #a0c4ff;}} .agent{{background: #0d1410; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem; border-left: 3px solid #00ff88; white-space: pre-wrap; box-shadow: -2px 0 10px rgba(0, 255, 136, 0.1);}} strong{{color: #fff; text-transform: uppercase; letter-spacing: 1px;}} .meta{{font-size: 0.8rem; color: #00ff88; margin-bottom: 15px; opacity: 0.7;}} .boundary{{text-align: center; color: #00ff88; padding: 15px 0; border-top: 1px dashed #00FFA3; border-bottom: 1px dashed #00FFA3; margin: 40px 0; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><div class='meta'>TARGET IDENTIFIER: {agent_id}<br/>ACCESS LEVEL: ADMINISTRATOR</div>"
     
-    for i, log_file in enumerate(target_files):
-        import datetime
-        mtime = os.path.getmtime(log_file)
-        dt_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+    opencode_db_path = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+    if os.path.exists(opencode_db_path):
+        import sqlite3
+        import html as escape_html
+        conn = sqlite3.connect(opencode_db_path)
+        cursor = conn.cursor()
+        query = """
+        SELECT m.data, p.data, m.time_created
+        FROM message m
+        JOIN part p ON m.id = p.message_id
+        ORDER BY m.time_created ASC, p.time_created ASC
+        """
+        rows = cursor.execute(query).fetchall()
+        for msg_data, part_data, time_created in rows:
+            try:
+                m_json = json.loads(msg_data)
+                p_json = json.loads(part_data)
+                
+                if p_json.get("type") == "text" and "text" in p_json:
+                    role = m_json.get("role")
+                    content = p_json.get("text")
+                    safe_content = escape_html.escape(content)
+                    
+                    if role == "user":
+                        html += f"<div class='user'><strong>[OPERATOR INPUT]</strong><br/><br/>{safe_content}</div>"
+                    elif role == "assistant":
+                        html += f"<div class='agent'><strong>[A.I.M. SYSTEM RESPONSE]</strong><br/><br/>{safe_content}</div>"
+            except Exception:
+                pass
+        conn.close()
+    else:
+        agent_brain_dir = os.path.join(workspace_dir, "brain")
         
-        if i > 0:
-            html += f"<div class='boundary'>--- SYSTEM REBOOT: CONTEXT DROPPED ---<br/>REINCARNATION INITIATED: {dt_str}</div>"
-        else:
-            html += f"<div style='text-align: center; color: #00ff88; padding: 10px 0; margin-bottom: 30px; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.5;'>--- BEGIN SESSION ARCHIVE: {dt_str} ---</div>"
+        if not os.path.exists(agent_brain_dir):
+            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>No history found for this agent.</h1>", status_code=404)
             
-        with open(log_file, "r") as f:
-            for line in f:
-                try:
-                    entry = json.loads(line)
-                    if entry.get("type") == "USER_INPUT":
-                        content = entry.get("content", "")
-                        html += f"<div class='user'><strong>[OPERATOR INPUT]</strong><br/><br/>{content}</div>"
-                    elif entry.get("source") == "MODEL" and entry.get("type") == "PLANNER_RESPONSE":
-                        content = entry.get("content")
-                        tool_calls = entry.get("tool_calls")
-                        if content and not tool_calls:
-                            html += f"<div class='agent'><strong>[A.I.M. SYSTEM RESPONSE]</strong><br/><br/>{content}</div>"
-                except Exception:
-                    pass
+        log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+        if not log_files:
+            return HTMLResponse("<h1>Agent brain is empty.</h1>", status_code=404)
+            
+        # Sort by modification time of the actual transcript files descending (newest first)
+        log_files.sort(key=os.path.getmtime, reverse=True)
+        
+        # Take the top N (limit) and reverse it back to chronological (oldest to newest)
+        target_files = log_files[:limit]
+        target_files.reverse()
+            
+        for i, log_file in enumerate(target_files):
+            import datetime
+            mtime = os.path.getmtime(log_file)
+            dt_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+            
+            if i > 0:
+                html += f"<div class='boundary'>--- SYSTEM REBOOT: CONTEXT DROPPED ---<br/>REINCARNATION INITIATED: {dt_str}</div>"
+            else:
+                html += f"<div style='text-align: center; color: #00ff88; padding: 10px 0; margin-bottom: 30px; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.5;'>--- BEGIN SESSION ARCHIVE: {dt_str} ---</div>"
+                
+            with open(log_file, "r") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") == "USER_INPUT":
+                            content = entry.get("content", "")
+                            html += f"<div class='user'><strong>[OPERATOR INPUT]</strong><br/><br/>{content}</div>"
+                        elif entry.get("source") == "MODEL" and entry.get("type") == "PLANNER_RESPONSE":
+                            content = entry.get("content")
+                            tool_calls = entry.get("tool_calls")
+                            if content and not tool_calls:
+                                html += f"<div class='agent'><strong>[A.I.M. SYSTEM RESPONSE]</strong><br/><br/>{content}</div>"
+                    except Exception:
+                        pass
                 
     html += "<script>window.scrollTo(0, document.body.scrollHeight);</script></body></html>"
     return HTMLResponse(html)
@@ -1072,13 +1103,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
                             baseline_text = get_clean_screen()
                             
-                            # Manually write user prompt to transcript.jsonl for opencode
-                            log_dir = os.path.join(agent_brain_dir, target_session_override, ".system_generated", "logs")
-                            os.makedirs(log_dir, exist_ok=True)
-                            transcript_path = os.path.join(log_dir, "transcript.jsonl")
-                            with open(transcript_path, "a") as f:
-                                f.write(json.dumps({"type": "USER_INPUT", "content": prompt}) + "\n")
-                            
                             # Send prompt
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
@@ -1139,10 +1163,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     
                             if not clean_output:
                                 clean_output = "**System:** Sent to OpenCode terminal, but timed out waiting for stable output."
-                            elif not clean_output.startswith("**System:**"):
-                                # Manually write agent response to transcript.jsonl for opencode
-                                with open(transcript_path, "a") as f:
-                                    f.write(json.dumps({"source": "MODEL", "type": "PLANNER_RESPONSE", "content": clean_output}) + "\n")
                         else:
                             # AGY Logic
                             import glob
