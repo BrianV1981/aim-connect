@@ -6,7 +6,6 @@ export default function AuthScreen({
   password, setPassword,
   showPassword, setShowPassword,
   pin, authError, e2eeSecret, setE2eeSecret,
-  selectedHarness, setSelectedHarness,
   onPinInput, onBackspace, onPasteClick, onWebAuthnLogin
 }) {
   const [webAuthnError, setWebAuthnError] = useState('');
@@ -126,17 +125,6 @@ export default function AuthScreen({
           >
             {showE2eeSecret ? '🫣' : '👁️'}
           </button>
-        <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
-          <select 
-            value={selectedHarness} 
-            onChange={(e) => setSelectedHarness(e.target.value)}
-            className="modal-input"
-            style={{ width: '100%', textAlign: 'center', padding: '10px', background: '#0f172a', borderColor: '#334155', color: '#f8fafc', cursor: 'pointer' }}
-          >
-            <option value="opencode">OpenCode (Joshua OS)</option>
-            <option value="grok">Grok Build (Upcoming)</option>
-            <option value="admin">Admin (agy OS)</option>
-          </select>
         </div>
 
         <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
