@@ -956,19 +956,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             logger.info(f"Starting TMUX session for {target_session_override}...")
             
             # Configure CLI args based on selected harness
-            if client_harness == "opencode":
-                cli_args = "/bin/bash ./aim"
-            elif client_harness == "grok":
-                cli_args = "/bin/bash ./aim"  # Default to aim until grok build is available
-            elif client_harness == "admin":
-                cli_args = "/home/kingb/.local/bin/agy"
-            else:
-                cli_args = "/home/kingb/.local/bin/agy"
+            cli_args = "/home/kingb/.local/bin/agy"
                 
             if client_gemini_model:
                 cli_args += f" --model {client_gemini_model}"
             
-            env_injections = ""
+            env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
             if client_gemini_api_key:
                 env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
 
@@ -1125,14 +1118,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 
         result = subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
         if result.returncode == 0:
-            if client_harness == "opencode":
-                admin_cli = "cd /home/kingb/aim-opencode && ./aim"
-            elif client_harness == "grok":
-                admin_cli = "cd /home/kingb/aim-opencode && ./aim"
-            elif client_harness == "admin":
-                admin_cli = "agy"
-            else:
-                admin_cli = "agy"
+            admin_cli = f"export AIM_VESSEL_CLI={client_harness} && agy"
             subprocess.run(["tmux", "send-keys", "-t", target_session, admin_cli, "Enter"])
         os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
