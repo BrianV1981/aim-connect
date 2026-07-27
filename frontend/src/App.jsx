@@ -99,6 +99,7 @@ function App() {
     { id: 'pre-left', label: '←', cmd: '\x1b[D', isPinned: true },
     { id: 'pre-right', label: '→', cmd: '\x1b[C', isPinned: true },
     { id: 'pre-dropdown', label: 'Drop Down', cmd: '\\\r', isPinned: true, voiceTrigger: 'drop down' },
+    { id: 'pre-submit', label: 'Submit', cmd: '\r', isPinned: true, voiceTrigger: 'submit' },
     { id: '1', label: 'Clear', cmd: '\x0c', isPinned: true },
     { id: '2', label: 'top', cmd: 'top\r', isPinned: true },
     { id: '3', label: 'ls', cmd: 'ls -la\r', isPinned: true },
@@ -944,10 +945,11 @@ function App() {
       const matchingMacro = macroLibraryRef.current?.find(m => m.voiceTrigger && m.voiceTrigger.toLowerCase() === lowerTrimmed);
       
       // Check for verbal action commands
-      let isCommand = false;
-      if (lowerTrimmed === "enter" && voiceAutoEnter) isCommand = true;
-      if (lowerTrimmed === "send" && voiceAutoSend) isCommand = true;
-      if (lowerTrimmed === "execute" && voiceAutoExecute) isCommand = true;
+      let isEnterCommand = false;
+      let isSubmitCommand = false;
+      if (lowerTrimmed === "enter" && voiceAutoEnter) isEnterCommand = true;
+      if (lowerTrimmed === "send" && voiceAutoSend) isSubmitCommand = true;
+      if (lowerTrimmed === "execute" && voiceAutoExecute) isSubmitCommand = true;
 
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         if (matchingMacro) {
@@ -955,7 +957,11 @@ function App() {
           ws.current.send(JSON.stringify({ type: 'input', payload: matchingMacro.cmd }));
           lastVoiceEndedWithSpace.current = false;
           lastVoiceEndedSentence.current = true;
-        } else if (isCommand) {
+        } else if (isSubmitCommand) {
+          ws.current.send(JSON.stringify({ type: 'input', payload: '\r' })); // Send Carriage Return for AGY UI
+          lastVoiceEndedWithSpace.current = false;
+          lastVoiceEndedSentence.current = true;
+        } else if (isEnterCommand) {
           ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
           lastVoiceEndedWithSpace.current = false;
           lastVoiceEndedSentence.current = true;
