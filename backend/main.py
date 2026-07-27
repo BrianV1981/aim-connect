@@ -996,8 +996,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         open(os.path.join(agent_brain_dir, "summary_store.db"), "a").close()
         # CRITICAL SECURITY FIX: Never copy the master OAuth token!
         # Write a dummy valid JSON payload to bypass the agy interactive login prompt when using BYOK API keys
-        with open(os.path.join(agent_brain_dir, "antigravity-oauth-token"), "w") as f:
-            f.write('{"access_token": "ya29.dummy", "token_type": "Bearer", "refresh_token": "1//dummy", "expiry": "2099-01-01T00:00:00Z"}')
+        if client_harness != "admin-cli":
+            with open(os.path.join(agent_brain_dir, "antigravity-oauth-token"), "w") as f:
+                f.write('{"access_token": "ya29.dummy", "token_type": "Bearer", "refresh_token": "1//dummy", "expiry": "2099-01-01T00:00:00Z"}')
         
         proc = await asyncio.create_subprocess_exec(
             "tmux", "has-session", "-t", target_session_override,
@@ -1035,10 +1036,16 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     cli_args += f" --model {mapped_model}"
             
             env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
-            if client_gemini_api_key and client_harness != "admin-cli":
-                env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
-                if client_harness == "opencode":
-                    env_injections += f"--setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
+            oauth_binds = ""
+            if client_harness != "admin-cli":
+                if client_gemini_api_key:
+                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
+                    if client_harness == "opencode":
+                        env_injections += f"--setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
+                oauth_binds = (
+                    f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.gemini/antigravity-cli/antigravity-oauth-token "
+                    f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.opencode/opencode-oauth-token "
+                )
 
             bwrap_cmd = (
                 f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
@@ -1058,8 +1065,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 f"--bind {agent_brain_dir}/.system_generated/crashes /home/kingb/.gemini/antigravity-cli/crashes "
                 f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
                 f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
-                f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.gemini/antigravity-cli/antigravity-oauth-token "
-                f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.opencode/opencode-oauth-token "
+                f"{oauth_binds}"
                 f"--chdir {workspace_dir} {cli_args}"
             )
             start_proc = await asyncio.create_subprocess_exec(
