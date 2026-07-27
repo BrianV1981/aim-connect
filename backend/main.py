@@ -1210,7 +1210,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
                             await asyncio.sleep(0.5)
-                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Escape", "Enter"])
                             
                             # Wait for it to respond and stop updating
                             clean_output = ""
