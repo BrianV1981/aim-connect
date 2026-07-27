@@ -746,24 +746,27 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
             sub_id = '-'.join(parts[2:])
             if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli"]:
                 workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
+                agent_brain_dir = os.path.join(workspace_dir, f"harness-{sub_id}", "brain")
             else:
                 workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
+                agent_brain_dir = os.path.join(workspace_dir, "brain")
         else:
             workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
+            agent_brain_dir = os.path.join(workspace_dir, "brain")
             
     except Exception as e:
         return HTMLResponse(f"<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
 
     html = f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}} h2{{color: #00ff88; text-transform: uppercase; border-bottom: 1px solid #00ff88; padding-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0,255,136,0.5);}} .user{{background: #111a15; padding: 1.5rem; border-radius: 4px; margin-bottom: 1rem; border-left: 3px solid #0088ff; color: #a0c4ff;}} .agent{{background: #0d1410; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem; border-left: 3px solid #00ff88; white-space: pre-wrap; box-shadow: -2px 0 10px rgba(0, 255, 136, 0.1);}} strong{{color: #fff; text-transform: uppercase; letter-spacing: 1px;}} .meta{{font-size: 0.8rem; color: #00ff88; margin-bottom: 15px; opacity: 0.7;}} .boundary{{text-align: center; color: #00ff88; padding: 15px 0; border-top: 1px dashed #00FFA3; border-bottom: 1px dashed #00FFA3; margin: 40px 0; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><div class='meta'>TARGET IDENTIFIER: {agent_id}<br/>ACCESS LEVEL: ADMINISTRATOR</div>"
     
-    opencode_db_path_base = os.path.join(workspace_dir, "harness-opencode", "opencode_data", "opencode.db")
-    opencode_db_path_sub = os.path.join(workspace_dir, "opencode_data", "opencode.db")
-    
     opencode_db_path = None
-    if os.path.exists(opencode_db_path_base):
-        opencode_db_path = opencode_db_path_base
-    elif os.path.exists(opencode_db_path_sub):
-        opencode_db_path = opencode_db_path_sub
+    if "opencode" in agent_id:
+        opencode_db_path_base = os.path.join(workspace_dir, "harness-opencode", "opencode_data", "opencode.db")
+        opencode_db_path_sub = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+        if os.path.exists(opencode_db_path_base):
+            opencode_db_path = opencode_db_path_base
+        elif os.path.exists(opencode_db_path_sub):
+            opencode_db_path = opencode_db_path_sub
         
     if opencode_db_path:
         import sqlite3
@@ -795,10 +798,8 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
                 pass
         conn.close()
     else:
-        agent_brain_dir = os.path.join(workspace_dir, "brain")
-        
         if not os.path.exists(agent_brain_dir):
-            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>No history found for this agent.</h1>", status_code=404)
+            return HTMLResponse(f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><h1 style='color:#00ff88; text-align:center; padding: 50px; font-weight: normal; font-size: 1.2rem; border: 1px dashed #00ff88; border-radius: 4px; background: rgba(0,255,136,0.05);'>NO DATA CORE ESTABLISHED YET.</h1></body></html>", status_code=404)
             
         log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
         if not log_files:
@@ -950,15 +951,29 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         
         parts = target_session_override.split('-')
         base_agent_name = parts[1] # The sanitized email part
-        current_harness = parts[2] if len(parts) > 2 else "opencode"
-        is_sub_session = len(parts) > 3
+        
+        remainder = "-".join(parts[2:]) if len(parts) > 2 else "opencode"
+        current_harness = "opencode"
+        is_sub_session = False
+        sub_id = ""
+        
+        if remainder in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli"]:
+            current_harness = remainder
+        else:
+            for h in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli"]:
+                if remainder.startswith(h + "-"):
+                    current_harness = h
+                    is_sub_session = True
+                    sub_id = remainder[len(h)+1:]
+                    break
+            if not is_sub_session:
+                current_harness = remainder
         
         user_root_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{base_agent_name}"
         shared_data_dir = os.path.join(user_root_dir, "shared_database")
         os.makedirs(shared_data_dir, exist_ok=True)
         
         if is_sub_session:
-            sub_id = "-".join(parts[3:])
             workspace_dir = os.path.join(user_root_dir, "fleet_workspaces", f"{current_harness}-{sub_id}")
             os.makedirs(workspace_dir, exist_ok=True)
             
@@ -1010,64 +1025,132 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         if proc.returncode != 0:
             logger.info(f"Starting TMUX session for {target_session_override}...")
             
-            # Configure CLI args based on selected harness
+            # Completely decoupled execution pipelines for each harness
             if client_harness == "opencode":
                 cli_args = "/home/kingb/.opencode/bin/opencode"
-            elif client_harness == "admin-cli":
-                cli_args = "/home/kingb/.local/bin/agy --dangerously-skip-permissions --log-file /dev/null"
-            else:
-                cli_args = "/home/kingb/.local/bin/agy --log-file /dev/null"
+                if client_gemini_model:
+                    model_mapping = {
+                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
+                        "gemini-3.5-flash": "gemini-flash-latest",
+                        "gemini-3.1-pro": "gemini-2.5-pro",
+                        "opencode": "gemini-flash-lite-latest",
+                        "admin-cli": "gemini-flash-lite-latest",
+                        "grok": "gemini-flash-lite-latest"
+                    }
+                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
+                    if "/" not in mapped_model:
+                        cli_args += f" --model google/{mapped_model}"
+                    else:
+                        cli_args += f" --model {mapped_model}"
                 
-            if client_gemini_model and client_harness != "admin-cli":
-                # Map frontend model identifiers to actual supported model names for opencode
-                model_mapping = {
-                    "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
-                    "gemini-3.5-flash": "gemini-flash-latest",
-                    "gemini-3.1-pro": "gemini-2.5-pro",
-                    "opencode": "gemini-flash-lite-latest",
-                    "admin-cli": "gemini-flash-lite-latest",
-                    "grok": "gemini-flash-lite-latest"
-                }
-                mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
-                
-                if client_harness == "opencode" and "/" not in mapped_model:
-                    cli_args += f" --model google/{mapped_model}"
-                else:
-                    cli_args += f" --model {mapped_model}"
-            
-            env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
-            oauth_binds = ""
-            if client_harness != "admin-cli":
+                env_injections = f"--setenv AIM_VESSEL_CLI 'opencode' "
                 if client_gemini_api_key:
-                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
-                    if client_harness == "opencode":
-                        env_injections += f"--setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
+                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' --setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
+                
                 oauth_binds = (
                     f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.gemini/antigravity-cli/antigravity-oauth-token "
                     f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.opencode/opencode-oauth-token "
                 )
+                
+                bwrap_cmd = (
+                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                    f"--tmpfs /home/kingb "
+                    f"{env_injections}"
+                    f"--ro-bind /home/kingb/.local /home/kingb/.local "
+                    f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
+                    f"--ro-bind /home/kingb/.opencode /home/kingb/.opencode "
+                    f"--bind {workspace_dir}/opencode_data /home/kingb/.local/share/opencode "
+                    f"--bind /home/kingb/.gemini/antigravity-cli/bin /home/kingb/.gemini/antigravity-cli/bin "
+                    f"--bind {workspace_dir} {workspace_dir} "
+                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
+                    f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
+                    f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
+                    f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
+                    f"--bind {agent_brain_dir}/.system_generated/logs /home/kingb/.gemini/antigravity-cli/logs "
+                    f"--bind {agent_brain_dir}/.system_generated/crashes /home/kingb/.gemini/antigravity-cli/crashes "
+                    f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
+                    f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
+                    f"{oauth_binds}"
+                    f"--chdir {workspace_dir} {cli_args}"
+                )
 
-            bwrap_cmd = (
-                f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
-                f"--tmpfs /home/kingb "
-                f"{env_injections}"
-                f"--ro-bind /home/kingb/.local /home/kingb/.local "
-                f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
-                f"--ro-bind /home/kingb/.opencode /home/kingb/.opencode "
-                f"--bind {workspace_dir}/opencode_data /home/kingb/.local/share/opencode "
-                f"--bind /home/kingb/.gemini/antigravity-cli/bin /home/kingb/.gemini/antigravity-cli/bin "
-                f"--bind {workspace_dir} {workspace_dir} "
-                f"--bind {shared_data_dir} {workspace_dir}/shared_database "
-                f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
-                f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
-                f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
-                f"--bind {agent_brain_dir}/.system_generated/logs /home/kingb/.gemini/antigravity-cli/log "
-                f"--bind {agent_brain_dir}/.system_generated/crashes /home/kingb/.gemini/antigravity-cli/crashes "
-                f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
-                f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
-                f"{oauth_binds}"
-                f"--chdir {workspace_dir} {cli_args}"
-            )
+            elif client_harness == "admin-cli":
+                cli_args = "/home/kingb/.local/bin/agy --dangerously-skip-permissions --log-file /dev/null"
+                if client_gemini_model:
+                    model_mapping = {
+                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
+                        "gemini-3.5-flash": "gemini-flash-latest",
+                        "gemini-3.1-pro": "gemini-2.5-pro",
+                        "opencode": "gemini-flash-lite-latest",
+                        "admin-cli": "gemini-flash-lite-latest",
+                        "grok": "gemini-flash-lite-latest"
+                    }
+                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
+                    cli_args += f" --model {mapped_model}"
+                
+                env_injections = f"--setenv AIM_VESSEL_CLI 'admin-cli' "
+                
+                bwrap_cmd = (
+                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                    f"--tmpfs /home/kingb "
+                    f"{env_injections}"
+                    f"--ro-bind /home/kingb/.local /home/kingb/.local "
+                    f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
+                    f"--bind /home/kingb/.gemini/antigravity-cli/bin /home/kingb/.gemini/antigravity-cli/bin "
+                    f"--bind {workspace_dir} {workspace_dir} "
+                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
+                    f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
+                    f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
+                    f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
+                    f"--bind {agent_brain_dir}/.system_generated/logs /home/kingb/.gemini/antigravity-cli/logs "
+                    f"--bind {agent_brain_dir}/.system_generated/crashes /home/kingb/.gemini/antigravity-cli/crashes "
+                    f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
+                    f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
+                    f"--chdir {workspace_dir} {cli_args}"
+                )
+                
+            else:
+                # Default AGY Harness
+                cli_args = "/home/kingb/.local/bin/agy --log-file /dev/null"
+                if client_gemini_model:
+                    model_mapping = {
+                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
+                        "gemini-3.5-flash": "gemini-flash-latest",
+                        "gemini-3.1-pro": "gemini-2.5-pro",
+                        "opencode": "gemini-flash-lite-latest",
+                        "admin-cli": "gemini-flash-lite-latest",
+                        "grok": "gemini-flash-lite-latest"
+                    }
+                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
+                    cli_args += f" --model {mapped_model}"
+                
+                env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
+                if client_gemini_api_key:
+                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
+                
+                oauth_binds = (
+                    f"--bind {agent_brain_dir}/antigravity-oauth-token /home/kingb/.gemini/antigravity-cli/antigravity-oauth-token "
+                )
+                
+                bwrap_cmd = (
+                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                    f"--tmpfs /home/kingb "
+                    f"{env_injections}"
+                    f"--ro-bind /home/kingb/.local /home/kingb/.local "
+                    f"--ro-bind /home/kingb/.gemini /home/kingb/.gemini "
+                    f"--bind /home/kingb/.gemini/antigravity-cli/bin /home/kingb/.gemini/antigravity-cli/bin "
+                    f"--bind {workspace_dir} {workspace_dir} "
+                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
+                    f"--bind {agent_brain_dir} /home/kingb/.gemini/antigravity-cli/brain "
+                    f"--bind {agent_conv_dir} /home/kingb/.gemini/antigravity-cli/conversations "
+                    f"--bind /home/kingb/.gemini/trustedFolders.json /home/kingb/.gemini/trustedFolders.json "
+                    f"--bind {agent_brain_dir}/.system_generated/logs /home/kingb/.gemini/antigravity-cli/logs "
+                    f"--bind {agent_brain_dir}/.system_generated/crashes /home/kingb/.gemini/antigravity-cli/crashes "
+                    f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
+                    f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
+                    f"{oauth_binds}"
+                    f"--chdir {workspace_dir} {cli_args}"
+                )
             start_proc = await asyncio.create_subprocess_exec(
                 "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd
             )
@@ -1213,10 +1296,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         with open(log_file, "r") as f:
                                             f.seek(last_pos)
                                             lines = f.readlines()
-                                            last_pos = f.tell()
                                             
                                             found_response = False
                                             for line in lines:
+                                                if not line.endswith("\n"):
+                                                    # Incomplete line, break and wait
+                                                    break
+                                                last_pos += len(line)
                                                 try:
                                                     log_data = json.loads(line)
                                                     if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
@@ -1234,12 +1320,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     
                         if ENABLE_E2EE and E2EE_SECRET:
                             encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                            logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
                             await websocket.send_bytes(encrypted)
                         else:
+                            logger.info(f"Sending response back to frontend: {clean_output}")
                             await websocket.send_text(clean_output)
                             
                     except Exception as e:
                         error_msg = f"**Tmux Bridge Error:** {str(e)}"
+                        logger.error(error_msg)
                         if ENABLE_E2EE and E2EE_SECRET:
                             await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
                         else:
