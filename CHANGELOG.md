@@ -1,5 +1,33 @@
 # Changelog
 
+## [v1.7.9] - 2026-07-26
+- Fix: conditionally disable dummy OAuth token for admin-cli (Closes #147)
+
+
+## [v1.7.8] - 2026-07-26
+- Fix: restore --bind /tmp /tmp to fix subagent attachments (Closes #146)
+
+
+## [v1.7.7] - 2026-07-26
+- Fix: do not inject API key for admin-cli harness (Closes #145)
+
+
+## [v1.7.6] - 2026-07-26
+- Fix: parse base agent harnesses correctly in history endpoint to find opencode.db (Closes #143)
+
+
+## [v1.7.5] - 2026-07-26
+- Fix: check correct opencode.db location for base agents in history endpoint (Closes #142)
+
+
+## [v1.7.4] - 2026-07-26
+- Fix: Query opencode SQLite DB natively for history instead of websocket jsonl hack (Closes #141)
+
+
+## [v1.7.3] - 2026-07-26
+- Fix: Manually write transcript.jsonl for opencode to restore chat history (Closes #140)
+
+
 ## [v1.7.2] - 2026-07-20
 - Fix: Refactored workspace isolation to use persistent root directories (Closes #119)
 
