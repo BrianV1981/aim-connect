@@ -1292,15 +1292,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         try:
                             import glob
                             import subprocess
-                            log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-                            log_file = None
+                            
+                            def get_latest_transcript():
+                                files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+                                return max(files, key=os.path.getmtime) if files else None
+
+                            initial_log_file = get_latest_transcript()
+                            log_file = initial_log_file
                             last_pos = 0
-                            if log_files:
-                                log_file = max(log_files, key=os.path.getmtime)
-                                if os.path.exists(log_file):
-                                    with open(log_file, "r") as f:
-                                        f.seek(0, 2)
-                                        last_pos = f.tell()
+                            if log_file and os.path.exists(log_file):
+                                with open(log_file, "r") as f:
+                                    f.seek(0, 2)
+                                    last_pos = f.tell()
                             
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
@@ -1308,35 +1311,41 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             await asyncio.sleep(sleep_time)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                             
-                            if not log_file:
-                                clean_output = "**Error:** Agent brain directory not initialized yet."
-                            else:
-                                clean_output = "**Error:** Agent timed out or failed to write transcript."
-                                start_time = time.time()
-                                while time.time() - start_time < 300:
-                                    if os.path.exists(log_file):
-                                        with open(log_file, "r") as f:
-                                            f.seek(last_pos)
-                                            log_lines = f.readlines()
-                                            
-                                            found_response = False
-                                            for line in log_lines:
-                                                if not line.endswith("\n"):
-                                                    break
-                                                last_pos += len(line)
-                                                try:
-                                                    log_data = json.loads(line)
-                                                    if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
-                                                        content = log_data.get("content")
-                                                        tool_calls = log_data.get("tool_calls")
-                                                        if content and not tool_calls:
-                                                            clean_output = content
-                                                            found_response = True
-                                                except Exception:
-                                                    pass
-                                                    
-                                            if found_response:
+                            clean_output = "**Error:** Agent timed out or failed to write transcript."
+                            start_time = time.time()
+                            found_response = False
+                            
+                            while time.time() - start_time < 300:
+                                current_log_file = get_latest_transcript()
+                                if current_log_file and current_log_file != log_file:
+                                    log_file = current_log_file
+                                    last_pos = 0
+                                    
+                                if log_file and os.path.exists(log_file):
+                                    with open(log_file, "r") as f:
+                                        f.seek(last_pos)
+                                        while True:
+                                            line = f.readline()
+                                            if not line:
                                                 break
+                                            if not line.endswith("\n"):
+                                                break
+                                            last_pos = f.tell()
+                                            try:
+                                                log_data = json.loads(line)
+                                                if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
+                                                    content = log_data.get("content")
+                                                    tool_calls = log_data.get("tool_calls")
+                                                    if content and not tool_calls:
+                                                        clean_output = content
+                                                        found_response = True
+                                            except Exception:
+                                                pass
+                                        if found_response:
+                                            break
+                                            
+                                if found_response:
+                                    break
                                     await asyncio.sleep(1.0)
                                     
                             if ENABLE_E2EE and E2EE_SECRET:
@@ -1377,15 +1386,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         try:
                             import glob
                             import subprocess
-                            log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-                            log_file = None
+                            
+                            def get_latest_transcript():
+                                files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+                                return max(files, key=os.path.getmtime) if files else None
+
+                            initial_log_file = get_latest_transcript()
+                            log_file = initial_log_file
                             last_pos = 0
-                            if log_files:
-                                log_file = max(log_files, key=os.path.getmtime)
-                                if os.path.exists(log_file):
-                                    with open(log_file, "r") as f:
-                                        f.seek(0, 2)
-                                        last_pos = f.tell()
+                            if log_file and os.path.exists(log_file):
+                                with open(log_file, "r") as f:
+                                    f.seek(0, 2)
+                                    last_pos = f.tell()
                             
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
@@ -1393,35 +1405,41 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             await asyncio.sleep(sleep_time)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                             
-                            if not log_file:
-                                clean_output = "**Error:** Agent brain directory not initialized yet."
-                            else:
-                                clean_output = "**Error:** Agent timed out or failed to write transcript."
-                                start_time = time.time()
-                                while time.time() - start_time < 300:
-                                    if os.path.exists(log_file):
-                                        with open(log_file, "r") as f:
-                                            f.seek(last_pos)
-                                            log_lines = f.readlines()
-                                            
-                                            found_response = False
-                                            for line in log_lines:
-                                                if not line.endswith("\n"):
-                                                    break
-                                                last_pos += len(line)
-                                                try:
-                                                    log_data = json.loads(line)
-                                                    if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
-                                                        content = log_data.get("content")
-                                                        tool_calls = log_data.get("tool_calls")
-                                                        if content and not tool_calls:
-                                                            clean_output = content
-                                                            found_response = True
-                                                except Exception:
-                                                    pass
-                                                    
-                                            if found_response:
+                            clean_output = "**Error:** Agent timed out or failed to write transcript."
+                            start_time = time.time()
+                            found_response = False
+                            
+                            while time.time() - start_time < 300:
+                                current_log_file = get_latest_transcript()
+                                if current_log_file and current_log_file != log_file:
+                                    log_file = current_log_file
+                                    last_pos = 0
+                                    
+                                if log_file and os.path.exists(log_file):
+                                    with open(log_file, "r") as f:
+                                        f.seek(last_pos)
+                                        while True:
+                                            line = f.readline()
+                                            if not line:
                                                 break
+                                            if not line.endswith("\n"):
+                                                break
+                                            last_pos = f.tell()
+                                            try:
+                                                log_data = json.loads(line)
+                                                if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
+                                                    content = log_data.get("content")
+                                                    tool_calls = log_data.get("tool_calls")
+                                                    if content and not tool_calls:
+                                                        clean_output = content
+                                                        found_response = True
+                                            except Exception:
+                                                pass
+                                        if found_response:
+                                            break
+                                            
+                                if found_response:
+                                    break
                                     await asyncio.sleep(1.0)
                                     
                             if ENABLE_E2EE and E2EE_SECRET:
