@@ -1,5 +1,21 @@
 # Changelog
 
+## [v1.7.13] - 2026-07-26
+- Fix: ensure admin-cli isn't classified as a sub-session
+
+
+## [v1.7.12] - 2026-07-26
+- Fix: recursive session spamming bug on sub_session_id
+
+
+## [v1.7.11] - 2026-07-26
+- Fix: dynamically render history archive for base agents by discovering newest harness
+
+
+## [v1.7.10] - 2026-07-26
+- Fix: dynamic transcript resolution to handle new agent UUID conversations
+
+
 ## [v1.7.9] - 2026-07-26
 - Fix: conditionally disable dummy OAuth token for admin-cli (Closes #147)
 
