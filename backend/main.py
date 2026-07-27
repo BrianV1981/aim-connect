@@ -1162,22 +1162,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
             await asyncio.sleep(2)
 
-        while True:
-            try:
-                message = await websocket.receive_text()
-                if ENABLE_E2EE and E2EE_SECRET:
-                    message = decrypt_message(message, E2EE_SECRET)
-                print(f"DEBUG INCOMING WEBSOCKET MSG: {message}")
-                data = json.loads(message)
-                
-                if data.get("type") == "input":
-                    prompt = data["payload"].strip()
-                    if not prompt:
-                        continue
-                        
-                    try:
-                        # Handle different harnesses for extracting responses
-                        if client_harness == "opencode":
+        if client_harness == "opencode":
+            while True:
+                try:
+                    message = await websocket.receive_text()
+                    if ENABLE_E2EE and E2EE_SECRET:
+                        message = decrypt_message(message, E2EE_SECRET)
+                    print(f"DEBUG INCOMING WEBSOCKET MSG (opencode): {message}")
+                    data = json.loads(message)
+                    
+                    if data.get("type") == "input":
+                        prompt = data["payload"].strip()
+                        if not prompt:
+                            continue
+                            
+                        try:
                             import subprocess
                             
                             def get_clean_screen():
@@ -1185,39 +1184,32 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 lines = res.stdout.splitlines()
                                 clean_lines = []
                                 for line in lines:
-                                    # Strip all opencode TUI artifacts
                                     if "╹▀▀▀" in line: continue
                                     if "ctrl+p commands" in line: continue
                                     if "Build · Gemini" in line: continue
                                     if line.strip().startswith("┃"): continue
                                     if line.strip().startswith("▣"): continue
                                     if "opencode" in line and "aim-connect" in line: continue
-                                    
-                                    # Strip massive horizontal dividers that cause frontend scrollbars
                                     if "────────" in line: continue
                                     if "━━━━━━━━" in line: continue
-                                    
                                     clean_lines.append(line.rstrip())
                                 return "\n".join(clean_lines)
 
-                            # Maximize window size to prevent scrolling truncation and allow fluid frontend wrapping
                             subprocess.run(["tmux", "resize-window", "-t", target_session_override, "-x", "200", "-y", "1000"])
                             await asyncio.sleep(0.5)
 
                             baseline_text = get_clean_screen()
                             
-                            # Send prompt
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
                             await asyncio.sleep(0.5)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Escape", "Enter"])
                             
-                            # Wait for it to respond and stop updating
                             clean_output = ""
                             last_text = ""
                             same_count = 0
                             
-                            for _ in range(120): # up to 120 seconds
+                            for _ in range(120):
                                 await asyncio.sleep(1)
                                 current_text = get_clean_screen()
                                 
@@ -1227,12 +1219,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 elif current_text and current_text != baseline_text:
                                     same_count += 1
                                     
-                                # If output has been stable for 2 seconds, assume it's done typing
                                 if same_count >= 2 and current_text != baseline_text:
                                     baseline_lines = baseline_text.splitlines()
                                     current_lines = current_text.splitlines()
                                     
-                                    # Tail match to extract only newly appended lines (ignores header changes)
                                     tail = []
                                     for line in reversed(baseline_lines):
                                         if line.strip():
@@ -1242,23 +1232,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                 
                                     match_idx = -1
                                     if tail:
-                                        for i in range(len(current_lines) - len(tail) + 1):
-                                            if current_lines[i:i+len(tail)] == tail:
-                                                match_idx = i + len(tail)
+                                        for idx in range(len(current_lines) - len(tail) + 1):
+                                            if current_lines[idx:idx+len(tail)] == tail:
+                                                match_idx = idx + len(tail)
                                                 
-                                        # Fallback to single line tail match
                                         if match_idx == -1:
                                             last_line = tail[-1]
-                                            for i in reversed(range(len(current_lines))):
-                                                if current_lines[i] == last_line:
-                                                    match_idx = i + 1
+                                            for idx in reversed(range(len(current_lines))):
+                                                if current_lines[idx] == last_line:
+                                                    match_idx = idx + 1
                                                     break
                                                     
                                     if match_idx != -1:
                                         new_lines = current_lines[match_idx:]
                                         clean_output = "\n".join(new_lines).strip()
                                     else:
-                                        # Ultimate fallback
                                         baseline_set = set(baseline_lines)
                                         clean_output = "\n".join([l for l in current_lines if l not in baseline_set]).strip()
                                         
@@ -1266,9 +1254,44 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     
                             if not clean_output:
                                 clean_output = "**System:** Sent to OpenCode terminal, but timed out waiting for stable output."
-                        else:
-                            # AGY Logic
+                                
+                            if ENABLE_E2EE and E2EE_SECRET:
+                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                                await websocket.send_bytes(encrypted)
+                            else:
+                                logger.info(f"Sending response back to frontend: {clean_output}")
+                                await websocket.send_text(clean_output)
+                                
+                        except Exception as e:
+                            error_msg = f"**Tmux Bridge Error:** {str(e)}"
+                            logger.error(error_msg)
+                            if ENABLE_E2EE and E2EE_SECRET:
+                                await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
+                            else:
+                                await websocket.send_text(error_msg)
+                                
+                except Exception as e:
+                    logger.error(f"Chat API loop error (opencode): {e}")
+                    break
+
+        elif client_harness == "admin-cli":
+            while True:
+                try:
+                    message = await websocket.receive_text()
+                    if ENABLE_E2EE and E2EE_SECRET:
+                        message = decrypt_message(message, E2EE_SECRET)
+                    print(f"DEBUG INCOMING WEBSOCKET MSG (admin-cli): {message}")
+                    data = json.loads(message)
+                    
+                    if data.get("type") == "input":
+                        prompt = data["payload"].strip()
+                        if not prompt:
+                            continue
+                            
+                        try:
                             import glob
+                            import subprocess
                             log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
                             log_file = None
                             last_pos = 0
@@ -1279,7 +1302,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         f.seek(0, 2)
                                         last_pos = f.tell()
                             
-                            import subprocess
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
                             sleep_time = max(0.5, len(prompt) / 20000.0)
@@ -1295,12 +1317,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     if os.path.exists(log_file):
                                         with open(log_file, "r") as f:
                                             f.seek(last_pos)
-                                            lines = f.readlines()
+                                            log_lines = f.readlines()
                                             
                                             found_response = False
-                                            for line in lines:
+                                            for line in log_lines:
                                                 if not line.endswith("\n"):
-                                                    # Incomplete line, break and wait
                                                     break
                                                 last_pos += len(line)
                                                 try:
@@ -1318,25 +1339,111 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                 break
                                     await asyncio.sleep(1.0)
                                     
-                        if ENABLE_E2EE and E2EE_SECRET:
-                            encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                            logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
-                            await websocket.send_bytes(encrypted)
-                        else:
-                            logger.info(f"Sending response back to frontend: {clean_output}")
-                            await websocket.send_text(clean_output)
+                            if ENABLE_E2EE and E2EE_SECRET:
+                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                                await websocket.send_bytes(encrypted)
+                            else:
+                                logger.info(f"Sending response back to frontend: {clean_output}")
+                                await websocket.send_text(clean_output)
+                                
+                        except Exception as e:
+                            error_msg = f"**Tmux Bridge Error:** {str(e)}"
+                            logger.error(error_msg)
+                            if ENABLE_E2EE and E2EE_SECRET:
+                                await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
+                            else:
+                                await websocket.send_text(error_msg)
+                                
+                except Exception as e:
+                    logger.error(f"Chat API loop error (admin-cli): {e}")
+                    break
+
+        else:
+            # Default AGY Harness
+            while True:
+                try:
+                    message = await websocket.receive_text()
+                    if ENABLE_E2EE and E2EE_SECRET:
+                        message = decrypt_message(message, E2EE_SECRET)
+                    print(f"DEBUG INCOMING WEBSOCKET MSG (agy): {message}")
+                    data = json.loads(message)
+                    
+                    if data.get("type") == "input":
+                        prompt = data["payload"].strip()
+                        if not prompt:
+                            continue
                             
-                    except Exception as e:
-                        error_msg = f"**Tmux Bridge Error:** {str(e)}"
-                        logger.error(error_msg)
-                        if ENABLE_E2EE and E2EE_SECRET:
-                            await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
-                        else:
-                            await websocket.send_text(error_msg)
-                        
-            except Exception as e:
-                logger.error(f"Chat API loop error: {e}")
-                break
+                        try:
+                            import glob
+                            import subprocess
+                            log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+                            log_file = None
+                            last_pos = 0
+                            if log_files:
+                                log_file = max(log_files, key=os.path.getmtime)
+                                if os.path.exists(log_file):
+                                    with open(log_file, "r") as f:
+                                        f.seek(0, 2)
+                                        last_pos = f.tell()
+                            
+                            subprocess.run(["tmux", "set-buffer", prompt])
+                            subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
+                            sleep_time = max(0.5, len(prompt) / 20000.0)
+                            await asyncio.sleep(sleep_time)
+                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+                            
+                            if not log_file:
+                                clean_output = "**Error:** Agent brain directory not initialized yet."
+                            else:
+                                clean_output = "**Error:** Agent timed out or failed to write transcript."
+                                start_time = time.time()
+                                while time.time() - start_time < 300:
+                                    if os.path.exists(log_file):
+                                        with open(log_file, "r") as f:
+                                            f.seek(last_pos)
+                                            log_lines = f.readlines()
+                                            
+                                            found_response = False
+                                            for line in log_lines:
+                                                if not line.endswith("\n"):
+                                                    break
+                                                last_pos += len(line)
+                                                try:
+                                                    log_data = json.loads(line)
+                                                    if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
+                                                        content = log_data.get("content")
+                                                        tool_calls = log_data.get("tool_calls")
+                                                        if content and not tool_calls:
+                                                            clean_output = content
+                                                            found_response = True
+                                                except Exception:
+                                                    pass
+                                                    
+                                            if found_response:
+                                                break
+                                    await asyncio.sleep(1.0)
+                                    
+                            if ENABLE_E2EE and E2EE_SECRET:
+                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                                await websocket.send_bytes(encrypted)
+                            else:
+                                logger.info(f"Sending response back to frontend: {clean_output}")
+                                await websocket.send_text(clean_output)
+                                
+                        except Exception as e:
+                            error_msg = f"**Tmux Bridge Error:** {str(e)}"
+                            logger.error(error_msg)
+                            if ENABLE_E2EE and E2EE_SECRET:
+                                await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
+                            else:
+                                await websocket.send_text(error_msg)
+                                
+                except Exception as e:
+                    logger.error(f"Chat API loop error (agy): {e}")
+                    break
+
         return
 
     # =====================================================================
