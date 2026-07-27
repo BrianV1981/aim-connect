@@ -927,7 +927,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     auth_attempts[client_ip] = (0, None)
                                     sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
                                     if sub_session_id and re.match(r'^[a-zA-Z0-9_-]+$', sub_session_id):
-                                        target_session_override = f"agent-{sanitized_email}-{client_harness}-{sub_session_id}"
+                                        if sub_session_id.startswith(f"{client_harness}-"):
+                                            target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
+                                        else:
+                                            target_session_override = f"agent-{sanitized_email}-{client_harness}-{sub_session_id}"
                                     else:
                                         target_session_override = f"agent-{sanitized_email}-{client_harness}"
                         except Exception as e:
