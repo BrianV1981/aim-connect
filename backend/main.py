@@ -1041,7 +1041,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     env_injections += f"--setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
 
             bwrap_cmd = (
-                f"bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp "
+                f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
                 f"--tmpfs /home/kingb "
                 f"{env_injections}"
                 f"--ro-bind /home/kingb/.local /home/kingb/.local "
