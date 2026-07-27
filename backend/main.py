@@ -1753,8 +1753,8 @@ async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
             # Match only sub-sessions like agent-email-chat-123, but exclude the main agent-email-harness session
             if line and line.startswith(f"{agent_id}-"):
                 sub_id_part = line[len(f"{agent_id}-"):]
-                # A regular session is just 'harness' (no hyphens). A sub-session is 'harness-subid' (has hyphen).
-                if "-" in sub_id_part:
+                known_harnesses = ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli", "agy"]
+                if sub_id_part not in known_harnesses:
                     sessions.append({"id": sub_id_part, "full_name": line})
                 
     return {"sessions": sessions}
