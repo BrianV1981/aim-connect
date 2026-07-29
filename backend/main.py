@@ -1092,6 +1092,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     cli_args += f" --model {mapped_model}"
                 
                 env_injections = f"--setenv AIM_VESSEL_CLI 'admin-cli' "
+                if client_gemini_api_key:
+                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' --setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
                 
                 bwrap_cmd = (
                     f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
@@ -1731,7 +1733,7 @@ async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
             if line and line.startswith(f"{agent_id}-"):
                 sub_id_part = line[len(f"{agent_id}-"):]
                 # A regular session is just 'harness' (no hyphens). A sub-session is 'harness-subid' (has hyphen).
-                if "-" in sub_id_part:
+                if "-" in sub_id_part and sub_id_part not in ["admin-cli", "google-ai", "google-news", "google-web"]:
                     sessions.append({"id": sub_id_part, "full_name": line})
                 
     return {"sessions": sessions}
