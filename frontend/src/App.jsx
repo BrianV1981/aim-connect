@@ -573,12 +573,12 @@ function App() {
             setConnState('connected');
             setIsAuthenticated(true);
             
-            // Keep-alive ping every 30s to prevent Nginx proxy timeouts
+            // Keep-alive ping every 10s to prevent aggressive proxy timeouts
             pingInterval = setInterval(() => {
               if (socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({ type: 'ping' }));
               }
-            }, 30000);
+            }, 10000);
             return;
           } else if (msg.type === 'auth_failed') {
             setAuthError('Invalid or expired PIN');
