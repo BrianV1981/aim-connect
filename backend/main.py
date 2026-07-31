@@ -1191,28 +1191,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             continue
                             
                         try:
-                            
-                            def get_clean_screen():
-                                res = subprocess.run(["tmux", "capture-pane", "-p", "-t", target_session_override], capture_output=True, text=True)
-                                lines = res.stdout.splitlines()
-                                clean_lines = []
-                                for line in lines:
-                                    if "╹▀▀▀" in line: continue
-                                    if "ctrl+p commands" in line: continue
-                                    if "Build · Gemini" in line: continue
-                                    if line.strip().startswith("┃"): continue
-                                    if line.strip().startswith("▣"): continue
-                                    if "opencode" in line and "aim-connect" in line: continue
-                                    if "────────" in line: continue
-                                    if "━━━━━━━━" in line: continue
-                                    clean_lines.append(line.rstrip())
-                                return "\n".join(clean_lines)
-
-                            subprocess.run(["tmux", "resize-window", "-t", target_session_override, "-x", "200", "-y", "1000"])
-                            await asyncio.sleep(0.5)
-
-                            baseline_text = get_clean_screen()
-                            
                             max_time_db = 0
                             try:
                                 # Determine the DB path dynamically for this harness
@@ -1237,11 +1215,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                             
                             clean_output = ""
-                            last_text = ""
-                            same_count = 0
-                            
-                            for _ in range(120):
-                                await asyncio.sleep(1)
                             timeout = False
                             start_time = time.time()
                             
