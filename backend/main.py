@@ -1278,38 +1278,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     except Exception as e:
                                         logger.error(f"Failed to extract text from opencode db: {e}")
                                         
-                                    # If DB extraction failed or returned nothing, fallback to old logic
-                                    if not clean_output:
-                                        baseline_lines = baseline_text.splitlines()
-                                        current_lines = current_text.splitlines()
-                                        
-                                        tail = []
-                                        for line in reversed(baseline_lines):
-                                            if line.strip():
-                                                tail.insert(0, line)
-                                                if len(tail) == 3:
-                                                    break
-                                                    
-                                        match_idx = -1
-                                        if tail:
-                                            for i in range(len(current_lines) - len(tail) + 1):
-                                                if current_lines[i:i+len(tail)] == tail:
-                                                    match_idx = i + len(tail)
-                                                    
-                                            if match_idx == -1:
-                                                last_line = tail[-1]
-                                                for i in reversed(range(len(current_lines))):
-                                                    if current_lines[i] == last_line:
-                                                        match_idx = i + 1
-                                                        break
-                                                        
-                                        if match_idx != -1:
-                                            new_lines = current_lines[match_idx:]
-                                            clean_output = "\n".join(new_lines).strip()
-                                        else:
-                                            baseline_set = set(baseline_lines)
-                                            clean_output = "\n".join([l for l in current_lines if l not in baseline_set]).strip()
-                                            
                                     break
                                     
                             if not clean_output:
