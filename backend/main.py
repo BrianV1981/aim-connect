@@ -774,7 +774,7 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
     if opencode_db_path:
         import sqlite3
         import html as escape_html
-        conn = sqlite3.connect(opencode_db_path)
+        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro&nolock=1", uri=True)
         cursor = conn.cursor()
         query = """
         SELECT m.data, p.data, m.time_created
@@ -1201,7 +1201,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     
                                 if opencode_db_path:
                                     import sqlite3
-                                    conn = sqlite3.connect(opencode_db_path)
+                                    conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro&nolock=1", uri=True)
                                     res = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
                                     if res and res[0]:
                                         max_time_db = res[0]
@@ -1228,7 +1228,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 if opencode_db_path and os.path.exists(opencode_db_path):
                                     try:
                                         import sqlite3
-                                        conn = sqlite3.connect(opencode_db_path)
+                                        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro&nolock=1", uri=True)
                                         query = '''
                                         SELECT m.data, p.data
                                         FROM message m
