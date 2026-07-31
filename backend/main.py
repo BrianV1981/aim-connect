@@ -1214,42 +1214,55 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             await asyncio.sleep(0.5)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                             
+                            # We must poll the tmux screen because OpenCode (NodeJS) buffers chat in memory 
+                            # and does not flush to the SQLite DB in real-time during a chat session.
+                            last_text = ""
+                            same_count = 0
                             clean_output = ""
                             timeout = False
                             start_time = time.time()
                             
-                            # Poll the database for the new message
                             while True:
-                                await asyncio.sleep(1.0)
+                                await asyncio.sleep(0.5)
                                 if time.time() - start_time > 120:
                                     timeout = True
                                     break
                                     
-                                if opencode_db_path and os.path.exists(opencode_db_path):
-                                    try:
-                                        import sqlite3
-                                        conn = sqlite3.connect(opencode_db_path)
-                                        query = '''
-                                        SELECT m.data, p.data
-                                        FROM message m
-                                        JOIN part p ON m.id = p.message_id
-                                        WHERE m.time_created > ?
-                                        ORDER BY m.time_created ASC, p.time_created ASC
-                                        '''
-                                        rows = conn.execute(query, (max_time_db,)).fetchall()
-                                        texts = []
-                                        for r in rows:
-                                            m_data = json.loads(r[0])
-                                            p_data = json.loads(r[1])
-                                            if m_data.get("role") == "assistant" and p_data.get("type") == "text" and p_data.get("text"):
-                                                texts.append(p_data.get("text"))
-                                        conn.close()
+                                current_text = subprocess.check_output(
+                                    f"tmux capture-pane -p -t {target_session_override} -S -1000", shell=True
+                                ).decode("utf-8")
+                                
+                                if current_text == last_text:
+                                    same_count += 1
+                                else:
+                                    same_count = 0
+                                last_text = current_text
+                                
+                                if same_count >= 2:
+                                    # Screen is stable. Extract the last assistant block robustly.
+                                    lines = current_text.splitlines()
+                                    blocks = []
+                                    current_block = []
+                                    
+                                    for line in lines:
+                                        if line.startswith("  ┃  "): # User prompt marker
+                                            if current_block:
+                                                blocks.append(current_block)
+                                                current_block = []
+                                        elif line.startswith("     ") and not line.strip().startswith("▣") and not line.strip().startswith("LSP") and not "tokens" in line and not "spent" in line and not "Build ·" in line and not "Testing connection" in line:
+                                            current_block.append(line[5:].rstrip())
+                                        elif not line.strip():
+                                            if current_block:
+                                                current_block.append("")
+                                                
+                                    if current_block:
+                                        blocks.append(current_block)
                                         
-                                        if texts:
-                                            clean_output = "\n\n".join(texts).strip()
-                                            break
-                                    except Exception as e:
-                                        logger.error(f"Failed to extract text from opencode db: {e}")
+                                    if blocks:
+                                        clean_output = "\n".join(blocks[-1]).strip()
+                                        
+                                    if clean_output and "Sent to OpenCode" not in clean_output:
+                                        break
                                         
                             if timeout or not clean_output:
                                 clean_output = "**System:** Sent to OpenCode terminal, but timed out waiting for stable output."
