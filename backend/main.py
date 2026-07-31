@@ -773,7 +773,7 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
     if opencode_db_path:
         import sqlite3
         import html as escape_html
-        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro&nolock=1", uri=True)
+        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
         cursor = conn.cursor()
         query = """
         SELECT m.data, p.data, m.time_created
@@ -1200,13 +1200,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     
                                 if opencode_db_path:
                                     import sqlite3
-                                    conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro&nolock=1", uri=True)
+                                    conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
                                     res = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
                                     if res and res[0]:
                                         max_time_db = res[0]
                                     conn.close()
                             except Exception as e:
-                                logger.error(f"Failed to get max time from opencode db: {e}")
+                                logger.error(f"Failed to get max time from opencode db: {e} PATH WAS: {opencode_db_path}")
                                 
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
@@ -1227,7 +1227,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 if opencode_db_path and os.path.exists(opencode_db_path):
                                     try:
                                         import sqlite3
-                                        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro&nolock=1", uri=True)
+                                        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
                                         query = '''
                                         SELECT m.data, p.data
                                         FROM message m
@@ -1248,7 +1248,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                             clean_output = "\n\n".join(texts).strip()
                                             break
                                     except Exception as e:
-                                        logger.error(f"Failed to extract text from opencode db: {e}")
+                                        logger.error(f"Failed to extract text from opencode db: {e} PATH WAS: {opencode_db_path}")
                                         
                             if timeout or not clean_output:
                                 clean_output = "**System:** Sent to OpenCode terminal, but timed out waiting for stable output."
