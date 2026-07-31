@@ -1180,7 +1180,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             while True:
                 try:
                     message = await websocket.receive_text()
-                    if ENABLE_E2EE and E2EE_SECRET:
+                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
                         message = decrypt_message(message, E2EE_SECRET)
                     print(f"DEBUG INCOMING WEBSOCKET MSG: {message}")
                     data = json.loads(message)
@@ -1277,7 +1277,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             while True:
                 try:
                     message = await websocket.receive_text()
-                    if ENABLE_E2EE and E2EE_SECRET:
+                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
                         message = decrypt_message(message, E2EE_SECRET)
                     print(f"DEBUG INCOMING WEBSOCKET MSG: {message}")
                     data = json.loads(message)
@@ -1361,7 +1361,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             while True:
                 try:
                     message = await websocket.receive_text()
-                    if ENABLE_E2EE and E2EE_SECRET:
+                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
                         message = decrypt_message(message, E2EE_SECRET)
                     print(f"DEBUG INCOMING WEBSOCKET MSG: {message}")
                     data = json.loads(message)
@@ -1509,7 +1509,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 message = await websocket.receive_text()
                 last_activity = time.time()
                 try:
-                    if ENABLE_E2EE and E2EE_SECRET:
+                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
                         message = decrypt_message(message, E2EE_SECRET)
                     data = json.loads(message)
                     if data.get("type") in ("input", "submit"):
