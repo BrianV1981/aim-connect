@@ -1256,20 +1256,20 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     try:
                                         if opencode_db_path and os.path.exists(opencode_db_path):
                                             import sqlite3
-                                            import json
                                             conn = sqlite3.connect(opencode_db_path)
                                             query = '''
-                                            SELECT p.data
+                                            SELECT m.data, p.data
                                             FROM message m
                                             JOIN part p ON m.id = p.message_id
-                                            WHERE m.time_created > ? AND m.role = 'assistant'
+                                            WHERE m.time_created > ?
                                             ORDER BY m.time_created ASC, p.time_created ASC
                                             '''
                                             rows = conn.execute(query, (max_time_db,)).fetchall()
                                             texts = []
                                             for r in rows:
-                                                p_data = json.loads(r[0])
-                                                if p_data.get("type") == "text" and p_data.get("text"):
+                                                m_data = json.loads(r[0])
+                                                p_data = json.loads(r[1])
+                                                if m_data.get("role") == "assistant" and p_data.get("type") == "text" and p_data.get("text"):
                                                     texts.append(p_data.get("text"))
                                             conn.close()
                                             
