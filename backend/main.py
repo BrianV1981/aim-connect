@@ -1156,10 +1156,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     f"{oauth_binds}"
                     f"--chdir {workspace_dir} {cli_args}"
                 )
+            with open("/tmp/bwrap_cmd.log", "w") as f: f.write(bwrap_cmd)
+
             start_proc = await asyncio.create_subprocess_exec(
-                "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd
+                "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            await start_proc.wait()
+            stdout, stderr = await start_proc.communicate()
+            if start_proc.returncode != 0:
+                logger.error(f"Failed to create TMUX session. stdout: {stdout.decode()} stderr: {stderr.decode()}")
+            else:
+                logger.info(f"TMUX session {target_session_override} created successfully.")
+
             # Give the CLI a moment to initialize the UI and block on the Trust prompt
             await asyncio.sleep(5)
 
@@ -1205,10 +1213,26 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
                             baseline_text = get_clean_screen()
                             
+                            max_time_db = 0
+                            try:
+                                # Determine the DB path dynamically for this harness
+                                opencode_db_path = None
+                                db_path_base = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+                                if os.path.exists(db_path_base):
+                                    opencode_db_path = db_path_base
+                                    
+                                if opencode_db_path:
+                                    import sqlite3
+                                    conn = sqlite3.connect(opencode_db_path)
+                                    res = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
+                                    if res and res[0]:
+                                        max_time_db = res[0]
+                                    conn.close()
+                            except Exception as e:
+                                logger.error(f"Failed to get max time from opencode db: {e}")
+                                
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
-                            await asyncio.sleep(0.5)
-                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Escape"])
                             await asyncio.sleep(0.5)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                             
@@ -1227,36 +1251,65 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     same_count += 1
                                     
                                 if same_count >= 2 and current_text != baseline_text:
-                                    baseline_lines = baseline_text.splitlines()
-                                    current_lines = current_text.splitlines()
-                                    
-                                    tail = []
-                                    for line in reversed(baseline_lines):
-                                        if line.strip():
-                                            tail.insert(0, line)
-                                            if len(tail) == 3:
-                                                break
-                                                
-                                    match_idx = -1
-                                    if tail:
-                                        for i in range(len(current_lines) - len(tail) + 1):
-                                            if current_lines[i:i+len(tail)] == tail:
-                                                match_idx = i + len(tail)
-                                                
-                                        if match_idx == -1:
-                                            last_line = tail[-1]
-                                            for i in reversed(range(len(current_lines))):
-                                                if current_lines[i] == last_line:
-                                                    match_idx = i + 1
+                                    # SCREEN HAS STABILIZED. 
+                                    # INSTEAD OF FRAGILE SCREEN SCRAPING, WE READ THE EXACT TEXT FROM SQLITE
+                                    try:
+                                        if opencode_db_path and os.path.exists(opencode_db_path):
+                                            import sqlite3
+                                            import json
+                                            conn = sqlite3.connect(opencode_db_path)
+                                            query = '''
+                                            SELECT p.data
+                                            FROM message m
+                                            JOIN part p ON m.id = p.message_id
+                                            WHERE m.time_created > ? AND m.role = 'assistant'
+                                            ORDER BY m.time_created ASC, p.time_created ASC
+                                            '''
+                                            rows = conn.execute(query, (max_time_db,)).fetchall()
+                                            texts = []
+                                            for r in rows:
+                                                p_data = json.loads(r[0])
+                                                if p_data.get("type") == "text" and p_data.get("text"):
+                                                    texts.append(p_data.get("text"))
+                                            conn.close()
+                                            
+                                            if texts:
+                                                clean_output = "\n\n".join(texts).strip()
+                                    except Exception as e:
+                                        logger.error(f"Failed to extract text from opencode db: {e}")
+                                        
+                                    # If DB extraction failed or returned nothing, fallback to old logic
+                                    if not clean_output:
+                                        baseline_lines = baseline_text.splitlines()
+                                        current_lines = current_text.splitlines()
+                                        
+                                        tail = []
+                                        for line in reversed(baseline_lines):
+                                            if line.strip():
+                                                tail.insert(0, line)
+                                                if len(tail) == 3:
                                                     break
                                                     
-                                    if match_idx != -1:
-                                        new_lines = current_lines[match_idx:]
-                                        clean_output = "\n".join(new_lines).strip()
-                                    else:
-                                        baseline_set = set(baseline_lines)
-                                        clean_output = "\n".join([l for l in current_lines if l not in baseline_set]).strip()
-                                        
+                                        match_idx = -1
+                                        if tail:
+                                            for i in range(len(current_lines) - len(tail) + 1):
+                                                if current_lines[i:i+len(tail)] == tail:
+                                                    match_idx = i + len(tail)
+                                                    
+                                            if match_idx == -1:
+                                                last_line = tail[-1]
+                                                for i in reversed(range(len(current_lines))):
+                                                    if current_lines[i] == last_line:
+                                                        match_idx = i + 1
+                                                        break
+                                                        
+                                        if match_idx != -1:
+                                            new_lines = current_lines[match_idx:]
+                                            clean_output = "\n".join(new_lines).strip()
+                                        else:
+                                            baseline_set = set(baseline_lines)
+                                            clean_output = "\n".join([l for l in current_lines if l not in baseline_set]).strip()
+                                            
                                     break
                                     
                             if not clean_output:
@@ -1310,8 +1363,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
                             sleep_time = max(0.5, len(prompt) / 20000.0)
                             await asyncio.sleep(sleep_time)
-                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Escape"])
-                            await asyncio.sleep(0.1)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                             
                             clean_output = "**Error:** Agent timed out or failed to write transcript."
@@ -1396,8 +1447,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
                             sleep_time = max(0.5, len(prompt) / 20000.0)
                             await asyncio.sleep(sleep_time)
-                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Escape"])
-                            await asyncio.sleep(0.1)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
                             
                             clean_output = "**Error:** Agent timed out or failed to write transcript."
