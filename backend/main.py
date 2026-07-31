@@ -1242,45 +1242,43 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             
                             for _ in range(120):
                                 await asyncio.sleep(1)
-                                current_text = get_clean_screen()
-                                
-                                if current_text != last_text:
-                                    last_text = current_text
-                                    same_count = 0
-                                elif current_text and current_text != baseline_text:
-                                    same_count += 1
+                            timeout = False
+                            start_time = time.time()
+                            
+                            # Poll the database for the new message
+                            while True:
+                                await asyncio.sleep(1.0)
+                                if time.time() - start_time > 120:
+                                    timeout = True
+                                    break
                                     
-                                if same_count >= 2 and current_text != baseline_text:
-                                    # SCREEN HAS STABILIZED. 
-                                    # INSTEAD OF FRAGILE SCREEN SCRAPING, WE READ THE EXACT TEXT FROM SQLITE
+                                if opencode_db_path and os.path.exists(opencode_db_path):
                                     try:
-                                        if opencode_db_path and os.path.exists(opencode_db_path):
-                                            import sqlite3
-                                            conn = sqlite3.connect(opencode_db_path)
-                                            query = '''
-                                            SELECT m.data, p.data
-                                            FROM message m
-                                            JOIN part p ON m.id = p.message_id
-                                            WHERE m.time_created > ?
-                                            ORDER BY m.time_created ASC, p.time_created ASC
-                                            '''
-                                            rows = conn.execute(query, (max_time_db,)).fetchall()
-                                            texts = []
-                                            for r in rows:
-                                                m_data = json.loads(r[0])
-                                                p_data = json.loads(r[1])
-                                                if m_data.get("role") == "assistant" and p_data.get("type") == "text" and p_data.get("text"):
-                                                    texts.append(p_data.get("text"))
-                                            conn.close()
-                                            
-                                            if texts:
-                                                clean_output = "\n\n".join(texts).strip()
+                                        import sqlite3
+                                        conn = sqlite3.connect(opencode_db_path)
+                                        query = '''
+                                        SELECT m.data, p.data
+                                        FROM message m
+                                        JOIN part p ON m.id = p.message_id
+                                        WHERE m.time_created > ?
+                                        ORDER BY m.time_created ASC, p.time_created ASC
+                                        '''
+                                        rows = conn.execute(query, (max_time_db,)).fetchall()
+                                        texts = []
+                                        for r in rows:
+                                            m_data = json.loads(r[0])
+                                            p_data = json.loads(r[1])
+                                            if m_data.get("role") == "assistant" and p_data.get("type") == "text" and p_data.get("text"):
+                                                texts.append(p_data.get("text"))
+                                        conn.close()
+                                        
+                                        if texts:
+                                            clean_output = "\n\n".join(texts).strip()
+                                            break
                                     except Exception as e:
                                         logger.error(f"Failed to extract text from opencode db: {e}")
                                         
-                                    break
-                                    
-                            if not clean_output:
+                            if timeout or not clean_output:
                                 clean_output = "**System:** Sent to OpenCode terminal, but timed out waiting for stable output."
                                 
                             if ENABLE_E2EE and E2EE_SECRET:
@@ -1300,7 +1298,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 await websocket.send_text(error_msg)
                             
                 except Exception as e:
-                    logger.error(f"Chat API loop error: {e}")
+                    logger.error(f"Chat API loop error: {e}", exc_info=True)
                     break
         elif client_harness == "admin-cli":
             while True:
