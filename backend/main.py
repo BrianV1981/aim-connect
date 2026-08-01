@@ -793,9 +793,12 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
                     content_blocks = data.get("content", [])
                     if not content_blocks: continue
                     text = ""
-                    for b in content_blocks:
-                        if b.get("type") == "text":
-                            text += b.get("text", "") + "\n"
+                    if isinstance(content_blocks, str):
+                        text = content_blocks + "\n"
+                    elif isinstance(content_blocks, list):
+                        for b in content_blocks:
+                            if isinstance(b, dict) and b.get("type") == "text":
+                                text += b.get("text", "") + "\n"
                     
                     if not text.strip(): continue
                     safe_content = escape_html.escape(text.strip())
@@ -1247,7 +1250,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await asyncio.sleep(2)
 
 
-        if client_harness == "opencode":
+        if client_harness in ("opencode", "grok"):
             while True:
                 try:
                     message = await websocket.receive_text()
@@ -1320,9 +1323,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                         role = data.get("type", data.get("role"))
                                                         content_blocks = data.get("content", [])
                                                         if role in ["assistant", "model"] and content_blocks:
-                                                            for b in content_blocks:
-                                                                if b.get("type") == "text":
-                                                                    texts.append(b.get("text", ""))
+                                                            if isinstance(content_blocks, str):
+                                                                texts.append(content_blocks)
+                                                            elif isinstance(content_blocks, list):
+                                                                for b in content_blocks:
+                                                                    if isinstance(b, dict) and b.get("type") == "text":
+                                                                        texts.append(b.get("text", ""))
                                                     except Exception:
                                                         pass
                                             if texts:
@@ -1357,7 +1363,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         logger.error(f"Failed to extract text from opencode db: {e} PATH WAS: {opencode_db_path}")
                                         
                             if timeout or not clean_output:
-                                clean_output = "**System:** Sent to OpenCode terminal, but timed out waiting for stable output."
+                                clean_output = f"**System:** Sent to {client_harness.capitalize()} terminal, but timed out waiting for stable output."
                                 
                             if ENABLE_E2EE and E2EE_SECRET:
                                 encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
