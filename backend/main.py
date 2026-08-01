@@ -789,6 +789,10 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
                 if not line.strip(): continue
                 try:
                     data = json.loads(line)
+                    
+                    if data.get("synthetic_reason") == "system_reminder" or data.get("type") == "system":
+                        continue
+                        
                     role = data.get("type", data.get("role"))
                     content_blocks = data.get("content", [])
                     if not content_blocks: continue
@@ -799,6 +803,10 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
                         for b in content_blocks:
                             if isinstance(b, dict) and b.get("type") == "text":
                                 text += b.get("text", "") + "\n"
+                    
+                    import re
+                    text = re.sub(r'</?user_query>', '', text)
+                    text = re.sub(r'<system-reminder>.*?</system-reminder>', '', text, flags=re.DOTALL)
                     
                     if not text.strip(): continue
                     safe_content = escape_html.escape(text.strip())
