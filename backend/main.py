@@ -1042,7 +1042,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         os.makedirs(agent_brain_dir, exist_ok=True)
         os.makedirs(agent_conv_dir, exist_ok=True)
         os.makedirs(os.path.join(workspace_dir, "opencode_data"), exist_ok=True)
-        os.makedirs(os.path.join(workspace_dir, "grok_data"), exist_ok=True)
+        grok_data_dir = os.path.join(workspace_dir, "grok_data")
+        os.makedirs(grok_data_dir, exist_ok=True)
+        os.makedirs(os.path.join(grok_data_dir, "bin"), exist_ok=True)
+        if not os.path.exists(os.path.join(grok_data_dir, "config.toml")):
+            open(os.path.join(grok_data_dir, "config.toml"), 'a').close()
+        if not os.path.exists(os.path.join(grok_data_dir, "auth.json")):
+            open(os.path.join(grok_data_dir, "auth.json"), 'a').close()
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "logs"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "crashes"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "implicit"), exist_ok=True)
