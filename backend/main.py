@@ -1078,7 +1078,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         )
         await proc.wait()
         
-        if proc.returncode != 0:
+        needs_reboot = False
+        if proc.returncode == 0 and client_gemini_api_key:
+            env_proc = await asyncio.create_subprocess_exec(
+                "tmux", "show-environment", "-t", target_session_override, "BYOK_API_KEY",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await env_proc.communicate()
+            existing_key = stdout.decode().strip()
+            if existing_key != f"BYOK_API_KEY={client_gemini_api_key}":
+                logger.info(f"API key changed for {target_session_override}. Killing old session.")
+                await asyncio.create_subprocess_exec("tmux", "kill-session", "-t", target_session_override)
+                needs_reboot = True
+                
+        if proc.returncode != 0 or needs_reboot:
             logger.info(f"Starting TMUX session for {target_session_override}...")
             
             # Completely decoupled execution pipelines for each harness
@@ -1249,6 +1263,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 logger.error(f"Failed to create TMUX session. stdout: {stdout.decode()} stderr: {stderr.decode()}")
             else:
                 logger.info(f"TMUX session {target_session_override} created successfully.")
+                if client_gemini_api_key:
+                    subprocess.run(["tmux", "set-environment", "-t", target_session_override, "BYOK_API_KEY", client_gemini_api_key])
 
             # Give the CLI a moment to initialize the UI and block on the Trust prompt
             await asyncio.sleep(5)
@@ -1371,7 +1387,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         logger.error(f"Failed to extract text from opencode db: {e} PATH WAS: {opencode_db_path}")
                                         
                             if timeout or not clean_output:
-                                clean_output = f"**System:** Sent to {client_harness.capitalize()} terminal, but timed out waiting for stable output."
+                                clean_output = f"**System:** Sent to {client_harness.capitalize()} terminal, but timed out waiting for stable output.\n\n⚠️ **If this is your first request or you recently changed models, please check your BYOK Panel and ensure your API Key is valid and saved.**"
                                 
                             if ENABLE_E2EE and E2EE_SECRET:
                                 encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
