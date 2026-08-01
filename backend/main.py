@@ -747,7 +747,7 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
         if len(parts) >= 3 and parts[0] == 'agent':
             base_agent = f"{parts[0]}-{parts[1]}"
             sub_id = '-'.join(parts[2:])
-            if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli"]:
+            if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli", "grok"]:
                 workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
                 agent_brain_dir = os.path.join(workspace_dir, f"harness-{sub_id}", "brain")
             else:
@@ -763,16 +763,51 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
     html = f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}} h2{{color: #00ff88; text-transform: uppercase; border-bottom: 1px solid #00ff88; padding-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0,255,136,0.5);}} .user{{background: #111a15; padding: 1.5rem; border-radius: 4px; margin-bottom: 1rem; border-left: 3px solid #0088ff; color: #a0c4ff;}} .agent{{background: #0d1410; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem; border-left: 3px solid #00ff88; white-space: pre-wrap; box-shadow: -2px 0 10px rgba(0, 255, 136, 0.1);}} strong{{color: #fff; text-transform: uppercase; letter-spacing: 1px;}} .meta{{font-size: 0.8rem; color: #00ff88; margin-bottom: 15px; opacity: 0.7;}} .boundary{{text-align: center; color: #00ff88; padding: 15px 0; border-top: 1px dashed #00FFA3; border-bottom: 1px dashed #00FFA3; margin: 40px 0; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><div class='meta'>TARGET IDENTIFIER: {agent_id}<br/>ACCESS LEVEL: ADMINISTRATOR</div>"
     
     opencode_db_path = None
-    opencode_db_path = None
-    opencode_db_path_base = os.path.join(workspace_dir, "harness-opencode", "opencode_data", "opencode.db")
-    opencode_db_path_sub = os.path.join(workspace_dir, "opencode_data", "opencode.db")
-    if os.path.exists(opencode_db_path_base):
-        opencode_db_path = opencode_db_path_base
-    elif os.path.exists(opencode_db_path_sub):
-        opencode_db_path = opencode_db_path_sub
-    if opencode_db_path:
+    grok_chat_path = None
+    
+    try:
+        sub_id = '-'.join(agent_id.split('-')[2:]) if len(agent_id.split('-')) >= 3 else None
+    except:
+        sub_id = None
+
+    if sub_id == "grok":
+        grok_sessions = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
+        if grok_sessions:
+            grok_chat_path = max(grok_sessions, key=os.path.getmtime)
+    else:
+        opencode_db_path_base = os.path.join(workspace_dir, "harness-opencode", "opencode_data", "opencode.db")
+        opencode_db_path_sub = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+        if os.path.exists(opencode_db_path_base):
+            opencode_db_path = opencode_db_path_base
+        elif os.path.exists(opencode_db_path_sub):
+            opencode_db_path = opencode_db_path_sub
+
+    import html as escape_html
+    if grok_chat_path:
+        with open(grok_chat_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if not line.strip(): continue
+                try:
+                    data = json.loads(line)
+                    role = data.get("type", data.get("role"))
+                    content_blocks = data.get("content", [])
+                    if not content_blocks: continue
+                    text = ""
+                    for b in content_blocks:
+                        if b.get("type") == "text":
+                            text += b.get("text", "") + "\n"
+                    
+                    if not text.strip(): continue
+                    safe_content = escape_html.escape(text.strip())
+                    
+                    if role == "user":
+                        html += f"<div class='user'><strong>[OPERATOR INPUT]</strong><br/><br/>{safe_content}</div>"
+                    elif role in ["assistant", "model"]:
+                        html += f"<div class='agent'><strong>[A.I.M. SYSTEM RESPONSE]</strong><br/><br/>{safe_content}</div>"
+                except Exception:
+                    pass
+    elif opencode_db_path:
         import sqlite3
-        import html as escape_html
         conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
         cursor = conn.cursor()
         query = """
@@ -1007,6 +1042,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         os.makedirs(agent_brain_dir, exist_ok=True)
         os.makedirs(agent_conv_dir, exist_ok=True)
         os.makedirs(os.path.join(workspace_dir, "opencode_data"), exist_ok=True)
+        os.makedirs(os.path.join(workspace_dir, "grok_data"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "logs"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "crashes"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "implicit"), exist_ok=True)
@@ -1073,6 +1109,33 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     f"--bind {agent_brain_dir}/.system_generated/implicit /home/kingb/.gemini/antigravity-cli/implicit "
                     f"--bind {agent_brain_dir}/summary_store.db /home/kingb/.gemini/antigravity-cli/summary_store.db "
                     f"{oauth_binds}"
+                    f"--chdir {workspace_dir} {cli_args}"
+                )
+
+            elif client_harness == "grok":
+                cli_args = "/home/kingb/.grok/bin/grok --always-approve"
+                if client_gemini_model:
+                    model_mapping = {
+                        "grok-4.5": "grok-4.5",
+                        "grok-beta": "grok-beta"
+                    }
+                    mapped_model = model_mapping.get(client_gemini_model, "grok-4.5")
+                    cli_args += f" --model {mapped_model}"
+                
+                env_injections = f"--setenv AIM_VESSEL_CLI 'grok' "
+                if client_gemini_api_key:
+                    env_injections += f"--setenv XAI_API_KEY '{client_gemini_api_key}' "
+                
+                bwrap_cmd = (
+                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                    f"--tmpfs /home/kingb "
+                    f"{env_injections}"
+                    f"--ro-bind /home/kingb/.local /home/kingb/.local "
+                    f"--bind {workspace_dir}/grok_data /home/kingb/.grok "
+                    f"--ro-bind /home/kingb/.grok/bin /home/kingb/.grok/bin "
+                    f"--ro-bind /home/kingb/.grok/config.toml /home/kingb/.grok/config.toml "
+                    f"--bind {workspace_dir} {workspace_dir} "
+                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
                     f"--chdir {workspace_dir} {cli_args}"
                 )
 
@@ -1191,22 +1254,30 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             
                         try:
                             max_time_db = 0
+                            grok_file_state = (None, 0)
+                            
                             try:
-                                # Determine the DB path dynamically for this harness
                                 opencode_db_path = None
-                                db_path_base = os.path.join(workspace_dir, "opencode_data", "opencode.db")
-                                if os.path.exists(db_path_base):
-                                    opencode_db_path = db_path_base
-                                    
-                                if opencode_db_path:
-                                    import sqlite3
-                                    conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
-                                    res = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
-                                    if res and res[0]:
-                                        max_time_db = res[0]
-                                    conn.close()
+                                if client_harness == "grok":
+                                    g_files = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
+                                    if g_files:
+                                        g_latest = max(g_files, key=os.path.getmtime)
+                                        with open(g_latest, 'r', encoding='utf-8') as f:
+                                            grok_file_state = (g_latest, sum(1 for _ in f))
+                                else:
+                                    db_path_base = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+                                    if os.path.exists(db_path_base):
+                                        opencode_db_path = db_path_base
+                                        
+                                    if opencode_db_path:
+                                        import sqlite3
+                                        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
+                                        res = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
+                                        if res and res[0]:
+                                            max_time_db = res[0]
+                                        conn.close()
                             except Exception as e:
-                                logger.error(f"Failed to get max time from opencode db: {e} PATH WAS: {opencode_db_path}")
+                                logger.error(f"Failed to get max time from db: {e}")
                                 
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
@@ -1224,7 +1295,33 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     timeout = True
                                     break
                                     
-                                if opencode_db_path and os.path.exists(opencode_db_path):
+                                if client_harness == "grok":
+                                    g_files = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
+                                    if g_files:
+                                        g_latest = max(g_files, key=os.path.getmtime)
+                                        lines_to_skip = grok_file_state[1] if g_latest == grok_file_state[0] else 0
+                                        texts = []
+                                        try:
+                                            with open(g_latest, 'r', encoding='utf-8') as f:
+                                                for i, line in enumerate(f):
+                                                    if i < lines_to_skip: continue
+                                                    if not line.strip(): continue
+                                                    try:
+                                                        data = json.loads(line)
+                                                        role = data.get("type", data.get("role"))
+                                                        content_blocks = data.get("content", [])
+                                                        if role in ["assistant", "model"] and content_blocks:
+                                                            for b in content_blocks:
+                                                                if b.get("type") == "text":
+                                                                    texts.append(b.get("text", ""))
+                                                    except Exception:
+                                                        pass
+                                            if texts:
+                                                clean_output = "\n\n".join(texts).strip()
+                                                break
+                                        except Exception as e:
+                                            logger.error(f"Failed to read grok chat history: {e}")
+                                elif opencode_db_path and os.path.exists(opencode_db_path):
                                     try:
                                         import sqlite3
                                         conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
