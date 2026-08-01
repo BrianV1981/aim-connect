@@ -774,7 +774,7 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
         grok_sessions = glob.glob(os.path.join(workspace_dir, "harness-grok", "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
         if grok_sessions:
             grok_chat_path = max(grok_sessions, key=os.path.getmtime)
-    else:
+    elif sub_id == "opencode":
         opencode_db_path_base = os.path.join(workspace_dir, "harness-opencode", "opencode_data", "opencode.db")
         opencode_db_path_sub = os.path.join(workspace_dir, "opencode_data", "opencode.db")
         if os.path.exists(opencode_db_path_base):
