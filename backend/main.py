@@ -1045,6 +1045,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         grok_data_dir = os.path.join(workspace_dir, "grok_data")
         os.makedirs(grok_data_dir, exist_ok=True)
         os.makedirs(os.path.join(grok_data_dir, "bin"), exist_ok=True)
+        os.makedirs(os.path.join(grok_data_dir, "downloads"), exist_ok=True)
         if not os.path.exists(os.path.join(grok_data_dir, "config.toml")):
             open(os.path.join(grok_data_dir, "config.toml"), 'a').close()
         if not os.path.exists(os.path.join(grok_data_dir, "auth.json")):
@@ -1139,7 +1140,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     f"--ro-bind /home/operator/.local /home/operator/.local "
                     f"--bind {workspace_dir}/grok_data /home/operator/.grok "
                     f"--ro-bind /home/operator/.grok/bin /home/operator/.grok/bin "
+                    f"--ro-bind /home/operator/.grok/downloads /home/operator/.grok/downloads "
                     f"--ro-bind /home/operator/.grok/config.toml /home/operator/.grok/config.toml "
+                    f"--ro-bind /home/operator/.grok/auth.json /home/operator/.grok/auth.json "
                     f"--bind {workspace_dir} {workspace_dir} "
                     f"--bind {shared_data_dir} {workspace_dir}/shared_database "
                     f"--chdir {workspace_dir} {cli_args}"
