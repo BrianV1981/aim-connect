@@ -528,6 +528,93 @@ def save_integrations(agent_id: str, req: IntegrationRequest):
     return {"status": "success"}
 
 
+grok_oauth_processes = {}
+
+@app.post("/api/grok/oauth/init", dependencies=[Depends(verify_token)])
+async def init_grok_oauth(agent_id: str, token: str = ""):
+    base_agent_name = agent_id.replace('@', '_').replace('.', '_')
+    if not base_agent_name.startswith("agent-"):
+        base_agent_name = "agent-" + base_agent_name
+        
+    parts = agent_id.split('-')
+    if len(parts) >= 3 and parts[0] == 'agent':
+        sub_id = '-'.join(parts[2:])
+        if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli", "grok"]:
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}/harness-{sub_id}"
+        else:
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}/fleet_workspaces/{sub_id}"
+    else:
+        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}/harness-grok"
+
+    os.makedirs(os.path.join(workspace_dir, "grok_data"), exist_ok=True)
+    
+    bwrap_cmd = (
+        f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+        f"--tmpfs /home/kingb "
+        f"--ro-bind /home/kingb/.local /home/kingb/.local "
+        f"--bind {workspace_dir}/grok_data /home/kingb/.grok "
+        f"--ro-bind /home/kingb/.grok/bin /home/kingb/.grok/bin "
+        f"--bind {workspace_dir} {workspace_dir} "
+        f"--chdir {workspace_dir} /home/kingb/.grok/bin/grok login --device-auth"
+    )
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            bwrap_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+    except Exception as e:
+        logger.error(f"Failed to spawn grok login: {e}")
+        return {"error": str(e)}
+        
+    grok_oauth_processes[agent_id] = {"process": proc, "status": "pending"}
+    
+    url = None
+    code = None
+    
+    start_time = time.time()
+    while time.time() - start_time < 15.0:
+        try:
+            line_bytes = await asyncio.wait_for(proc.stdout.readline(), timeout=1.0)
+            if not line_bytes:
+                break
+            line = line_bytes.decode('utf-8', errors='ignore').strip()
+            
+            if "https://" in line:
+                url_match = re.search(r'(https://[^\s]+)', line)
+                if url_match:
+                    url = url_match.group(1)
+            
+            code_match = re.search(r'\b([A-Z0-9]{4}-[A-Z0-9]{4})\b', line)
+            if code_match:
+                code = code_match.group(1)
+                
+            if url and code:
+                break
+        except asyncio.TimeoutError:
+            continue
+
+    async def wait_for_auth():
+        await proc.wait()
+        if proc.returncode == 0:
+            grok_oauth_processes[agent_id]["status"] = "success"
+        else:
+            grok_oauth_processes[agent_id]["status"] = "failed"
+            
+    asyncio.create_task(wait_for_auth())
+    
+    if url and code:
+        return {"url": url, "code": code}
+    else:
+        return {"error": "Failed to parse device code from Grok CLI."}
+
+@app.get("/api/grok/oauth/status", dependencies=[Depends(verify_token)])
+async def get_grok_oauth_status(agent_id: str, token: str = ""):
+    if agent_id not in grok_oauth_processes:
+        return {"status": "not_found"}
+    return {"status": grok_oauth_processes[agent_id]["status"]}
+
 @app.post("/api/sessions", dependencies=[Depends(verify_token)])
 def create_session(req: SessionRequest) -> dict:
     """Spawns a new detached tmux session and enables global mouse support."""
@@ -1166,8 +1253,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     f"--bind {workspace_dir}/grok_data /home/kingb/.grok "
                     f"--ro-bind /home/kingb/.grok/bin /home/kingb/.grok/bin "
                     f"--ro-bind /home/kingb/.grok/downloads /home/kingb/.grok/downloads "
-                    f"--ro-bind /home/kingb/.grok/config.toml /home/kingb/.grok/config.toml "
-                    f"--ro-bind /home/kingb/.grok/auth.json /home/kingb/.grok/auth.json "
                     f"--bind {workspace_dir} {workspace_dir} "
                     f"--bind {shared_data_dir} {workspace_dir}/shared_database "
                     f"--chdir {workspace_dir} {cli_args}"
