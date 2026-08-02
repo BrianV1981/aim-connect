@@ -571,11 +571,12 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
     os.makedirs(os.path.join(workspace_dir, "grok_data"), exist_ok=True)
     
     bwrap_cmd = (
-        f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+        f"stdbuf -o0 -e0 bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
         f"--tmpfs /home/kingb "
         f"--ro-bind /home/kingb/.local /home/kingb/.local "
         f"--bind {workspace_dir}/grok_data /home/kingb/.grok "
         f"--ro-bind /home/kingb/.grok/bin /home/kingb/.grok/bin "
+        f"--ro-bind /home/kingb/.grok/downloads /home/kingb/.grok/downloads "
         f"--bind {workspace_dir} {workspace_dir} "
         f"--chdir {workspace_dir} /home/kingb/.grok/bin/grok login --device-auth"
     )
