@@ -1037,6 +1037,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     target_session_override = None
     client_gemini_api_key = None
     client_gemini_model = None
+    client_grok_thinking = None
     client_harness = "opencode"
     try:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
@@ -1046,6 +1047,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             sub_session_id = data.get("sub_session_id")
             client_gemini_api_key = data.get("gemini_api_key")
             client_gemini_model = data.get("gemini_model")
+            client_grok_thinking = data.get("grok_thinking")
             client_harness = data.get("harness", "opencode")
             
             if token in VALID_API_TOKENS:
@@ -1263,6 +1265,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if client_gemini_model:
                     model_mapping = {
                         "grok-4.5": "grok-4.5",
+                        "grok-4.3": "grok-4.3",
                         "grok-beta": "grok-beta"
                     }
                     mapped_model = model_mapping.get(client_gemini_model, "grok-4.5")
@@ -1271,6 +1274,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 env_injections = f"--setenv AIM_VESSEL_CLI 'grok' "
                 if client_gemini_api_key:
                     env_injections += f"--setenv XAI_API_KEY '{client_gemini_api_key}' "
+                if client_grok_thinking:
+                    env_injections += f"--setenv XAI_REASONING_EFFORT '{client_grok_thinking}' "
                 
                 bwrap_cmd = (
                     f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
