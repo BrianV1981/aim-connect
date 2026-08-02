@@ -571,14 +571,14 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
     os.makedirs(os.path.join(workspace_dir, "grok_data"), exist_ok=True)
     
     bwrap_cmd = (
-        f"stdbuf -o0 -e0 bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+        f"script -e -q -c 'bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
         f"--tmpfs /home/kingb "
         f"--ro-bind /home/kingb/.local /home/kingb/.local "
         f"--bind {workspace_dir}/grok_data /home/kingb/.grok "
         f"--ro-bind /home/kingb/.grok/bin /home/kingb/.grok/bin "
         f"--ro-bind /home/kingb/.grok/downloads /home/kingb/.grok/downloads "
         f"--bind {workspace_dir} {workspace_dir} "
-        f"--chdir {workspace_dir} /home/kingb/.grok/bin/grok login --device-auth"
+        f"--chdir {workspace_dir} /home/kingb/.grok/bin/grok login --device-auth' /dev/null"
     )
 
     try:
@@ -595,6 +595,7 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
     
     url = None
     code = None
+    captured_output = []
     
     start_time = time.time()
     while time.time() - start_time < 15.0:
@@ -603,6 +604,8 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
             if not line_bytes:
                 break
             line = line_bytes.decode('utf-8', errors='ignore').strip()
+            if line:
+                captured_output.append(line)
             
             if "https://" in line:
                 url_match = re.search(r'(https://[^\s]+)', line)
@@ -630,7 +633,7 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
     if url and code:
         return {"url": url, "code": code}
     else:
-        return {"error": "Failed to parse device code from Grok CLI."}
+        return {"error": "Failed to parse device code from Grok CLI.", "output": "\n".join(captured_output)}
 
 @app.get("/api/grok/oauth/status")
 async def get_grok_oauth_status(agent_id: str, token: str = ""):
