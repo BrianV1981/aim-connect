@@ -1919,7 +1919,8 @@ async def delete_fleet_session(agent_id: str, token: str = Query(None)):
             return JSONResponse({"error": "Unauthorized access to this agent"}, status_code=403)
             
 
-        subprocess.run(["tmux", "kill-session", "-t", agent_id], capture_output=True)
+        proc = await asyncio.create_subprocess_exec("tmux", "kill-session", "-t", agent_id)
+        await proc.wait()
         return {"status": "killed", "agent_id": agent_id}
         
     except Exception as e:
