@@ -1275,7 +1275,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if client_gemini_api_key:
                     env_injections += f"--setenv XAI_API_KEY '{client_gemini_api_key}' "
                 if client_grok_thinking:
-                    env_injections += f"--setenv XAI_REASONING_EFFORT '{client_grok_thinking}' "
+                    cli_args += f" --reasoning-effort {client_grok_thinking}"
                 
                 bwrap_cmd = (
                     f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
@@ -1473,8 +1473,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                     except Exception:
                                                         pass
                                             if texts:
-                                                clean_output = "\n\n".join(texts).strip()
-                                                break
+                                                p = subprocess.run(["tmux", "capture-pane", "-p", "-t", target_session_override], capture_output=True, text=True)
+                                                out = p.stdout.strip()
+                                                is_done = False
+                                                if "shortcuts" in out[-400:] or "commands" in out[-400:]:  # Matches both "? for shortcuts" and "Ctrl+x:shortcuts"
+                                                    is_done = True
+                                                elif out.endswith(">") or out.endswith("$") or out.endswith("❯"):
+                                                    is_done = True
+                                                    
+                                                if is_done:
+                                                    clean_output = "\n\n".join(texts).strip()
+                                                    break
                                         except Exception as e:
                                             logger.error(f"Failed to read grok chat history: {e}")
                                 elif opencode_db_path and os.path.exists(opencode_db_path):
@@ -1498,8 +1507,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         conn.close()
                                         
                                         if texts:
-                                            clean_output = "\n\n".join(texts).strip()
-                                            break
+                                            p = subprocess.run(["tmux", "capture-pane", "-p", "-t", target_session_override], capture_output=True, text=True)
+                                            out = p.stdout.strip()
+                                            is_done = False
+                                            if "shortcuts" in out[-400:] or "commands" in out[-400:]:  # Matches both "? for shortcuts" and "Ctrl+x:shortcuts"
+                                                is_done = True
+                                            elif out.endswith(">") or out.endswith("$") or out.endswith("❯"):
+                                                is_done = True
+                                                
+                                            if is_done:
+                                                clean_output = "\n\n".join(texts).strip()
+                                                break
                                     except Exception as e:
                                         logger.error(f"Failed to extract text from opencode db: {e} PATH WAS: {opencode_db_path}")
                                         
@@ -1888,26 +1906,13 @@ async def delete_fleet_session(agent_id: str, token: str = Query(None)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
     try:
-        parts = token.split(".")
-        if len(parts) != 2:
-            return JSONResponse({"error": "Invalid Token Format"}, status_code=401)
-            
-        payload_b64, signature_b64 = parts
-        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
-        if not secret:
-            return JSONResponse({"error": "No signing secret"}, status_code=500)
-            
-        import base64
-        import hmac
-        import hashlib
-        def pad_b64(data): return data + "=" * (-len(data) % 4)
+        _verify_dashboard_jwt(token)
         
-        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
-        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-        if signature_b64.rstrip("=") != expected_b64:
-            return JSONResponse({"error": "Invalid Signature"}, status_code=401)
-            
-        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
+        parts = token.split(".")
+        import base64
+        def pad_b64(data): return data + "=" * (-len(data) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(pad_b64(parts[0])).decode())
+        
         email = payload.get("e")
         if not email:
             return JSONResponse({"error": "Invalid payload"}, status_code=401)
@@ -2107,4 +2112,3 @@ import hmac
 import hashlib
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi import Query
-
