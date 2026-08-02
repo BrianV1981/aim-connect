@@ -530,8 +530,30 @@ def save_integrations(agent_id: str, req: IntegrationRequest):
 
 grok_oauth_processes = {}
 
-@app.post("/api/grok/oauth/init", dependencies=[Depends(verify_token)])
+def _verify_dashboard_jwt(token: str):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        import base64, hmac, hashlib
+        parts = token.split(".")
+        if len(parts) != 2:
+            raise HTTPException(status_code=401, detail="Invalid Token Format")
+        payload_b64, signature_b64 = parts
+        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+        if not secret:
+            raise HTTPException(status_code=500, detail="Missing Secret")
+        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
+        if signature_b64.rstrip("=") != expected_b64:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Token Verification Failed")
+
+@app.post("/api/grok/oauth/init")
 async def init_grok_oauth(agent_id: str, token: str = ""):
+    _verify_dashboard_jwt(token)
     base_agent_name = agent_id.replace('@', '_').replace('.', '_')
     if not base_agent_name.startswith("agent-"):
         base_agent_name = "agent-" + base_agent_name
@@ -609,8 +631,9 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
     else:
         return {"error": "Failed to parse device code from Grok CLI."}
 
-@app.get("/api/grok/oauth/status", dependencies=[Depends(verify_token)])
+@app.get("/api/grok/oauth/status")
 async def get_grok_oauth_status(agent_id: str, token: str = ""):
+    _verify_dashboard_jwt(token)
     if agent_id not in grok_oauth_processes:
         return {"status": "not_found"}
     return {"status": grok_oauth_processes[agent_id]["status"]}
