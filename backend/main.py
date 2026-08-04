@@ -530,6 +530,45 @@ def save_integrations(agent_id: str, req: IntegrationRequest):
 
 grok_oauth_processes = {}
 
+
+async def kill_all_user_sessions(sanitized_email: str, exclude_session: str = ""):
+    """Kill ALL tmux sessions for this email to enforce 1-email-1-session.
+    
+    This is the server-side safety net that guarantees no ghost sessions
+    persist across harness switches, browser crashes, or failed frontend
+    DELETE calls. Called before spawning a new session.
+    
+    Args:
+        sanitized_email: The user's email sanitized for tmux naming
+        exclude_session: Optional session name to keep alive (for reconnects)
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "tmux", "list-sessions", "-F", "#{session_name}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode != 0:
+            return  # No tmux server or no sessions — nothing to kill
+        
+        prefix = f"agent-{sanitized_email}"
+        for session_name in stdout.decode().strip().split('\n'):
+            session_name = session_name.strip()
+            if not session_name:
+                continue
+            # Match sessions that are exactly the prefix or start with prefix-
+            if session_name == prefix or session_name.startswith(f"{prefix}-"):
+                if exclude_session and session_name == exclude_session:
+                    continue
+                logger.info(f"[HARNESS SWITCH] Killing orphan session: {session_name}")
+                await asyncio.create_subprocess_exec(
+                    "tmux", "kill-session", "-t", session_name
+                )
+    except Exception as e:
+        logger.warning(f"[HARNESS SWITCH] Error during session cleanup for {sanitized_email}: {e}")
+
+
 def _verify_dashboard_jwt(token: str):
     if not token:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -554,21 +593,25 @@ def _verify_dashboard_jwt(token: str):
 @app.post("/api/grok/oauth/init")
 async def init_grok_oauth(agent_id: str, token: str = ""):
     _verify_dashboard_jwt(token)
-    base_agent_name = agent_id.replace('@', '_').replace('.', '_')
-    if not base_agent_name.startswith("agent-"):
-        base_agent_name = "agent-" + base_agent_name
-        
+    
     parts = agent_id.split('-')
     if len(parts) >= 3 and parts[0] == 'agent':
-        sub_id = '-'.join(parts[2:])
-        if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli", "grok"]:
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}/harness-{sub_id}"
-        else:
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}/fleet_workspaces/{sub_id}"
+        base_agent_name = f"agent-{parts[1]}"
+        # Unified workspace: workspace_dir IS the user root (no harness- subdirs)
+        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}"
     else:
-        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}/harness-grok"
+        base_agent_name = agent_id.replace('@', '_').replace('.', '_')
+        if not base_agent_name.startswith("agent-"):
+            base_agent_name = "agent-" + base_agent_name
+        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent_name}"
 
     os.makedirs(os.path.join(workspace_dir, "grok_data"), exist_ok=True)
+    auth_file = os.path.join(workspace_dir, "grok_data", "auth.json")
+    if os.path.exists(auth_file):
+        try:
+            os.remove(auth_file)
+        except Exception:
+            pass
     
     bwrap_cmd = (
         f"script -e -q -c 'bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
@@ -622,11 +665,30 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
             continue
 
     async def wait_for_auth():
-        await proc.wait()
-        if proc.returncode == 0:
+        auth_file = os.path.join(workspace_dir, "grok_data", "auth.json")
+        start_wait = time.time()
+        success = False
+        while time.time() - start_wait < 300: # Wait up to 5 minutes
+            if os.path.exists(auth_file) and os.path.getsize(auth_file) > 100:
+                success = True
+                break
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+                if proc.returncode == 0:
+                    success = True
+                break
+            except asyncio.TimeoutError:
+                pass
+
+        if success:
             grok_oauth_processes[agent_id]["status"] = "success"
         else:
             grok_oauth_processes[agent_id]["status"] = "failed"
+            
+        try:
+            proc.terminate()
+        except:
+            pass
             
     asyncio.create_task(wait_for_auth())
     
@@ -663,21 +725,21 @@ def kill_session(name: str, delete_workspace: bool = False):
     
     if delete_workspace:
         # Obliterate the workspace directory for the agent/subagent
+        # Unified model: primary sessions use user_root_dir, fleet sub-agents use fleet_sessions/
         workspace_dir = None
         parts = name.split('-')
         if name.startswith('agent-') and len(parts) >= 2:
             base_agent = f"agent-{parts[1]}"
             user_root_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
-            if len(parts) == 3:
-                harness = parts[2]
-                workspace_dir = f"{user_root_dir}/harness-{harness}"
-            elif len(parts) > 3:
+            if len(parts) > 3:
+                # Fleet sub-agent: only delete its conversation isolation dir
                 sub_id = '-'.join(parts[2:])
-                workspace_dir = f"{user_root_dir}/fleet_workspaces/{sub_id}"
+                workspace_dir = f"{user_root_dir}/fleet_sessions/{sub_id}"
             else:
+                # Primary session — delete the entire user workspace
                 workspace_dir = user_root_dir
         else:
-            # Fallback for generic non-agent workspaces, if needed, though usually this targets agents
+            # Fallback for generic non-agent workspaces
             workspace_dir = f"/home/kingb/aim-connect/workspace/{name}"
             
         if workspace_dir and os.path.exists(workspace_dir):
@@ -860,13 +922,9 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
         parts = agent_id.split('-')
         if len(parts) >= 3 and parts[0] == 'agent':
             base_agent = f"{parts[0]}-{parts[1]}"
-            sub_id = '-'.join(parts[2:])
-            if sub_id in ["opencode", "chat", "google-ai", "google-news", "google-web", "admin-cli", "grok"]:
-                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
-                agent_brain_dir = os.path.join(workspace_dir, f"harness-{sub_id}", "brain")
-            else:
-                workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
-                agent_brain_dir = os.path.join(workspace_dir, "brain")
+            # Unified workspace: brain is always at user root level
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
+            agent_brain_dir = os.path.join(workspace_dir, "brain")
         else:
             workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
             agent_brain_dir = os.path.join(workspace_dir, "brain")
@@ -885,16 +943,15 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
         sub_id = None
 
     if sub_id == "grok":
-        grok_sessions = glob.glob(os.path.join(workspace_dir, "harness-grok", "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
+        # Unified workspace: grok_data is at workspace root level
+        grok_sessions = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
         if grok_sessions:
             grok_chat_path = max(grok_sessions, key=os.path.getmtime)
     elif sub_id == "opencode":
-        opencode_db_path_base = os.path.join(workspace_dir, "harness-opencode", "opencode_data", "opencode.db")
-        opencode_db_path_sub = os.path.join(workspace_dir, "opencode_data", "opencode.db")
-        if os.path.exists(opencode_db_path_base):
-            opencode_db_path = opencode_db_path_base
-        elif os.path.exists(opencode_db_path_sub):
-            opencode_db_path = opencode_db_path_sub
+        # Unified workspace: opencode_data is at workspace root level
+        opencode_db_path_candidate = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+        if os.path.exists(opencode_db_path_candidate):
+            opencode_db_path = opencode_db_path_candidate
 
     import html as escape_html
     if grok_chat_path:
@@ -1138,30 +1195,27 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         os.makedirs(shared_data_dir, exist_ok=True)
         
         if is_sub_session:
-            workspace_dir = os.path.join(user_root_dir, "fleet_workspaces", f"{current_harness}-{sub_id}")
-            os.makedirs(workspace_dir, exist_ok=True)
+            # ── UNIFIED FLEET MODEL ──────────────────────────────────────
+            # Fleet sub-agents SHARE the primary workspace. They get their
+            # own conversation isolation under fleet_sessions/ but access
+            # the same shared_database/, AGENTS.md, memory-wiki, etc.
+            workspace_dir = user_root_dir  # Same workspace as primary
+            fleet_session_dir = os.path.join(user_root_dir, "fleet_sessions", f"{current_harness}-{sub_id}")
+            os.makedirs(fleet_session_dir, exist_ok=True)
             
-            # Auto-inject the Fleet Protocol AGENTS.md into their isolated bubble
-            agents_md_path = os.path.join(workspace_dir, "AGENTS.md")
-            if not os.path.exists(agents_md_path):
-                with open(agents_md_path, "w") as f:
-                    f.write("# 🛸 A.I.M. FLEET AGENT\n\n"
-                            "You are an isolated Sub-Node spawned by the primary J.O.S.H.U.A. user.\n"
-                            "You are operating in a strict, isolated bubble-wrapped directory. You cannot see the primary node's files.\n"
-                            "You have full capabilities to run scripts and browse the web, but you must complete your specific task and report back.\n"
-                            "Do not attempt to traverse upwards into the host OS root.\n")
-            
-            agent_brain_dir = os.path.join(workspace_dir, "brain")
-            agent_conv_dir = os.path.join(workspace_dir, "conversations")
+            # Fleet sub-agents use the primary workspace's brain and conversations
+            agent_brain_dir = os.path.join(user_root_dir, "brain")
+            agent_conv_dir = os.path.join(user_root_dir, "conversations")
         else:
-            workspace_dir = os.path.join(user_root_dir, f"harness-{current_harness}")
-            # The workspace must be pre-built and insulated by the administrator.
+            # ── UNIFIED WORKSPACE (1-per-customer) ───────────────────────
+            # No more harness-{harness} subdirs. workspace_dir IS user_root_dir.
+            workspace_dir = user_root_dir
+            # The workspace must be pre-built by scaffold_customer_workspace.py
             if not os.path.exists(user_root_dir):
                 logger.error(f"User root {user_root_dir} does not exist. Rejecting connection.")
                 await websocket.send_text("**System Error:** Your Sovereign Workspace has not been provisioned by the Administrator.")
                 await websocket.close()
                 return
-            os.makedirs(workspace_dir, exist_ok=True)
             
             agent_brain_dir = os.path.join(workspace_dir, "brain")
             agent_conv_dir = os.path.join(workspace_dir, "conversations")
@@ -1187,6 +1241,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             with open(os.path.join(agent_brain_dir, "antigravity-oauth-token"), "w") as f:
                 f.write('{"access_token": "ya29.dummy", "token_type": "Bearer", "refresh_token": "1//dummy", "expiry": "2099-01-01T00:00:00Z"}')
         
+        # ── HARNESS SWITCH SAFETY NET ──────────────────────────────────
+        # Enforce 1-email-1-session: kill ALL existing sessions for this
+        # email before checking/spawning. This prevents ghost sessions
+        # from harness switches, browser crashes, or failed DELETE calls.
+        # The new session (target_session_override) will be created fresh.
+        await kill_all_user_sessions(base_agent_name, exclude_session=target_session_override)
+        # ──────────────────────────────────────────────────────────────────
+
         proc = await asyncio.create_subprocess_exec(
             "tmux", "has-session", "-t", target_session_override,
             stdout=asyncio.subprocess.PIPE,
@@ -1261,7 +1323,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
 
             elif client_harness == "grok":
-                cli_args = "/home/kingb/.grok/bin/grok --always-approve"
+                cli_args = "/home/kingb/.grok/bin/grok --always-approve --disallowed-tools ask_question"
                 if client_gemini_model:
                     model_mapping = {
                         "grok-4.5": "grok-4.5",
@@ -1440,18 +1502,42 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             clean_output = ""
                             timeout = False
                             start_time = time.time()
+                            last_data_activity = time.time()
+                            error_checked = False
+                            last_status_sent = 0
                             
-                            # Poll the database for the new message
+                            # ── EVENT-DRIVEN RESPONSE DETECTION ─────────────────────
+                            # Poll data files for deterministic "done" signals:
+                            #   OpenCode: step-finish part with reason=stop in SQLite
+                            #   Grok: type=assistant line in chat_history.jsonl
+                            # tmux pane is only checked ONCE as error fallback if
+                            # the data file goes stale (no writes for 10s).
                             while True:
-                                await asyncio.sleep(1.0)
-                                if time.time() - start_time > 120:
-                                    timeout = True
-                                    break
-                                    
+                                await asyncio.sleep(2.0)
+                                elapsed = time.time() - start_time
+                                
+                                # Keep connection alive through long NGINX/Cloudflare timeouts
+                                if int(elapsed) % 15 < 2:
+                                    try:
+                                        if ENABLE_E2EE and E2EE_SECRET:
+                                            await websocket.send_bytes(encrypt_bytes(b'keepalive_ping', E2EE_SECRET))
+                                        else:
+                                            await websocket.send_text('keepalive_ping')
+                                    except:
+                                        pass
+                                
+                                # ── DATA SOURCE: GROK (chat_history.jsonl) ────────
                                 if client_harness == "grok":
                                     g_files = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
                                     if g_files:
                                         g_latest = max(g_files, key=os.path.getmtime)
+                                        # Track file activity for error detection
+                                        try:
+                                            fmtime = os.path.getmtime(g_latest)
+                                            if fmtime > last_data_activity:
+                                                last_data_activity = time.time()
+                                        except:
+                                            pass
                                         lines_to_skip = grok_file_state[1] if g_latest == grok_file_state[0] else 0
                                         texts = []
                                         try:
@@ -1472,21 +1558,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                                         texts.append(b.get("text", ""))
                                                     except Exception:
                                                         pass
+                                            # DONE SIGNAL: assistant line exists in JSONL
                                             if texts:
-                                                p = subprocess.run(["tmux", "capture-pane", "-p", "-t", target_session_override], capture_output=True, text=True)
-                                                out = p.stdout.strip()
-                                                is_done = False
-                                                if "shortcuts" in out[-400:] or "commands" in out[-400:]:  # Matches both "? for shortcuts" and "Ctrl+x:shortcuts"
-                                                    is_done = True
-                                                elif out.endswith(">") or out.endswith("$") or out.endswith("❯"):
-                                                    is_done = True
-                                                    
-                                                if is_done:
-                                                    clean_output = "\n\n".join(texts).strip()
-                                                    break
+                                                clean_output = "\n\n".join(texts).strip()
+                                                break
                                         except Exception as e:
                                             logger.error(f"Failed to read grok chat history: {e}")
+                                
+                                # ── DATA SOURCE: OPENCODE (SQLite DB) ─────────────
                                 elif opencode_db_path and os.path.exists(opencode_db_path):
+                                    # Track file activity for error detection
+                                    try:
+                                        fmtime = os.path.getmtime(opencode_db_path)
+                                        if fmtime > last_data_activity:
+                                            last_data_activity = time.time()
+                                    except:
+                                        pass
                                     try:
                                         import sqlite3
                                         conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
@@ -1499,46 +1586,112 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         '''
                                         rows = conn.execute(query, (max_time_db,)).fetchall()
                                         texts = []
+                                        has_step_finish = False
                                         for r in rows:
                                             m_data = json.loads(r[0])
                                             p_data = json.loads(r[1])
-                                            if m_data.get("role") == "assistant" and p_data.get("type") == "text" and p_data.get("text"):
-                                                texts.append(p_data.get("text"))
+                                            if m_data.get("role") == "assistant":
+                                                if p_data.get("type") == "text" and p_data.get("text"):
+                                                    texts.append(p_data.get("text"))
+                                                elif p_data.get("type") == "step-finish" and p_data.get("reason") == "stop":
+                                                    has_step_finish = True
                                         conn.close()
                                         
-                                        if texts:
-                                            p = subprocess.run(["tmux", "capture-pane", "-p", "-t", target_session_override], capture_output=True, text=True)
-                                            out = p.stdout.strip()
-                                            is_done = False
-                                            if "shortcuts" in out[-400:] or "commands" in out[-400:]:  # Matches both "? for shortcuts" and "Ctrl+x:shortcuts"
-                                                is_done = True
-                                            elif out.endswith(">") or out.endswith("$") or out.endswith("❯"):
-                                                is_done = True
-                                                
-                                            if is_done:
-                                                clean_output = "\n\n".join(texts).strip()
-                                                break
+                                        # DONE SIGNAL: text parts exist AND step-finish confirms completion
+                                        if texts and has_step_finish:
+                                            clean_output = "\n\n".join(texts).strip()
+                                            break
                                     except Exception as e:
                                         logger.error(f"Failed to extract text from opencode db: {e} PATH WAS: {opencode_db_path}")
+                                
+                                # ── ERROR DETECTION FALLBACK ──────────────────────
+                                # If data file hasn't been touched in 30s, something
+                                # is likely wrong. Check the tmux pane ONCE for error
+                                # messages (bad API key, auth failure, etc).
+                                if time.time() - last_data_activity > 10 and not error_checked:
+                                    error_checked = True
+                                    try:
+                                        p_err = await asyncio.create_subprocess_exec(
+                                            "tmux", "capture-pane", "-p", "-S", "-200", "-t", target_session_override,
+                                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                                        )
+                                        err_stdout, _ = await p_err.communicate()
+                                        pane_out = err_stdout.decode().strip()
+                                        error_patterns = [
+                                            "invalid api key", "api key not valid", "permission_denied",
+                                            "quota exceeded", "resource_exhausted", "could not authenticate",
+                                            "authentication failed", "unauthorized", "rate limit",
+                                            "could not connect", "login required", "unauthenticated",
+                                            "error:", "fatal:", "connection refused", "network error",
+                                            "exceeded your current quota", "billing",
+                                        ]
+                                        pane_lower = pane_out.lower()
+                                        for pattern in error_patterns:
+                                            if pattern in pane_lower:
+                                                # Extract lines near the error, not the bottom of the TUI
+                                                all_lines = [l for l in pane_out.split('\n') if l.strip()]
+                                                error_context = []
+                                                for idx, line in enumerate(all_lines):
+                                                    if pattern in line.lower():
+                                                        # Grab 2 lines before and 4 lines after the match
+                                                        start = max(0, idx - 2)
+                                                        end = min(len(all_lines), idx + 5)
+                                                        error_context = all_lines[start:end]
+                                                        break
+                                                if not error_context:
+                                                    error_context = all_lines[-8:]
+                                                clean_output = (
+                                                    f"**\u26a0\ufe0f {client_harness.upper()} Error Detected:**\n\n"
+                                                    f"```\n" + "\n".join(error_context) + f"\n```\n\n"
+                                                    f"**Tip:** Check your API key in the BYOK Panel and ensure it is valid."
+                                                )
+                                                break
+                                    except Exception as e:
+                                        logger.warning(f"Error detection pane capture failed: {e}")
+                                    if clean_output:
+                                        break
+                                
+                                # ── "STILL WORKING" FEEDBACK ─────────────────────
+                                if elapsed > 30 and elapsed - last_status_sent > 45:
+                                    last_status_sent = elapsed
+                                    try:
+                                        status_msg = f"⏳ Agent is still working... ({int(elapsed)}s elapsed)"
+                                        if ENABLE_E2EE and E2EE_SECRET:
+                                            await websocket.send_bytes(encrypt_bytes(status_msg.encode(), E2EE_SECRET))
+                                        else:
+                                            await websocket.send_text(status_msg)
+                                    except:
+                                        pass
+                                
+                                # ── HARD TIMEOUT: 600s (10 minutes) ──────────────
+                                if elapsed > 600:
+                                    timeout = True
+                                    break
                                         
                             if timeout or not clean_output:
                                 clean_output = f"**System:** Sent to {client_harness.capitalize()} terminal, but timed out waiting for stable output.\n\n⚠️ **If this is your first request or you recently changed models, please check your BYOK Panel and ensure your API Key is valid and saved.**"
                                 
-                            if ENABLE_E2EE and E2EE_SECRET:
-                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
-                                await websocket.send_bytes(encrypted)
-                            else:
-                                logger.info(f"Sending response back to frontend: {clean_output}")
-                                await websocket.send_text(clean_output)
+                            try:
+                                if ENABLE_E2EE and E2EE_SECRET:
+                                    encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                    logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                                    await websocket.send_bytes(encrypted)
+                                else:
+                                    logger.info(f"Sending response back to frontend: {clean_output}")
+                                    await websocket.send_text(clean_output)
+                            except RuntimeError:
+                                logger.warning("WebSocket already closed, could not deliver response.")
                                 
                         except Exception as e:
                             error_msg = f"**Tmux Bridge Error:** {str(e)}"
                             logger.error(error_msg)
-                            if ENABLE_E2EE and E2EE_SECRET:
-                                await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
-                            else:
-                                await websocket.send_text(error_msg)
+                            try:
+                                if ENABLE_E2EE and E2EE_SECRET:
+                                    await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
+                                else:
+                                    await websocket.send_text(error_msg)
+                            except RuntimeError:
+                                logger.warning("WebSocket already closed, could not deliver error message.")
                             
                 except Exception as e:
                     logger.error(f"Chat API loop error: {e}", exc_info=True)
@@ -1576,7 +1729,32 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             
                             clean_output = "**Error:** Agent timed out or failed to write transcript."
                             start_time = time.time()
-                            while time.time() - start_time < 300:
+                            last_status_sent = 0
+                            while time.time() - start_time < 600:
+                                elapsed = time.time() - start_time
+                                
+                                # Keepalive pings (prevent Cloudflare/NGINX drops)
+                                if int(elapsed) % 15 < 2:
+                                    try:
+                                        if ENABLE_E2EE and E2EE_SECRET:
+                                            await websocket.send_bytes(encrypt_bytes(b'keepalive_ping', E2EE_SECRET))
+                                        else:
+                                            await websocket.send_text('keepalive_ping')
+                                    except:
+                                        pass
+                                
+                                # "Still working" feedback every 45s
+                                if elapsed > 30 and elapsed - last_status_sent > 45:
+                                    last_status_sent = elapsed
+                                    try:
+                                        status_msg = f"⏳ Agent is still working... ({int(elapsed)}s elapsed)"
+                                        if ENABLE_E2EE and E2EE_SECRET:
+                                            await websocket.send_bytes(encrypt_bytes(status_msg.encode(), E2EE_SECRET))
+                                        else:
+                                            await websocket.send_text(status_msg)
+                                    except:
+                                        pass
+                                
                                 current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
                                 if current_log_files:
                                     current_newest = max(current_log_files, key=os.path.getmtime)
@@ -1607,7 +1785,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                 
                                         if found_response:
                                             break
-                                await asyncio.sleep(1.0)
+                                await asyncio.sleep(2.0)
                                 
                             if ENABLE_E2EE and E2EE_SECRET:
                                 encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
@@ -1660,7 +1838,32 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             
                             clean_output = "**Error:** Agent timed out or failed to write transcript."
                             start_time = time.time()
-                            while time.time() - start_time < 300:
+                            last_status_sent = 0
+                            while time.time() - start_time < 600:
+                                elapsed = time.time() - start_time
+                                
+                                # Keepalive pings (prevent Cloudflare/NGINX drops)
+                                if int(elapsed) % 15 < 2:
+                                    try:
+                                        if ENABLE_E2EE and E2EE_SECRET:
+                                            await websocket.send_bytes(encrypt_bytes(b'keepalive_ping', E2EE_SECRET))
+                                        else:
+                                            await websocket.send_text('keepalive_ping')
+                                    except:
+                                        pass
+                                
+                                # "Still working" feedback every 45s
+                                if elapsed > 30 and elapsed - last_status_sent > 45:
+                                    last_status_sent = elapsed
+                                    try:
+                                        status_msg = f"⏳ Agent is still working... ({int(elapsed)}s elapsed)"
+                                        if ENABLE_E2EE and E2EE_SECRET:
+                                            await websocket.send_bytes(encrypt_bytes(status_msg.encode(), E2EE_SECRET))
+                                        else:
+                                            await websocket.send_text(status_msg)
+                                    except:
+                                        pass
+                                
                                 current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
                                 if current_log_files:
                                     current_newest = max(current_log_files, key=os.path.getmtime)
@@ -1691,7 +1894,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                 
                                         if found_response:
                                             break
-                                await asyncio.sleep(1.0)
+                                await asyncio.sleep(2.0)
                                 
                             if ENABLE_E2EE and E2EE_SECRET:
                                 encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
@@ -2019,12 +2222,11 @@ async def download_file(agent_id: str, filepath: str = Query(...), token: str = 
         if expected_agent_id != agent_id:
             return HTMLResponse("<h1>403 FORBIDDEN: Agent ID Mismatch.</h1>", status_code=403)
             
-        # Determine if it's a primary node or sub-session based on agent_id
+        # Unified workspace: all agents (primary + fleet) share the same root
         parts = agent_id.split('-')
         if len(parts) >= 3 and parts[0] == 'agent':
             base_agent = f"{parts[0]}-{parts[1]}"
-            sub_id = '-'.join(parts[2:])
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}/fleet_workspaces/{sub_id}"
+            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
         else:
             workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
             
