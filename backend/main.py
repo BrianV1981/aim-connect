@@ -1,5 +1,6 @@
 import glob
 import subprocess
+import sys
 
 import pty
 import os
@@ -33,6 +34,69 @@ from e2ee import encrypt_bytes, decrypt_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("aim-connect")
+
+
+def resolve_workspace_id_for_email(email: str) -> str:
+    """Map login email → agent_workspaces/agent-{id}/ (#184).
+
+    Prefer LeadDeed operators registry (opaque op_* ids). Fallback: sanitize email
+    for seats not yet migrated. Magic-link entitlement remains email-only on the
+    dashboard; this only picks the filesystem workspace.
+    """
+    try:
+        aim_ld_scripts = "/home/kingb/aim-ld/scripts"
+        if aim_ld_scripts not in sys.path:
+            sys.path.insert(0, aim_ld_scripts)
+        from core.identity import resolve_workspace_id_for_email as _resolve
+
+        return _resolve(email)
+    except Exception as e:
+        logger.warning(f"operator registry resolve failed for {email!r}: {e}; using sanitize fallback")
+        return re.sub(r"[^a-zA-Z0-9]", "_", (email or "").strip().lower())
+
+
+def legacy_sanitize_email(email: str) -> str:
+    """Pre-#184 path form used by the dashboard for agent IDs (email slug)."""
+    return re.sub(r"[^a-zA-Z0-9]", "_", (email or "").strip().lower())
+
+
+async def ws_send_app_text(websocket: WebSocket, text: str) -> bool:
+    """Send application text (optionally E2EE). Returns False if the socket is dead."""
+    try:
+        if ENABLE_E2EE and E2EE_SECRET:
+            await websocket.send_bytes(encrypt_bytes(text.encode("utf-8"), E2EE_SECRET))
+        else:
+            await websocket.send_text(text)
+        return True
+    except Exception as e:
+        logger.warning(f"ws_send_app_text failed: {e}")
+        return False
+
+
+async def ws_drain_client_or_sleep(websocket: WebSocket, timeout: float = 2.0):
+    """Await inbound client frame up to timeout so pings are drained during long waits.
+
+    Returns:
+      None — timeout or drained ping/noise
+      dict — parsed JSON message (caller may ignore mid-wait submits)
+    Raises WebSocketDisconnect if the client closed.
+    """
+    try:
+        message = await asyncio.wait_for(websocket.receive_text(), timeout=timeout)
+    except asyncio.TimeoutError:
+        return None
+    try:
+        if ENABLE_E2EE and E2EE_SECRET and not str(message).strip().startswith("{"):
+            message = decrypt_message(message, E2EE_SECRET)
+        data = json.loads(message)
+        if isinstance(data, dict) and data.get("type") == "ping":
+            return None
+        return data if isinstance(data, dict) else None
+    except WebSocketDisconnect:
+        raise
+    except Exception:
+        return None
+
 
 app = FastAPI()
 
@@ -912,42 +976,55 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
         email = payload.get("e")
         if not email:
             return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Missing Email.</h1>", status_code=401)
-            
-        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
-        expected_base = f"agent-{sanitized_email}"
-        
-        if not agent_id.startswith(expected_base):
+
+        # #184: filesystem seat id is op_* (registry). Dashboard still builds
+        # agent-{sanitized_email}-* for history/fleet. Accept either form for auth,
+        # but always open the registry-resolved workspace on disk.
+        workspace_id = resolve_workspace_id_for_email(email)
+        legacy_id = legacy_sanitize_email(email)
+        expected_bases = [f"agent-{workspace_id}", f"agent-{legacy_id}"]
+        # de-dupe if registry falls back to sanitize
+        expected_bases = list(dict.fromkeys(expected_bases))
+
+        if not any(agent_id == b or agent_id.startswith(b + "-") for b in expected_bases):
             return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>403 FORBIDDEN: Agent ID Mismatch.</h1>", status_code=403)
-            
-        parts = agent_id.split('-')
-        if len(parts) >= 3 and parts[0] == 'agent':
-            base_agent = f"{parts[0]}-{parts[1]}"
-            # Unified workspace: brain is always at user root level
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
-            agent_brain_dir = os.path.join(workspace_dir, "brain")
-        else:
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
-            agent_brain_dir = os.path.join(workspace_dir, "brain")
+
+        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{workspace_id}"
+        agent_brain_dir = os.path.join(workspace_dir, "brain")
+
+        # Harness / fleet suffix after whichever base matched (email slug or op_*)
+        sub_id = None
+        for base in expected_bases:
+            if agent_id == base:
+                sub_id = None
+                break
+            if agent_id.startswith(base + "-"):
+                sub_id = agent_id[len(base) + 1 :] or None
+                break
             
     except Exception as e:
         return HTMLResponse(f"<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
 
-    html = f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}} h2{{color: #00ff88; text-transform: uppercase; border-bottom: 1px solid #00ff88; padding-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0,255,136,0.5);}} .user{{background: #111a15; padding: 1.5rem; border-radius: 4px; margin-bottom: 1rem; border-left: 3px solid #0088ff; color: #a0c4ff;}} .agent{{background: #0d1410; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem; border-left: 3px solid #00ff88; white-space: pre-wrap; box-shadow: -2px 0 10px rgba(0, 255, 136, 0.1);}} strong{{color: #fff; text-transform: uppercase; letter-spacing: 1px;}} .meta{{font-size: 0.8rem; color: #00ff88; margin-bottom: 15px; opacity: 0.7;}} .boundary{{text-align: center; color: #00ff88; padding: 15px 0; border-top: 1px dashed #00FFA3; border-bottom: 1px dashed #00FFA3; margin: 40px 0; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><div class='meta'>TARGET IDENTIFIER: {agent_id}<br/>ACCESS LEVEL: ADMINISTRATOR</div>"
+    html = f"<html><head><title>A.I.M. History: {agent_id}</title><style>body{{font-family: 'Courier New', Courier, monospace; background: #080c0a; color: #e0f2e9; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6;}} h2{{color: #00ff88; text-transform: uppercase; border-bottom: 1px solid #00ff88; padding-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0,255,136,0.5);}} .user{{background: #111a15; padding: 1.5rem; border-radius: 4px; margin-bottom: 1rem; border-left: 3px solid #0088ff; color: #a0c4ff;}} .agent{{background: #0d1410; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem; border-left: 3px solid #00ff88; white-space: pre-wrap; box-shadow: -2px 0 10px rgba(0, 255, 136, 0.1);}} strong{{color: #fff; text-transform: uppercase; letter-spacing: 1px;}} .meta{{font-size: 0.8rem; color: #00ff88; margin-bottom: 15px; opacity: 0.7;}} .boundary{{text-align: center; color: #00ff88; padding: 15px 0; border-top: 1px dashed #00FFA3; border-bottom: 1px dashed #00FFA3; margin: 40px 0; letter-spacing: 3px; font-size: 0.9rem; opacity: 0.6;}}</style></head><body><h2>A.I.M. Sovereign Data Core</h2><div class='meta'>TARGET IDENTIFIER: {agent_id}<br/>WORKSPACE: agent-{workspace_id}<br/>ACCESS LEVEL: ADMINISTRATOR</div>"
     
     opencode_db_path = None
     grok_chat_path = None
-    
-    try:
-        sub_id = '-'.join(agent_id.split('-')[2:]) if len(agent_id.split('-')) >= 3 else None
-    except:
-        sub_id = None
 
-    if sub_id == "grok":
+    # Normalize harness: primary sessions use "opencode" | "grok" | "admin-cli"
+    harness_key = (sub_id or "opencode").split("-")[0] if sub_id else "opencode"
+    if harness_key in ("opencode", "chat") or (sub_id and sub_id.startswith("opencode")):
+        harness_key = "opencode"
+    elif harness_key == "grok" or (sub_id and sub_id.startswith("grok")):
+        harness_key = "grok"
+    elif harness_key in ("admin-cli", "agy") or (sub_id and ("admin-cli" in sub_id or sub_id.startswith("chat"))):
+        harness_key = "admin-cli"
+
+    if harness_key == "grok":
         # Unified workspace: grok_data is at workspace root level
         grok_sessions = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
         if grok_sessions:
             grok_chat_path = max(grok_sessions, key=os.path.getmtime)
-    elif sub_id == "opencode":
+    elif harness_key == "opencode":
         # Unified workspace: opencode_data is at workspace root level
         opencode_db_path_candidate = os.path.join(workspace_dir, "opencode_data", "opencode.db")
         if os.path.exists(opencode_db_path_candidate):
@@ -1137,7 +1214,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 if email:
                                     authenticated = True
                                     auth_attempts[client_ip] = (0, None)
-                                    sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+                                    sanitized_email = resolve_workspace_id_for_email(email)
                                     if sub_session_id and re.match(r'^[a-zA-Z0-9_-]+$', sub_session_id):
                                         target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
                                     else:
@@ -1501,31 +1578,44 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             
                             clean_output = ""
                             timeout = False
+                            ws_lost = False
                             start_time = time.time()
                             last_data_activity = time.time()
                             error_checked = False
-                            last_status_sent = 0
+                            last_status_sent = 0.0
+                            last_keepalive = 0.0
                             
                             # ── EVENT-DRIVEN RESPONSE DETECTION ─────────────────────
                             # Poll data files for deterministic "done" signals:
                             #   OpenCode: step-finish part with reason=stop in SQLite
                             #   Grok: type=assistant line in chat_history.jsonl
-                            # tmux pane is only checked ONCE as error fallback if
-                            # the data file goes stale (no writes for 10s).
+                            # Drain client pings each cycle (prevents half-open sockets)
+                            # and send reliable 15s keepalives (Cloudflare/tunnel idle).
                             while True:
-                                await asyncio.sleep(2.0)
-                                elapsed = time.time() - start_time
-                                
-                                # Keep connection alive through long NGINX/Cloudflare timeouts
-                                if int(elapsed) % 15 < 2:
-                                    try:
-                                        if ENABLE_E2EE and E2EE_SECRET:
-                                            await websocket.send_bytes(encrypt_bytes(b'keepalive_ping', E2EE_SECRET))
-                                        else:
-                                            await websocket.send_text('keepalive_ping')
-                                    except:
-                                        pass
-                                
+                                try:
+                                    await ws_drain_client_or_sleep(websocket, timeout=2.0)
+                                except WebSocketDisconnect:
+                                    logger.warning(
+                                        f"WebSocket disconnected during {client_harness} wait "
+                                        f"for {target_session_override} (agent may still be running)"
+                                    )
+                                    ws_lost = True
+                                    break
+
+                                now = time.time()
+                                elapsed = now - start_time
+
+                                # Keepalive every 15s wall-clock (not fragile modulo)
+                                if now - last_keepalive >= 15.0:
+                                    last_keepalive = now
+                                    if not await ws_send_app_text(websocket, "keepalive_ping"):
+                                        logger.warning(
+                                            f"Keepalive send failed for {target_session_override}; "
+                                            "treating socket as dead"
+                                        )
+                                        ws_lost = True
+                                        break
+
                                 # ── DATA SOURCE: GROK (chat_history.jsonl) ────────
                                 if client_harness == "grok":
                                     g_files = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
@@ -1536,7 +1626,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                             fmtime = os.path.getmtime(g_latest)
                                             if fmtime > last_data_activity:
                                                 last_data_activity = time.time()
-                                        except:
+                                        except Exception:
                                             pass
                                         lines_to_skip = grok_file_state[1] if g_latest == grok_file_state[0] else 0
                                         texts = []
@@ -1572,19 +1662,26 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         fmtime = os.path.getmtime(opencode_db_path)
                                         if fmtime > last_data_activity:
                                             last_data_activity = time.time()
-                                    except:
+                                    except Exception:
                                         pass
                                     try:
-                                        import sqlite3
-                                        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
-                                        query = '''
-                                        SELECT m.data, p.data
-                                        FROM message m
-                                        JOIN part p ON m.id = p.message_id
-                                        WHERE m.time_created > ?
-                                        ORDER BY m.time_created ASC, p.time_created ASC
-                                        '''
-                                        rows = conn.execute(query, (max_time_db,)).fetchall()
+                                        def _poll_opencode(db_path, min_time):
+                                            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                                            try:
+                                                query = '''
+                                                SELECT m.data, p.data
+                                                FROM message m
+                                                JOIN part p ON m.id = p.message_id
+                                                WHERE m.time_created > ?
+                                                ORDER BY m.time_created ASC, p.time_created ASC
+                                                '''
+                                                return conn.execute(query, (min_time,)).fetchall()
+                                            finally:
+                                                conn.close()
+
+                                        rows = await asyncio.to_thread(
+                                            _poll_opencode, opencode_db_path, max_time_db
+                                        )
                                         texts = []
                                         has_step_finish = False
                                         for r in rows:
@@ -1595,7 +1692,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                     texts.append(p_data.get("text"))
                                                 elif p_data.get("type") == "step-finish" and p_data.get("reason") == "stop":
                                                     has_step_finish = True
-                                        conn.close()
                                         
                                         # DONE SIGNAL: text parts exist AND step-finish confirms completion
                                         if texts and has_step_finish:
@@ -1605,7 +1701,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         logger.error(f"Failed to extract text from opencode db: {e} PATH WAS: {opencode_db_path}")
                                 
                                 # ── ERROR DETECTION FALLBACK ──────────────────────
-                                # If data file hasn't been touched in 30s, something
+                                # If data file hasn't been touched in 10s, something
                                 # is likely wrong. Check the tmux pane ONCE for error
                                 # messages (bad API key, auth failure, etc).
                                 if time.time() - last_data_activity > 10 and not error_checked:
@@ -1651,22 +1747,25 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     if clean_output:
                                         break
                                 
-                                # ── "STILL WORKING" FEEDBACK ─────────────────────
+                                # ── "STILL WORKING" FEEDBACK (structured status) ──
                                 if elapsed > 30 and elapsed - last_status_sent > 45:
                                     last_status_sent = elapsed
-                                    try:
-                                        status_msg = f"⏳ Agent is still working... ({int(elapsed)}s elapsed)"
-                                        if ENABLE_E2EE and E2EE_SECRET:
-                                            await websocket.send_bytes(encrypt_bytes(status_msg.encode(), E2EE_SECRET))
-                                        else:
-                                            await websocket.send_text(status_msg)
-                                    except:
-                                        pass
+                                    status_payload = json.dumps({
+                                        "type": "status",
+                                        "message": f"⏳ Agent is still working... ({int(elapsed)}s elapsed)",
+                                    })
+                                    if not await ws_send_app_text(websocket, status_payload):
+                                        ws_lost = True
+                                        break
                                 
                                 # ── HARD TIMEOUT: 600s (10 minutes) ──────────────
                                 if elapsed > 600:
                                     timeout = True
                                     break
+
+                            if ws_lost:
+                                # Agent keeps running in tmux; do not pretend a response arrived
+                                continue
                                         
                             if timeout or not clean_output:
                                 clean_output = f"**System:** Sent to {client_harness.capitalize()} terminal, but timed out waiting for stable output.\n\n⚠️ **If this is your first request or you recently changed models, please check your BYOK Panel and ensure your API Key is valid and saved.**"
@@ -1693,6 +1792,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             except RuntimeError:
                                 logger.warning("WebSocket already closed, could not deliver error message.")
                             
+                except WebSocketDisconnect:
+                    logger.info("WebSocket disconnected (opencode/grok chat loop)")
+                    break
                 except Exception as e:
                     logger.error(f"Chat API loop error: {e}", exc_info=True)
                     break
@@ -1729,31 +1831,35 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             
                             clean_output = "**Error:** Agent timed out or failed to write transcript."
                             start_time = time.time()
-                            last_status_sent = 0
+                            last_status_sent = 0.0
+                            last_keepalive = 0.0
+                            ws_lost = False
+                            found_response = False
                             while time.time() - start_time < 600:
-                                elapsed = time.time() - start_time
-                                
-                                # Keepalive pings (prevent Cloudflare/NGINX drops)
-                                if int(elapsed) % 15 < 2:
-                                    try:
-                                        if ENABLE_E2EE and E2EE_SECRET:
-                                            await websocket.send_bytes(encrypt_bytes(b'keepalive_ping', E2EE_SECRET))
-                                        else:
-                                            await websocket.send_text('keepalive_ping')
-                                    except:
-                                        pass
-                                
-                                # "Still working" feedback every 45s
+                                try:
+                                    await ws_drain_client_or_sleep(websocket, timeout=2.0)
+                                except WebSocketDisconnect:
+                                    ws_lost = True
+                                    break
+
+                                now = time.time()
+                                elapsed = now - start_time
+
+                                if now - last_keepalive >= 15.0:
+                                    last_keepalive = now
+                                    if not await ws_send_app_text(websocket, "keepalive_ping"):
+                                        ws_lost = True
+                                        break
+
                                 if elapsed > 30 and elapsed - last_status_sent > 45:
                                     last_status_sent = elapsed
-                                    try:
-                                        status_msg = f"⏳ Agent is still working... ({int(elapsed)}s elapsed)"
-                                        if ENABLE_E2EE and E2EE_SECRET:
-                                            await websocket.send_bytes(encrypt_bytes(status_msg.encode(), E2EE_SECRET))
-                                        else:
-                                            await websocket.send_text(status_msg)
-                                    except:
-                                        pass
+                                    status_payload = json.dumps({
+                                        "type": "status",
+                                        "message": f"⏳ Agent is still working... ({int(elapsed)}s elapsed)",
+                                    })
+                                    if not await ws_send_app_text(websocket, status_payload):
+                                        ws_lost = True
+                                        break
                                 
                                 current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
                                 if current_log_files:
@@ -1767,7 +1873,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         f.seek(last_pos)
                                         lines = f.readlines()
                                         
-                                        found_response = False
                                         for line in lines:
                                             if not line.endswith("\n"):
                                                 break
@@ -1785,7 +1890,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                 
                                         if found_response:
                                             break
-                                await asyncio.sleep(2.0)
+                                if found_response:
+                                    break
+
+                            if ws_lost:
+                                continue
                                 
                             if ENABLE_E2EE and E2EE_SECRET:
                                 encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
@@ -1802,6 +1911,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             else:
                                 await websocket.send_text(error_msg)
                             
+                except WebSocketDisconnect:
+                    logger.info("WebSocket disconnected (admin-cli chat loop)")
+                    break
                 except Exception as e:
                     logger.error(f"Chat API loop error: {e}")
                     break
@@ -1838,31 +1950,35 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             
                             clean_output = "**Error:** Agent timed out or failed to write transcript."
                             start_time = time.time()
-                            last_status_sent = 0
+                            last_status_sent = 0.0
+                            last_keepalive = 0.0
+                            ws_lost = False
+                            found_response = False
                             while time.time() - start_time < 600:
-                                elapsed = time.time() - start_time
-                                
-                                # Keepalive pings (prevent Cloudflare/NGINX drops)
-                                if int(elapsed) % 15 < 2:
-                                    try:
-                                        if ENABLE_E2EE and E2EE_SECRET:
-                                            await websocket.send_bytes(encrypt_bytes(b'keepalive_ping', E2EE_SECRET))
-                                        else:
-                                            await websocket.send_text('keepalive_ping')
-                                    except:
-                                        pass
-                                
-                                # "Still working" feedback every 45s
+                                try:
+                                    await ws_drain_client_or_sleep(websocket, timeout=2.0)
+                                except WebSocketDisconnect:
+                                    ws_lost = True
+                                    break
+
+                                now = time.time()
+                                elapsed = now - start_time
+
+                                if now - last_keepalive >= 15.0:
+                                    last_keepalive = now
+                                    if not await ws_send_app_text(websocket, "keepalive_ping"):
+                                        ws_lost = True
+                                        break
+
                                 if elapsed > 30 and elapsed - last_status_sent > 45:
                                     last_status_sent = elapsed
-                                    try:
-                                        status_msg = f"⏳ Agent is still working... ({int(elapsed)}s elapsed)"
-                                        if ENABLE_E2EE and E2EE_SECRET:
-                                            await websocket.send_bytes(encrypt_bytes(status_msg.encode(), E2EE_SECRET))
-                                        else:
-                                            await websocket.send_text(status_msg)
-                                    except:
-                                        pass
+                                    status_payload = json.dumps({
+                                        "type": "status",
+                                        "message": f"⏳ Agent is still working... ({int(elapsed)}s elapsed)",
+                                    })
+                                    if not await ws_send_app_text(websocket, status_payload):
+                                        ws_lost = True
+                                        break
                                 
                                 current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
                                 if current_log_files:
@@ -1876,7 +1992,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         f.seek(last_pos)
                                         lines = f.readlines()
                                         
-                                        found_response = False
                                         for line in lines:
                                             if not line.endswith("\n"):
                                                 break
@@ -1894,7 +2009,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                                 
                                         if found_response:
                                             break
-                                await asyncio.sleep(2.0)
+                                if found_response:
+                                    break
+
+                            if ws_lost:
+                                continue
                                 
                             if ENABLE_E2EE and E2EE_SECRET:
                                 encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
@@ -1912,6 +2031,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             else:
                                 await websocket.send_text(error_msg)
                             
+                except WebSocketDisconnect:
+                    logger.info("WebSocket disconnected (agy chat loop)")
+                    break
                 except Exception as e:
                     logger.error(f"Chat API loop error: {e}")
                     break
@@ -2119,17 +2241,26 @@ async def delete_fleet_session(agent_id: str, token: str = Query(None)):
         email = payload.get("e")
         if not email:
             return JSONResponse({"error": "Invalid payload"}, status_code=401)
-            
-        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
-        expected_base = f"agent-{sanitized_email}"
-        
-        if not agent_id.startswith(expected_base):
-            return JSONResponse({"error": "Unauthorized access to this agent"}, status_code=403)
-            
 
-        proc = await asyncio.create_subprocess_exec("tmux", "kill-session", "-t", agent_id)
+        workspace_id = resolve_workspace_id_for_email(email)
+        legacy_id = legacy_sanitize_email(email)
+        allowed = list(dict.fromkeys([f"agent-{workspace_id}", f"agent-{legacy_id}"]))
+        if not any(agent_id == b or agent_id.startswith(b + "-") for b in allowed):
+            return JSONResponse({"error": "Unauthorized access to this agent"}, status_code=403)
+
+        # Map frontend legacy agent_id → live tmux session prefix (op_*)
+        kill_target = agent_id
+        for leg, real in ((f"agent-{legacy_id}", f"agent-{workspace_id}"),):
+            if leg != real and (agent_id == leg or agent_id.startswith(leg + "-")):
+                kill_target = real + agent_id[len(leg):]
+                break
+
+        proc = await asyncio.create_subprocess_exec("tmux", "kill-session", "-t", kill_target)
         await proc.wait()
-        return {"status": "killed", "agent_id": agent_id}
+        # Also try the raw id if different (belt and suspenders)
+        if kill_target != agent_id:
+            await asyncio.create_subprocess_exec("tmux", "kill-session", "-t", agent_id)
+        return {"status": "killed", "agent_id": kill_target}
         
     except Exception as e:
         logger.error(f"Fleet delete error: {e}")
@@ -2163,12 +2294,15 @@ async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
         email = payload.get("e")
         if not email:
             return JSONResponse({"error": "Missing Email"}, status_code=401)
-            
-        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
-        expected_agent_id = f"agent-{sanitized_email}"
-        
-        if expected_agent_id != agent_id:
+
+        workspace_id = resolve_workspace_id_for_email(email)
+        legacy_id = legacy_sanitize_email(email)
+        allowed = list(dict.fromkeys([f"agent-{workspace_id}", f"agent-{legacy_id}"]))
+        if agent_id not in allowed:
             return JSONResponse({"error": "Agent ID Mismatch"}, status_code=403)
+
+        # Prefer registry workspace for live tmux naming
+        session_prefix = f"agent-{workspace_id}"
             
     except Exception as e:
         return JSONResponse({"error": "Token Parsing Failed"}, status_code=401)
@@ -2178,9 +2312,9 @@ async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
     sessions = []
     if result.returncode == 0:
         for line in result.stdout.splitlines():
-            # Match only sub-sessions like agent-email-chat-123, but exclude the main agent-email-harness session
-            if line and line.startswith(f"{agent_id}-"):
-                sub_id_part = line[len(f"{agent_id}-"):]
+            # Match only sub-sessions like agent-{id}-chat-123, exclude primary harness session
+            if line and line.startswith(f"{session_prefix}-"):
+                sub_id_part = line[len(f"{session_prefix}-"):]
                 # A regular session is just 'harness' (no hyphens). A sub-session is 'harness-subid' (has hyphen).
                 if "-" in sub_id_part and sub_id_part not in ["admin-cli", "google-ai", "google-news", "google-web"]:
                     sessions.append({"id": sub_id_part, "full_name": line})
@@ -2216,19 +2350,14 @@ async def download_file(agent_id: str, filepath: str = Query(...), token: str = 
         if not email:
             return HTMLResponse("<h1>401 UNAUTHORIZED: Missing Email.</h1>", status_code=401)
             
-        sanitized_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
-        expected_agent_id = f"agent-{sanitized_email}"
-        
-        if expected_agent_id != agent_id:
+        workspace_id = resolve_workspace_id_for_email(email)
+        legacy_id = legacy_sanitize_email(email)
+        allowed = list(dict.fromkeys([f"agent-{workspace_id}", f"agent-{legacy_id}"]))
+        if not any(agent_id == b or agent_id.startswith(b + "-") for b in allowed):
             return HTMLResponse("<h1>403 FORBIDDEN: Agent ID Mismatch.</h1>", status_code=403)
-            
-        # Unified workspace: all agents (primary + fleet) share the same root
-        parts = agent_id.split('-')
-        if len(parts) >= 3 and parts[0] == 'agent':
-            base_agent = f"{parts[0]}-{parts[1]}"
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{base_agent}"
-        else:
-            workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/{agent_id}"
+
+        # Always open registry-resolved workspace on disk
+        workspace_dir = f"/home/kingb/aim-connect/agent_workspaces/agent-{workspace_id}"
             
     except Exception as e:
         return HTMLResponse("<h1>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
