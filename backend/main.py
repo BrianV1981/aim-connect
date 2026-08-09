@@ -2041,10 +2041,26 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     # ADMIN CONNECTIONS (RAW PTY & TMUX MODE)
     # =====================================================================
-    # For the bridge, we'll try to hook into the user's tmux session
+    # Resolve target_session BEFORE forking so both parent and child processes know the session name
+    target_session = target_session_override
+    if not target_session:
+        # Find a tmux session that isn't one of our internal aim-* services
+        result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line and not line.startswith("aim-"):
+                    target_session = line
+                    break
+        if not target_session:
+            target_session = "aim-connect-main"
+
+    is_new_session = False
+    result = subprocess.run(["tmux", "has-session", "-t", target_session], capture_output=True)
+    if result.returncode != 0:
+        is_new_session = True
+        
     pid, fd = pty.fork()
     if pid == 0:
-
         
         # Ensure a valid terminal type for tmux
         os.environ["TERM"] = "xterm-256color"
@@ -2052,23 +2068,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         # Unset TMUX to avoid nesting errors
         if "TMUX" in os.environ:
             del os.environ["TMUX"]
+        
+        # Set standard terminal size
+        def set_winsize(fd, row, col):
+            winsize = struct.pack("HHHH", row, col, 0, 0)
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+        
+        set_winsize(sys.stdout.fileno(), 24, 80)
             
         # Ensure mouse support is enabled globally for mobile scroll sync
         subprocess.run(["tmux", "set-option", "-g", "mouse", "on"])
             
-        target_session = target_session_override
-        if not target_session:
-            # Find a tmux session that isn't one of our internal aim-* services
-            result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
-            if result.returncode == 0:
-                for line in result.stdout.splitlines():
-                    if line and not line.startswith("aim-"):
-                        target_session = line
-                        break
-            
-            if not target_session:
-                target_session = "aim-connect-main"
-                
         result = subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
         if result.returncode == 0:
             admin_cli = f"export AIM_VESSEL_CLI={client_harness} && agy --log-file /dev/null"
@@ -2107,8 +2117,35 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
                         message = decrypt_message(message, E2EE_SECRET)
                     data = json.loads(message)
-                    if data.get("type") in ("input", "submit"):
+                    if data.get("type") == "input":
                         os.write(fd, data["payload"].encode("utf-8"))
+                    elif data.get("type") == "submit":
+                        import asyncio
+                        text = data.get("payload", "")
+                        logger.info(f"Executing aim-communicate for {target_session} with {text}")
+                        async def execute_aim_communicate(session_name, msg_text):
+                            nonlocal is_new_session
+                            if is_new_session:
+                                # Wait 4 seconds for agy to finish booting
+                                await asyncio.sleep(4)
+                                is_new_session = False
+                                
+                            # 1. Load into buffer
+                            proc1 = await asyncio.create_subprocess_exec("tmux", "set-buffer", msg_text)
+                            await proc1.wait()
+                            # 2. Paste buffer with bracketed paste (-p)
+                            proc2 = await asyncio.create_subprocess_exec("tmux", "paste-buffer", "-p", "-t", session_name)
+                            await proc2.wait()
+                            # 3. Sleep 1 second
+                            await asyncio.sleep(1)
+                            # 4. Send Escape then Enter to submit multi-line blocks in Textual
+                            proc3 = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, "Escape")
+                            await proc3.wait()
+                            proc4 = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, "Enter")
+                            await proc4.wait()
+                        
+                        # Run it in the background so it doesn't block other messages
+                        asyncio.create_task(execute_aim_communicate(target_session, text))
                     elif data.get("type") == "resize":
                         set_pty_size(fd, data["rows"], data["cols"])
                     elif data.get("type") == "switch_session":

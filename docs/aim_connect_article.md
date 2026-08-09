@@ -39,7 +39,7 @@ All three must pass. On top of that:
 
 WebSocket connections require a valid API token within 10 seconds or the connection is dropped. Idle connections auto-close after 15 minutes of inactivity.
 
-You own every byte of the auth chain. No third-party IdP. No cloud accounts. No biometrics. Sovereign authentication.
+You own every byte of the auth chain. No third-party IdP. No cloud accounts. Sovereign authentication with optional WebAuthn/Passkey support, allowing you to use native FaceID or TouchID without your biometric data ever leaving your device.
 
 
 Multi-User Support
