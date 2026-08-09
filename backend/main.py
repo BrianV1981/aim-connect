@@ -831,9 +831,13 @@ def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
         safe_path = secure_path(path)
         items = []
         for entry in os.scandir(safe_path):
+            try:
+                is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                is_dir = False
             items.append({
                 "name": entry.name,
-                "is_dir": entry.is_dir(),
+                "is_dir": is_dir,
                 "path": entry.path
             })
         # Sort directories first, then files
