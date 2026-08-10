@@ -67,6 +67,12 @@ def _bootstrap_app(tmp_path_factory):
     else:
         import main  # noqa: F401
 
+    # Reload route modules that cache credential references from main
+    for mod_name in ["routes_auth", "routes_sessions", "routes_files",
+                     "routes_agents", "routes_fleet", "routes_webauthn"]:
+        if mod_name in sys.modules:
+            importlib.reload(sys.modules[mod_name])
+
     yield
 
     os.chdir(original_cwd)
@@ -78,9 +84,10 @@ def _reset_auth_state():
     Reset mutable module-level state between tests so they stay independent.
     """
     import main
+    import routes_auth
 
     main.auth_attempts.clear()
-    main._last_used_totp = None
+    routes_auth._last_used_totp = None
     yield
     main.auth_attempts.clear()
-    main._last_used_totp = None
+    routes_auth._last_used_totp = None
