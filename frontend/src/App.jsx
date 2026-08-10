@@ -162,6 +162,7 @@ function App() {
   const apiTokenRef = useRef(localStorage.getItem('aim-token') || null);
   const reconnectAttempts = useRef(0);
   const [connState, setConnState] = useState('disconnected');
+  const editorRef = useRef(null);
   const searchAddon = useRef(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1122,8 +1123,6 @@ function App() {
         <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
           {showFiles ? '💻 Terminal' : '📁 Files'}
         </button>
-        {!showFiles && (
-          <>
             <button 
               className="macro-btn" 
               onClick={enterNativeScrollMode}
@@ -1149,8 +1148,6 @@ function App() {
             >
               🔎 Find
             </button>
-          </>
-        )}
         <button 
           className={`macro-btn ${showKeyboard ? 'active' : ''}`} 
           onClick={() => setShowKeyboard(!showKeyboard)}
@@ -1173,7 +1170,7 @@ function App() {
         <div className={`status-indicator ${connState}`}></div>
       </header>
       
-      <div className="file-explorer" style={{ display: showFiles ? 'flex' : 'none' }}>
+      <div className="file-explorer" style={{ display: showFiles ? 'flex' : 'none', flex: 1, flexDirection: 'column' }}>
         <div className="file-toolbar">
           {isEditingFile ? (
             <>
@@ -1201,6 +1198,7 @@ function App() {
                 theme="vs-dark"
                 value={openFileContent} 
                 onChange={(value) => setOpenFileContent(value || '')}
+                onMount={(editor) => { editorRef.current = editor; }}
                 options={{
                   minimap: { enabled: true },
                   wordWrap: "on",
@@ -1373,6 +1371,8 @@ function App() {
              </>
           )}
         </div>
+      </div>
+
         {showKeyboard && (
           <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
             <div className="commander-toolbar" style={{ borderBottom: '1px solid #1c305c', borderTop: 'none', borderRadius: 0 }}>
@@ -1390,10 +1390,31 @@ function App() {
                 <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
               </div>
             </div>
-            <Keyboard mode={keyboardMode} autoCaps={autoCaps} feedbackMode={keyboardFeedback} onKeyPress={(key) => sendCommand(key)} />
+            <Keyboard mode={keyboardMode} autoCaps={autoCaps} feedbackMode={keyboardFeedback} onKeyPress={(key) => {
+              if (showFiles && isEditingFile && editorRef.current) {
+                const editor = editorRef.current;
+                if (key === '\x7f') {
+                  editor.trigger('keyboard', 'deleteLeft');
+                } else if (key === '\r') {
+                  editor.trigger('keyboard', 'type', { text: '\n' });
+                } else if (key === '\x1b[A') {
+                  editor.trigger('keyboard', 'cursorUp');
+                } else if (key === '\x1b[B') {
+                  editor.trigger('keyboard', 'cursorDown');
+                } else if (key === '\x1b[C') {
+                  editor.trigger('keyboard', 'cursorRight');
+                } else if (key === '\x1b[D') {
+                  editor.trigger('keyboard', 'cursorLeft');
+                } else if (!key.startsWith('\x1b')) {
+                  editor.trigger('keyboard', 'type', { text: key });
+                }
+                editor.focus();
+              } else {
+                sendCommand(key);
+              }
+            }} />
           </div>
         )}
-      </div>
 
       {showMacroLibrary && (
         <MacroLibraryModal
