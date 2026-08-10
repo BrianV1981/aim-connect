@@ -65,14 +65,14 @@ class TestTokenExpiry:
 class TestSecurePath:
     def test_secure_path_blocks_traversal(self):
         """``secure_path('../etc/passwd')`` must raise ValueError."""
-        from main import secure_path
+        from routes_files import secure_path
 
         with pytest.raises(ValueError, match="Path traversal"):
             secure_path("../etc/passwd")
 
     def test_secure_path_blocks_absolute_escape(self):
         """An absolute path outside the workspace must be rejected."""
-        from main import secure_path
+        from routes_files import secure_path
 
         with pytest.raises(ValueError, match="Path traversal"):
             secure_path("/etc/passwd")
@@ -80,7 +80,8 @@ class TestSecurePath:
     def test_secure_path_allows_valid(self):
         """A valid subpath should be returned without error."""
         import os
-        from main import secure_path, DEFAULT_WORKSPACE
+        from routes_files import secure_path
+        from main import DEFAULT_WORKSPACE
 
         result = secure_path("subdir/file.txt")
         assert result.startswith(os.path.realpath(DEFAULT_WORKSPACE))
@@ -89,7 +90,8 @@ class TestSecurePath:
     def test_secure_path_allows_workspace_root(self):
         """Passing '.' should resolve to the workspace root itself."""
         import os
-        from main import secure_path, DEFAULT_WORKSPACE
+        from routes_files import secure_path
+        from main import DEFAULT_WORKSPACE
 
         result = secure_path(".")
         assert result == os.path.realpath(DEFAULT_WORKSPACE)
