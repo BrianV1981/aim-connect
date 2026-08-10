@@ -62,28 +62,8 @@ async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
     try:
-        parts = token.split(".")
-        if len(parts) != 2:
-            return JSONResponse({"error": "Invalid Token Format"}, status_code=401)
-            
-        payload_b64, signature_b64 = parts
-        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
-        if not secret:
-            return JSONResponse({"error": "Missing Secret"}, status_code=500)
-            
-        def pad_b64(data):
-            return data + "=" * (-len(data) % 4)
-            
-        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
-        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-        
-        if signature_b64.rstrip("=") != expected_b64:
-            return JSONResponse({"error": "Invalid Signature"}, status_code=401)
-            
-        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
-        email = payload.get("e")
-        if not email:
-            return JSONResponse({"error": "Missing Email"}, status_code=401)
+        payload = _verify_dashboard_jwt(token)
+        email = payload["e"]
 
         workspace_id = resolve_workspace_id_for_email(email)
         legacy_id = legacy_sanitize_email(email)

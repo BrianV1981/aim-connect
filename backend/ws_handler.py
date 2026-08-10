@@ -164,7 +164,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             if signature_b64.rstrip("=") == expected_b64:
                                 payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
                                 email = payload.get("e")
-                                if email:
+                                exp = payload.get("exp")
+                                # Require email and exp (#161)
+                                if email and exp is not None and time.time() <= float(exp):
                                     authenticated = True
                                     auth_attempts[client_ip] = (0, None)
                                     sanitized_email = resolve_workspace_id_for_email(email)
@@ -172,6 +174,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                         target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
                                     else:
                                         target_session_override = f"agent-{sanitized_email}-{client_harness}"
+                                elif email and exp is None:
+                                    logger.warning(f"WS magic-link JWT missing exp for {email}")
                         except Exception as e:
                             logger.error(f"Failed to parse LeadDeed token: {e}")
             

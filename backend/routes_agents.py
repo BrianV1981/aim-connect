@@ -22,7 +22,13 @@ logger = logging.getLogger("aim-connect")
 
 grok_oauth_processes = {}
 
-def _verify_dashboard_jwt(token: str):
+def _verify_dashboard_jwt(token: str) -> dict:
+    """Verify a LeadDeed dashboard magic-link JWT.
+    
+    Validates HMAC signature, requires `e` (email) and `exp` (expiry) fields.
+    Returns the decoded payload dict on success.
+    Raises HTTPException on any failure.
+    """
     if not token:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -38,14 +44,21 @@ def _verify_dashboard_jwt(token: str):
         expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
         if signature_b64.rstrip("=") != expected_b64:
             raise HTTPException(status_code=401, detail="Unauthorized")
-        # Enforce exp claim (#161)
+        # Decode payload
         def _pad_b64(data):
             return data + "=" * (-len(data) % 4)
         payload_json = base64.urlsafe_b64decode(_pad_b64(payload_b64)).decode()
         payload_data = json.loads(payload_json)
+        # Require email (#161)
+        if not payload_data.get("e"):
+            raise HTTPException(status_code=401, detail="Missing Email")
+        # Require and enforce exp (#161)
         exp = payload_data.get("exp")
-        if exp is not None and _time.time() > float(exp):
+        if exp is None:
+            raise HTTPException(status_code=401, detail="Token Missing Expiry")
+        if _time.time() > float(exp):
             raise HTTPException(status_code=401, detail="Token Expired")
+        return payload_data
     except HTTPException:
         raise
     except Exception as e:
@@ -277,38 +290,14 @@ async def get_grok_oauth_status(agent_id: str, token: str = ""):
 
 @router.get("/history/{agent_id}")
 async def get_history(agent_id: str, token: str = Query(None), limit: int = Query(3, description="Number of reincarnations to show")):
-    if not token:
-        return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Access Denied.</h1>", status_code=401)
-        
     try:
-        import base64
-        import hmac
-        import hashlib
+        payload = _verify_dashboard_jwt(token)
+    except HTTPException as exc:
+        return HTMLResponse(f"<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>{exc.status_code}: {exc.detail}</h1>", status_code=exc.status_code)
+
+    try:
         import re
-        import json
-        
-        parts = token.split(".")
-        if len(parts) != 2:
-            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Invalid Token Format.</h1>", status_code=401)
-            
-        payload_b64, signature_b64 = parts
-        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
-        if not secret:
-            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>500 INTERNAL ERROR: Missing Secret.</h1>", status_code=500)
-            
-        def pad_b64(data):
-            return data + "=" * (-len(data) % 4)
-            
-        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
-        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-        
-        if signature_b64.rstrip("=") != expected_b64:
-            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Invalid Signature.</h1>", status_code=401)
-            
-        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
-        email = payload.get("e")
-        if not email:
-            return HTMLResponse("<h1 style='color:red; font-family:monospace; text-align:center; padding: 50px;'>401 UNAUTHORIZED: Missing Email.</h1>", status_code=401)
+        email = payload["e"]
 
         # #184: filesystem seat id is op_* (registry). Dashboard still builds
         # agent-{sanitized_email}-* for history/fleet. Accept either form for auth,
@@ -471,33 +460,13 @@ async def get_history(agent_id: str, token: str = Query(None), limit: int = Quer
 
 @router.get("/download/{agent_id}")
 async def download_file(agent_id: str, filepath: str = Query(...), token: str = Query(None)):
-    if not token:
-        return HTMLResponse("<h1>401 UNAUTHORIZED: Access Denied.</h1>", status_code=401)
-        
     try:
-        parts = token.split(".")
-        if len(parts) != 2:
-            return HTMLResponse("<h1>401 UNAUTHORIZED: Invalid Token Format.</h1>", status_code=401)
-            
-        payload_b64, signature_b64 = parts
-        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
-        if not secret:
-            return HTMLResponse("<h1>500 INTERNAL ERROR: Missing Secret.</h1>", status_code=500)
-            
-        def pad_b64(data):
-            return data + "=" * (-len(data) % 4)
-            
-        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
-        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-        
-        if signature_b64.rstrip("=") != expected_b64:
-            return HTMLResponse("<h1>401 UNAUTHORIZED: Invalid Signature.</h1>", status_code=401)
-            
-        payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
-        email = payload.get("e")
-        if not email:
-            return HTMLResponse("<h1>401 UNAUTHORIZED: Missing Email.</h1>", status_code=401)
-            
+        payload = _verify_dashboard_jwt(token)
+    except HTTPException as exc:
+        return HTMLResponse(f"<h1>{exc.status_code}: {exc.detail}</h1>", status_code=exc.status_code)
+
+    try:
+        email = payload["e"]
         workspace_id = resolve_workspace_id_for_email(email)
         legacy_id = legacy_sanitize_email(email)
         allowed = list(dict.fromkeys([f"agent-{workspace_id}", f"agent-{legacy_id}"]))
@@ -507,6 +476,8 @@ async def download_file(agent_id: str, filepath: str = Query(...), token: str = 
         # Always open registry-resolved workspace on disk
         workspace_dir = f"{AGENT_WORKSPACES_DIR}/agent-{workspace_id}"
             
+    except HTTPException:
+        raise
     except Exception as e:
         return HTMLResponse("<h1>401 UNAUTHORIZED: Token Parsing Failed.</h1>", status_code=401)
     
