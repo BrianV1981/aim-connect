@@ -18,6 +18,9 @@ password.hash
 patch_*.py
 patch.py
 logs/
+*.bak*
+backend/*.bak*
+backend/macros.json
 
 # Agent Specific
 aim-connect-agent-sop.md
@@ -32,3 +35,35 @@ memory-wiki/
 workspace/
 macros.json
 backend/webauthn.json
+
+# Runtime / generated
+agent_workspaces/
+shared_database/
+scratch/
+output.txt
+ngrok.log
+backend/backend.log
+
+# Debug / test scripts (not part of the app)
+debug_*.py
+dump_*.py
+prove_*.py
+test_*.py
+!backend/tests/
+!backend/test_auth.py
+run_exact*.py
+reindent.py
+backend/debug_*.py
+backend/patch_*.py
+backend/trigger_*.py
+backend/test_*.py
+!backend/tests/**
+
+# Planning artifacts
+planning-artifacts/
+fix_summary.md
+REINCARNATION_WAKE.md
+REINCARNATION_GAMEPLAN.md
+
+# Backup
+backup_dbs.sh

@@ -2,7 +2,7 @@
 
 Welcome to the **aim-connect** knowledge base. 
 
-While the root `README.md` is designed to get you up and running as quickly as possible, this local Wiki is designed for deep dives. This is where we document the philosophy, the architectural decisions, advanced security audits, and the raw cypherpunk ethos behind sovereign computing.
+While the root `README.md` is designed to get you up and running as quickly as possible, this local Wiki is designed for deep dives. This is where we document the philosophy, the architectural decisions, security hardening, and the raw cypherpunk ethos behind sovereign computing.
 
 By keeping this Wiki inside the `docs/` folder instead of a separate GitHub Wiki repository, we ensure that the documentation stays perfectly synced with the codebase and remains instantly accessible to any autonomous AI agents operating within this environment.
 
@@ -10,23 +10,26 @@ By keeping this Wiki inside the `docs/` folder instead of a separate GitHub Wiki
 
 ## 🏛️ Architecture & Engineering
 
-Deep dives into the technical stack, how the WebSocket-to-PTY bridge works, and internal agent structures.
+Deep dives into the technical stack, how the WebSocket-to-PTY bridge works, agent sandboxing, and the modular backend structure.
 
-*   [**Agent Architecture**](./AGENT_ARCHITECTURE.md) - Documentation on internal structures and design patterns.
-*   [**DeepSeek Audit**](./DEEPSEEK_AUDIT.md) - Security and architectural audits.
+*   [**Agent Architecture & Handoff Guide**](./AGENT_ARCHITECTURE.md) - The master reference for new agents: module structure, 4-layer auth, bwrap sandboxing, env vars.
+*   [**Sandbox Model (bwrap)**](./SANDBOX_MODEL.md) - Technical spec for Bubblewrap filesystem isolation per agent.
+*   [**Multi-Server Architecture**](./MULTI_SERVER_ARCHITECTURE.md) - Hub & Spoke design for managing remote server fleets.
 
 ## 🌐 Deployment & Networking
 
 Advanced configuration guides for exposing your sovereign terminal to the outside world safely.
 
-*   [**Ngrok Setup & Security**](./ngrok.md) - Deep dive into tunneling, authentication, and securing the pipeline.
+*   [**Startup Guide (Ngrok)**](./STARTUP_GUIDE_NGROK.md) - Manual startup with Ngrok tunneling.
+*   [**Startup Guide (Cloudflare)**](./STARTUP_GUIDE_CLOUDFLARE.md) - Alternative tunneling with Cloudflare.
 
-## 🔮 Future Lore (Coming Soon)
+## 🔧 Operations
 
-We are actively expanding this wiki to cover:
-*   **The Philosophy of Collaborative Sovereignty:** How `aim-connect` natively supports multi-user multiplexing without third-party seat licenses.
-*   **Advanced Macro Scripting:** How to build complex UI workflows using the Commander Toolbar.
-*   **The "Immortality" Protocol:** A technical breakdown of how Tmux integration prevents process death when the WebSocket disconnects.
+*   [**Wiring New Clients**](./WIRING_NEW_CLIENTS_SOP.md) - SOP for onboarding new operators into the Joshua Matrix.
+
+## 📁 Archive
+
+Completed sprint dispatches, historical audit reports, and session transcripts are preserved in `docs/archive/`.
 
 ---
 *Knowledge is power. Hosted knowledge is a dependency. Local knowledge is sovereignty.*

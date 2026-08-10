@@ -35,7 +35,8 @@ def test_auth_rate_limiting():
     auth_attempts.clear()
 
 def test_secure_path():
-    from main import secure_path, DEFAULT_WORKSPACE
+    from routes_files import secure_path
+    from main import DEFAULT_WORKSPACE
     import pytest
     
     # Path traversal should raise ValueError
