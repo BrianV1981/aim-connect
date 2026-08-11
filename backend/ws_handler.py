@@ -386,614 +386,105 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     f"--chdir {workspace_dir} {cli_args}"
                 )
 
-            elif client_harness == "admin-cli":
-                cli_args = f"{HOME_DIR}/.local/bin/agy --dangerously-skip-permissions --log-file /dev/null"
-                if client_gemini_model:
-                    model_mapping = {
-                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
-                        "gemini-3.5-flash": "gemini-flash-latest",
-                        "gemini-3.1-pro": "gemini-2.5-pro",
-                        "opencode": "gemini-flash-lite-latest",
-                        "admin-cli": "gemini-flash-lite-latest",
-                        "grok": "gemini-flash-lite-latest"
-                    }
-                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
-                    cli_args += f" --model {mapped_model}"
-                
-                env_injections = f"--setenv AIM_VESSEL_CLI 'admin-cli' "
-                if client_gemini_api_key:
-                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' --setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
-                
-                bwrap_cmd = (
-                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
-                    f"--tmpfs {HOME_DIR} "
-                    f"{env_injections}"
-                    f"--ro-bind {HOME_DIR}/.local {HOME_DIR}/.local "
-                    f"--ro-bind {HOME_DIR}/.gemini {HOME_DIR}/.gemini "
-                    f"--bind {HOME_DIR}/.gemini/antigravity-cli/bin {HOME_DIR}/.gemini/antigravity-cli/bin "
-                    f"--bind {workspace_dir} {workspace_dir} "
-                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
-                    f"--bind {agent_brain_dir} {HOME_DIR}/.gemini/antigravity-cli/brain "
-                    f"--bind {agent_conv_dir} {HOME_DIR}/.gemini/antigravity-cli/conversations "
-                    f"--bind {HOME_DIR}/.gemini/trustedFolders.json {HOME_DIR}/.gemini/trustedFolders.json "
-                    f"--bind {agent_brain_dir}/.system_generated/logs {HOME_DIR}/.gemini/antigravity-cli/log "
-                    f"--bind {agent_brain_dir}/.system_generated/crashes {HOME_DIR}/.gemini/antigravity-cli/crashes "
-                    f"--bind {agent_brain_dir}/.system_generated/implicit {HOME_DIR}/.gemini/antigravity-cli/implicit "
-                    f"--bind {agent_brain_dir}/summary_store.db {HOME_DIR}/.gemini/antigravity-cli/summary_store.db "
-                    f"--chdir {workspace_dir} {cli_args}"
-                )
-                
-            else:
-                # Default AGY Harness
-                cli_args = f"{HOME_DIR}/.local/bin/agy --log-file /dev/null"
-                if client_gemini_model:
-                    model_mapping = {
-                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
-                        "gemini-3.5-flash": "gemini-flash-latest",
-                        "gemini-3.1-pro": "gemini-2.5-pro",
-                        "opencode": "gemini-flash-lite-latest",
-                        "admin-cli": "gemini-flash-lite-latest",
-                        "grok": "gemini-flash-lite-latest"
-                    }
-                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
-                    cli_args += f" --model {mapped_model}"
-                
-                env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
-                if client_gemini_api_key:
-                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
-                
-                oauth_binds = (
-                    f"--bind {agent_brain_dir}/antigravity-oauth-token {HOME_DIR}/.gemini/antigravity-cli/antigravity-oauth-token "
-                )
-                
-                bwrap_cmd = (
-                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
-                    f"--tmpfs {HOME_DIR} "
-                    f"{env_injections}"
-                    f"--ro-bind {HOME_DIR}/.local {HOME_DIR}/.local "
-                    f"--ro-bind {HOME_DIR}/.gemini {HOME_DIR}/.gemini "
-                    f"--bind {HOME_DIR}/.gemini/antigravity-cli/bin {HOME_DIR}/.gemini/antigravity-cli/bin "
-                    f"--bind {workspace_dir} {workspace_dir} "
-                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
-                    f"--bind {agent_brain_dir} {HOME_DIR}/.gemini/antigravity-cli/brain "
-                    f"--bind {agent_conv_dir} {HOME_DIR}/.gemini/antigravity-cli/conversations "
-                    f"--bind {HOME_DIR}/.gemini/trustedFolders.json {HOME_DIR}/.gemini/trustedFolders.json "
-                    f"--bind {agent_brain_dir}/.system_generated/logs {HOME_DIR}/.gemini/antigravity-cli/log "
-                    f"--bind {agent_brain_dir}/.system_generated/crashes {HOME_DIR}/.gemini/antigravity-cli/crashes "
-                    f"--bind {agent_brain_dir}/.system_generated/implicit {HOME_DIR}/.gemini/antigravity-cli/implicit "
-                    f"--bind {agent_brain_dir}/summary_store.db {HOME_DIR}/.gemini/antigravity-cli/summary_store.db "
-                    f"{oauth_binds}"
-                    f"--chdir {workspace_dir} {cli_args}"
-                )
-            with open("/tmp/bwrap_cmd.log", "w") as f: f.write(bwrap_cmd)
+        else:  # admin-cli and agy harnesses
+            import watchfiles
+            
+            async def ingest_task():
+                while True:
+                    try:
+                        message = await websocket.receive_text()
+                        if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
+                            message = decrypt_message(message, E2EE_SECRET)
 
-            start_proc = await asyncio.create_subprocess_exec(
-                "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await start_proc.communicate()
-            if start_proc.returncode != 0:
-                logger.error(f"Failed to create TMUX session. stdout: {stdout.decode()} stderr: {stderr.decode()}")
-            else:
-                logger.info(f"TMUX session {target_session_override} created successfully.")
-                if client_gemini_api_key:
-                    subprocess.run(["tmux", "set-environment", "-t", target_session_override, "BYOK_API_KEY", client_gemini_api_key])
-
-            # Give the CLI a moment to initialize the UI and block on the Trust prompt
-            await asyncio.sleep(5)
-
-            # Send Enter to auto-accept "Do you trust this folder?"
-            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
-            await asyncio.sleep(2)
-
-
-        if client_harness in ("opencode", "grok"):
-            while True:
-                try:
-                    message = await websocket.receive_text()
-                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
-                        message = decrypt_message(message, E2EE_SECRET)
-
-                    data = json.loads(message)
-                    
-                    if data.get("type") in ("input", "submit"):
-                        prompt = data["payload"].strip()
-                        if not prompt:
-                            continue
+                        data = json.loads(message)
+                        if data.get("type") in ("input", "submit"):
+                            prompt = data["payload"].strip()
+                            if not prompt:
+                                continue
                             
-                        try:
-                            max_time_db = 0
-                            grok_file_state = (None, 0)
-                            
-                            try:
-                                opencode_db_path = None
-                                if client_harness == "grok":
-                                    g_files = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
-                                    if g_files:
-                                        g_latest = max(g_files, key=os.path.getmtime)
-                                        with open(g_latest, 'r', encoding='utf-8') as f:
-                                            grok_file_state = (g_latest, sum(1 for _ in f))
-                                else:
-                                    db_path_base = os.path.join(workspace_dir, "opencode_data", "opencode.db")
-                                    if os.path.exists(db_path_base):
-                                        opencode_db_path = db_path_base
-                                        
-                                    if opencode_db_path:
-                                        import sqlite3
-                                        conn = sqlite3.connect(f"file:{opencode_db_path}?mode=ro", uri=True)
-                                        res = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
-                                        if res and res[0]:
-                                            max_time_db = res[0]
-                                        conn.close()
-                            except Exception as e:
-                                logger.error(f"Failed to get max time from db: {e}")
-                                
                             subprocess.run(["tmux", "set-buffer", prompt])
                             subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
-                            await asyncio.sleep(0.5)
+                            sleep_time = max(0.5, len(prompt) / 20000.0)
+                            await asyncio.sleep(sleep_time)
                             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+                    except WebSocketDisconnect:
+                        logger.info(f"WebSocket disconnected ({client_harness} ingest)")
+                        break
+                    except Exception as e:
+                        logger.error(f"Ingest loop error: {e}", exc_info=True)
+                        break
+
+            async def egress_task():
+                log_dir = os.path.join(agent_brain_dir)
+                last_pos_map = {}
+                
+                # Pre-populate last_pos_map so we don't stream old history
+                import glob
+                current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+                for lf in current_log_files:
+                    if os.path.exists(lf):
+                        with open(lf, "r") as f:
+                            f.seek(0, 2)
+                            last_pos_map[lf] = f.tell()
+                
+                last_keepalive = time.time()
+                try:
+                    async for changes in watchfiles.awatch(log_dir, rust_timeout=15000, yield_on_timeout=True):
+                        now = time.time()
+                        if now - last_keepalive >= 15.0:
+                            last_keepalive = now
+                            if not await ws_send_app_text(websocket, "keepalive_ping"):
+                                break
+                        
+                        if not changes:
+                            continue
                             
-                            clean_output = ""
-                            timeout = False
-                            ws_lost = False
-                            start_time = time.time()
-                            last_data_activity = time.time()
-                            error_checked = False
-                            last_status_sent = 0.0
-                            last_keepalive = 0.0
-                            
-                            # ── EVENT-DRIVEN RESPONSE DETECTION ─────────────────────
-                            # Poll data files for deterministic "done" signals:
-                            #   OpenCode: step-finish part with reason=stop in SQLite
-                            #   Grok: type=assistant line in chat_history.jsonl
-                            # Drain client pings each cycle (prevents half-open sockets)
-                            # and send reliable 15s keepalives (Cloudflare/tunnel idle).
-                            while True:
-                                try:
-                                    await ws_drain_client_or_sleep(websocket, timeout=2.0)
-                                except WebSocketDisconnect:
-                                    logger.warning(
-                                        f"WebSocket disconnected during {client_harness} wait "
-                                        f"for {target_session_override} (agent may still be running)"
-                                    )
-                                    ws_lost = True
-                                    break
-
-                                now = time.time()
-                                elapsed = now - start_time
-
-                                # Keepalive every 15s wall-clock (not fragile modulo)
-                                if now - last_keepalive >= 15.0:
-                                    last_keepalive = now
-                                    if not await ws_send_app_text(websocket, "keepalive_ping"):
-                                        logger.warning(
-                                            f"Keepalive send failed for {target_session_override}; "
-                                            "treating socket as dead"
-                                        )
-                                        ws_lost = True
-                                        break
-
-                                # ── DATA SOURCE: GROK (chat_history.jsonl) ────────
-                                if client_harness == "grok":
-                                    g_files = glob.glob(os.path.join(workspace_dir, "grok_data", "sessions", "*", "*", "chat_history.jsonl"))
-                                    if g_files:
-                                        g_latest = max(g_files, key=os.path.getmtime)
-                                        # Track file activity for error detection
-                                        try:
-                                            fmtime = os.path.getmtime(g_latest)
-                                            if fmtime > last_data_activity:
-                                                last_data_activity = time.time()
-                                        except Exception:
-                                            pass
-                                        lines_to_skip = grok_file_state[1] if g_latest == grok_file_state[0] else 0
-                                        texts = []
-                                        try:
-                                            with open(g_latest, 'r', encoding='utf-8') as f:
-                                                for i, line in enumerate(f):
-                                                    if i < lines_to_skip: continue
-                                                    if not line.strip(): continue
-                                                    try:
-                                                        data = json.loads(line)
-                                                        role = data.get("type", data.get("role"))
-                                                        content_blocks = data.get("content", [])
-                                                        if role in ["assistant", "model"] and content_blocks:
-                                                            if isinstance(content_blocks, str):
-                                                                texts.append(content_blocks)
-                                                            elif isinstance(content_blocks, list):
-                                                                for b in content_blocks:
-                                                                    if isinstance(b, dict) and b.get("type") == "text":
-                                                                        texts.append(b.get("text", ""))
-                                                    except Exception:
-                                                        pass
-                                            # DONE SIGNAL: assistant line exists in JSONL
-                                            if texts:
-                                                clean_output = "\n\n".join(texts).strip()
-                                                break
-                                        except Exception as e:
-                                            logger.error(f"Failed to read grok chat history: {e}")
+                        modified_transcripts = set()
+                        for change_type, path in changes:
+                            if path.endswith("transcript.jsonl"):
+                                modified_transcripts.add(path)
                                 
-                                # ── DATA SOURCE: OPENCODE (SQLite DB) ─────────────
-                                elif opencode_db_path and os.path.exists(opencode_db_path):
-                                    # Track file activity for error detection
+                        for lf in modified_transcripts:
+                            if not os.path.exists(lf):
+                                continue
+                            if lf not in last_pos_map:
+                                last_pos_map[lf] = 0
+                                
+                            with open(lf, "r") as f:
+                                f.seek(last_pos_map[lf])
+                                log_lines = f.readlines()
+                                
+                                for line in log_lines:
+                                    if not line.endswith("\n"):
+                                        break
+                                    last_pos_map[lf] += len(line)
                                     try:
-                                        fmtime = os.path.getmtime(opencode_db_path)
-                                        if fmtime > last_data_activity:
-                                            last_data_activity = time.time()
+                                        log_data = json.loads(line)
+                                        if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
+                                            content = log_data.get("content")
+                                            if content:
+                                                clean_output = content
+                                                if ENABLE_E2EE and E2EE_SECRET:
+                                                    encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                                    logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                                                    await websocket.send_bytes(encrypted)
+                                                else:
+                                                    logger.info(f"Sending response back to frontend: {clean_output}")
+                                                    await websocket.send_text(clean_output)
                                     except Exception:
                                         pass
-                                    try:
-                                        def _poll_opencode(db_path, min_time):
-                                            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-                                            try:
-                                                query = '''
-                                                SELECT m.data, p.data
-                                                FROM message m
-                                                JOIN part p ON m.id = p.message_id
-                                                WHERE m.time_created > ?
-                                                ORDER BY m.time_created ASC, p.time_created ASC
-                                                '''
-                                                return conn.execute(query, (min_time,)).fetchall()
-                                            finally:
-                                                conn.close()
-
-                                        rows = await asyncio.to_thread(
-                                            _poll_opencode, opencode_db_path, max_time_db
-                                        )
-                                        texts = []
-                                        has_step_finish = False
-                                        for r in rows:
-                                            m_data = json.loads(r[0])
-                                            p_data = json.loads(r[1])
-                                            if m_data.get("role") == "assistant":
-                                                if p_data.get("type") == "text" and p_data.get("text"):
-                                                    texts.append(p_data.get("text"))
-                                                elif p_data.get("type") == "step-finish" and p_data.get("reason") == "stop":
-                                                    has_step_finish = True
-                                        
-                                        # DONE SIGNAL: text parts exist AND step-finish confirms completion
-                                        if texts and has_step_finish:
-                                            clean_output = "\n\n".join(texts).strip()
-                                            break
-                                    except Exception as e:
-                                        logger.error(f"Failed to extract text from opencode db: {e} PATH WAS: {opencode_db_path}")
-                                
-                                # ── ERROR DETECTION FALLBACK ──────────────────────
-                                # If data file hasn't been touched in 10s, something
-                                # is likely wrong. Check the tmux pane ONCE for error
-                                # messages (bad API key, auth failure, etc).
-                                if time.time() - last_data_activity > 10 and not error_checked:
-                                    error_checked = True
-                                    try:
-                                        p_err = await asyncio.create_subprocess_exec(
-                                            "tmux", "capture-pane", "-p", "-S", "-200", "-t", target_session_override,
-                                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                                        )
-                                        err_stdout, _ = await p_err.communicate()
-                                        pane_out = err_stdout.decode().strip()
-                                        error_patterns = [
-                                            "invalid api key", "api key not valid", "permission_denied",
-                                            "quota exceeded", "resource_exhausted", "could not authenticate",
-                                            "authentication failed", "unauthorized", "rate limit",
-                                            "could not connect", "login required", "unauthenticated",
-                                            "error:", "fatal:", "connection refused", "network error",
-                                            "exceeded your current quota", "billing",
-                                        ]
-                                        pane_lower = pane_out.lower()
-                                        for pattern in error_patterns:
-                                            if pattern in pane_lower:
-                                                # Extract lines near the error, not the bottom of the TUI
-                                                all_lines = [l for l in pane_out.split('\n') if l.strip()]
-                                                error_context = []
-                                                for idx, line in enumerate(all_lines):
-                                                    if pattern in line.lower():
-                                                        # Grab 2 lines before and 4 lines after the match
-                                                        start = max(0, idx - 2)
-                                                        end = min(len(all_lines), idx + 5)
-                                                        error_context = all_lines[start:end]
-                                                        break
-                                                if not error_context:
-                                                    error_context = all_lines[-8:]
-                                                clean_output = (
-                                                    f"**\u26a0\ufe0f {client_harness.upper()} Error Detected:**\n\n"
-                                                    f"```\n" + "\n".join(error_context) + f"\n```\n\n"
-                                                    f"**Tip:** Check your API key in the BYOK Panel and ensure it is valid."
-                                                )
-                                                break
-                                    except Exception as e:
-                                        logger.warning(f"Error detection pane capture failed: {e}")
-                                    if clean_output:
-                                        break
-                                
-                                # ── "STILL WORKING" FEEDBACK (structured status) ──
-                                if elapsed > 30 and elapsed - last_status_sent > 45:
-                                    last_status_sent = elapsed
-                                    status_payload = json.dumps({
-                                        "type": "status",
-                                        "message": f"⏳ Agent is still working... ({int(elapsed)}s elapsed)",
-                                    })
-                                    if not await ws_send_app_text(websocket, status_payload):
-                                        ws_lost = True
-                                        break
-                                
-                                # ── HARD TIMEOUT: 600s (10 minutes) ──────────────
-                                if elapsed > 600:
-                                    timeout = True
-                                    break
-
-                            if ws_lost:
-                                # Agent keeps running in tmux; do not pretend a response arrived
-                                continue
-                                        
-                            if timeout or not clean_output:
-                                clean_output = f"**System:** Sent to {client_harness.capitalize()} terminal, but timed out waiting for stable output.\n\n⚠️ **If this is your first request or you recently changed models, please check your BYOK Panel and ensure your API Key is valid and saved.**"
-                                
-                            try:
-                                if ENABLE_E2EE and E2EE_SECRET:
-                                    encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                                    logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
-                                    await websocket.send_bytes(encrypted)
-                                else:
-                                    logger.info(f"Sending response back to frontend: {clean_output}")
-                                    await websocket.send_text(clean_output)
-                            except RuntimeError:
-                                logger.warning("WebSocket already closed, could not deliver response.")
-                                
-                        except Exception as e:
-                            error_msg = f"**Tmux Bridge Error:** {str(e)}"
-                            logger.error(error_msg)
-                            try:
-                                if ENABLE_E2EE and E2EE_SECRET:
-                                    await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
-                                else:
-                                    await websocket.send_text(error_msg)
-                            except RuntimeError:
-                                logger.warning("WebSocket already closed, could not deliver error message.")
-                            
-                except WebSocketDisconnect:
-                    logger.info("WebSocket disconnected (opencode/grok chat loop)")
-                    break
+                except asyncio.CancelledError:
+                    pass
                 except Exception as e:
-                    logger.error(f"Chat API loop error: {e}", exc_info=True)
-                    break
-        elif client_harness == "admin-cli":
-            while True:
-                try:
-                    message = await websocket.receive_text()
-                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
-                        message = decrypt_message(message, E2EE_SECRET)
+                    logger.error(f"Egress loop error: {e}", exc_info=True)
 
-                    data = json.loads(message)
-                    
-                    if data.get("type") in ("input", "submit"):
-                        prompt = data["payload"].strip()
-                        if not prompt:
-                            continue
-                            
-                        try:
-                            log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-                            log_file = None
-                            last_pos = 0
-                            if log_files:
-                                log_file = max(log_files, key=os.path.getmtime)
-                                if os.path.exists(log_file):
-                                    with open(log_file, "r") as f:
-                                        f.seek(0, 2)
-                                        last_pos = f.tell()
-                            
-                            subprocess.run(["tmux", "set-buffer", prompt])
-                            subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
-                            sleep_time = max(0.5, len(prompt) / 20000.0)
-                            await asyncio.sleep(sleep_time)
-                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
-                            
-                            clean_output = "**Error:** Agent timed out or failed to write transcript."
-                            start_time = time.time()
-                            last_status_sent = 0.0
-                            last_keepalive = 0.0
-                            ws_lost = False
-                            found_response = False
-                            while time.time() - start_time < 600:
-                                try:
-                                    await ws_drain_client_or_sleep(websocket, timeout=2.0)
-                                except WebSocketDisconnect:
-                                    ws_lost = True
-                                    break
-
-                                now = time.time()
-                                elapsed = now - start_time
-
-                                if now - last_keepalive >= 15.0:
-                                    last_keepalive = now
-                                    if not await ws_send_app_text(websocket, "keepalive_ping"):
-                                        ws_lost = True
-                                        break
-
-                                if elapsed > 30 and elapsed - last_status_sent > 45:
-                                    last_status_sent = elapsed
-                                    status_payload = json.dumps({
-                                        "type": "status",
-                                        "message": f"⏳ Agent is still working... ({int(elapsed)}s elapsed)",
-                                    })
-                                    if not await ws_send_app_text(websocket, status_payload):
-                                        ws_lost = True
-                                        break
-                                
-                                current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-                                if current_log_files:
-                                    current_newest = max(current_log_files, key=os.path.getmtime)
-                                    if current_newest != log_file:
-                                        log_file = current_newest
-                                        last_pos = 0
-                                        
-                                if log_file and os.path.exists(log_file):
-                                    with open(log_file, "r") as f:
-                                        f.seek(last_pos)
-                                        lines = f.readlines()
-                                        
-                                        for line in lines:
-                                            if not line.endswith("\n"):
-                                                break
-                                            last_pos += len(line)
-                                            try:
-                                                log_data = json.loads(line)
-                                                if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
-                                                    content = log_data.get("content")
-                                                    tool_calls = log_data.get("tool_calls")
-                                                    if content and not tool_calls:
-                                                        clean_output = content
-                                                        found_response = True
-                                            except Exception:
-                                                pass
-                                                
-                                        if found_response:
-                                            break
-                                if found_response:
-                                    break
-
-                            if ws_lost:
-                                continue
-                                
-                            if ENABLE_E2EE and E2EE_SECRET:
-                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
-                                await websocket.send_bytes(encrypted)
-                            else:
-                                logger.info(f"Sending response back to frontend: {clean_output}")
-                                await websocket.send_text(clean_output)
-                        except Exception as e:
-                            error_msg = f"**Tmux Bridge Error:** {str(e)}"
-                            logger.error(error_msg)
-                            if ENABLE_E2EE and E2EE_SECRET:
-                                await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
-                            else:
-                                await websocket.send_text(error_msg)
-                            
-                except WebSocketDisconnect:
-                    logger.info("WebSocket disconnected (admin-cli chat loop)")
-                    break
-                except Exception as e:
-                    logger.error(f"Chat API loop error: {e}")
-                    break
-        else:  # agy
-            while True:
-                try:
-                    message = await websocket.receive_text()
-                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
-                        message = decrypt_message(message, E2EE_SECRET)
-
-                    data = json.loads(message)
-                    
-                    if data.get("type") in ("input", "submit"):
-                        prompt = data["payload"].strip()
-                        if not prompt:
-                            continue
-                            
-                        try:
-                            log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-                            log_file = None
-                            last_pos = 0
-                            if log_files:
-                                log_file = max(log_files, key=os.path.getmtime)
-                                if os.path.exists(log_file):
-                                    with open(log_file, "r") as f:
-                                        f.seek(0, 2)
-                                        last_pos = f.tell()
-                            
-                            subprocess.run(["tmux", "set-buffer", prompt])
-                            subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
-                            sleep_time = max(0.5, len(prompt) / 20000.0)
-                            await asyncio.sleep(sleep_time)
-                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
-                            
-                            clean_output = "**Error:** Agent timed out or failed to write transcript."
-                            start_time = time.time()
-                            last_status_sent = 0.0
-                            last_keepalive = 0.0
-                            ws_lost = False
-                            found_response = False
-                            while time.time() - start_time < 600:
-                                try:
-                                    await ws_drain_client_or_sleep(websocket, timeout=2.0)
-                                except WebSocketDisconnect:
-                                    ws_lost = True
-                                    break
-
-                                now = time.time()
-                                elapsed = now - start_time
-
-                                if now - last_keepalive >= 15.0:
-                                    last_keepalive = now
-                                    if not await ws_send_app_text(websocket, "keepalive_ping"):
-                                        ws_lost = True
-                                        break
-
-                                if elapsed > 30 and elapsed - last_status_sent > 45:
-                                    last_status_sent = elapsed
-                                    status_payload = json.dumps({
-                                        "type": "status",
-                                        "message": f"⏳ Agent is still working... ({int(elapsed)}s elapsed)",
-                                    })
-                                    if not await ws_send_app_text(websocket, status_payload):
-                                        ws_lost = True
-                                        break
-                                
-                                current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
-                                if current_log_files:
-                                    current_newest = max(current_log_files, key=os.path.getmtime)
-                                    if current_newest != log_file:
-                                        log_file = current_newest
-                                        last_pos = 0
-                                        
-                                if log_file and os.path.exists(log_file):
-                                    with open(log_file, "r") as f:
-                                        f.seek(last_pos)
-                                        lines = f.readlines()
-                                        
-                                        for line in lines:
-                                            if not line.endswith("\n"):
-                                                break
-                                            last_pos += len(line)
-                                            try:
-                                                log_data = json.loads(line)
-                                                if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
-                                                    content = log_data.get("content")
-                                                    tool_calls = log_data.get("tool_calls")
-                                                    if content and not tool_calls:
-                                                        clean_output = content
-                                                        found_response = True
-                                            except Exception:
-                                                pass
-                                                
-                                        if found_response:
-                                            break
-                                if found_response:
-                                    break
-
-                            if ws_lost:
-                                continue
-                                
-                            if ENABLE_E2EE and E2EE_SECRET:
-                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
-                                await websocket.send_bytes(encrypted)
-                            else:
-                                logger.info(f"Sending response back to frontend: {clean_output}")
-                                await websocket.send_text(clean_output)
-                                
-                        except Exception as e:
-                            error_msg = f"**Tmux Bridge Error:** {str(e)}"
-                            logger.error(error_msg)
-                            if ENABLE_E2EE and E2EE_SECRET:
-                                await websocket.send_bytes(encrypt_bytes(error_msg.encode(), E2EE_SECRET))
-                            else:
-                                await websocket.send_text(error_msg)
-                            
-                except WebSocketDisconnect:
-                    logger.info("WebSocket disconnected (agy chat loop)")
-                    break
-                except Exception as e:
-                    logger.error(f"Chat API loop error: {e}")
-                    break
+            ingest = asyncio.create_task(ingest_task())
+            egress = asyncio.create_task(egress_task())
+            
+            done, pending = await asyncio.wait([ingest, egress], return_when=asyncio.FIRST_COMPLETED)
+            
+            for p in pending:
+                p.cancel()
         return
 
     # ADMIN CONNECTIONS (RAW PTY & TMUX MODE)
