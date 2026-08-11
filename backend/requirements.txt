@@ -8,3 +8,4 @@ cryptography>=45.0.1
 python-dotenv
 python-multipart
 webauthn
+watchfiles>=0.21.0
