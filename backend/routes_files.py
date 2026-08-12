@@ -3,6 +3,7 @@ import shutil
 import json
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from main import verify_token, require_admin, DEFAULT_WORKSPACE
 
 router = APIRouter()
@@ -13,6 +14,23 @@ def secure_path(p: str, base_dir: str = DEFAULT_WORKSPACE) -> str:
     if abs_path != base and not abs_path.startswith(base + os.sep):
         raise ValueError(f"Access denied: Path traversal detected outside of workspace ({base_dir}).")
     return abs_path
+
+def handle_file_error(e: Exception) -> JSONResponse:
+    err_str = str(e)
+    status = 500
+    if isinstance(e, ValueError) and "Path traversal" in err_str:
+        status = 403
+    elif isinstance(e, FileNotFoundError):
+        status = 404
+    elif isinstance(e, PermissionError):
+        status = 403
+    elif isinstance(e, IsADirectoryError):
+        status = 400
+    elif isinstance(e, NotADirectoryError):
+        status = 400
+    elif isinstance(e, OSError):
+        status = 400
+    return JSONResponse(status_code=status, content={"error": err_str})
 
 @router.get("/api/files", dependencies=[Depends(verify_token), Depends(require_admin)])
 def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
@@ -33,7 +51,7 @@ def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
         return {"path": safe_path, "items": items}
     except Exception as e:
-        return {"error": str(e)}
+        return handle_file_error(e)
 
 @router.get("/api/file", dependencies=[Depends(verify_token), Depends(require_admin)])
 def read_file(path: str):
@@ -43,7 +61,7 @@ def read_file(path: str):
             content = f.read()
         return {"content": content}
     except Exception as e:
-        return {"error": str(e)}
+        return handle_file_error(e)
 
 class FileSaveRequest(BaseModel):
     path: str
@@ -57,7 +75,7 @@ def save_file(req: FileSaveRequest):
             f.write(req.content)
         return {"status": "success"}
     except Exception as e:
-        return {"error": str(e)}
+        return handle_file_error(e)
 
 class FileCreateRequest(BaseModel):
     path: str
@@ -74,7 +92,7 @@ def create_file_or_dir(req: FileCreateRequest):
                 pass
         return {"status": "success"}
     except Exception as e:
-        return {"error": str(e)}
+        return handle_file_error(e)
 
 @router.delete("/api/file", dependencies=[Depends(verify_token), Depends(require_admin)])
 def delete_file(path: str):
@@ -87,7 +105,7 @@ def delete_file(path: str):
             os.remove(safe_path)
         return {"status": "success"}
     except Exception as e:
-        return {"error": str(e)}
+        return handle_file_error(e)
 
 MACROS_FILE = "macros.json"
 
@@ -99,7 +117,7 @@ def get_macros():
                 return json.load(f)
         return []
     except Exception as e:
-        return {"error": str(e)}
+        return handle_file_error(e)
 
 class MacroSaveRequest(BaseModel):
     macros: list
@@ -111,4 +129,4 @@ def save_macros(req: MacroSaveRequest):
             json.dump(req.macros, f)
         return {"status": "success"}
     except Exception as e:
-        return {"error": str(e)}
+        return handle_file_error(e)
