@@ -30,7 +30,6 @@ docs/ngrok.md
 .aim_core/
 .gemini/
 AGENTS.md
-joshua_os/memory-wiki/
 joshua_os/workspace/
 macros.json
 backend/webauthn.json
