@@ -586,6 +586,11 @@ function App() {
             setPin('');
             socket.close();
             return;
+          } else if (msg.type === 'error') {
+            if (authRef.current && term.current) {
+              term.current.writeln('\x1b[31m[!] ' + (msg.message || 'Error') + '\x1b[0m');
+            }
+            return;
           }
         } catch (e) {
           if (authRef.current && term.current) {
