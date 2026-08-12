@@ -38,6 +38,7 @@ backend/webauthn.json
 agent_workspaces/
 shared_database/
 joshua_os/scratch/
+joshua_os/.scratch/
 output.txt
 ngrok.log
 backend/backend.log
@@ -56,9 +57,11 @@ backend/patch_*.py
 backend/trigger_*.py
 backend/test_*.py
 !backend/tests/**
+backend/tests/__pycache__/
 
 # Planning artifacts
 joshua_os/planning-artifacts/
+joshua_os/archive/
 joshua_os/fix_summary.md
 joshua_os/REINCARNATION_WAKE.md
 joshua_os/REINCARNATION_GAMEPLAN.md
