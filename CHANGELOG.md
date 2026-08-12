@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.7.14] - 2026-08-11
+- Fix: Overhaul ws_handler.py for event-driven async file watching (Closes #206)
+
+
 ## [v1.7.13] - 2026-07-26
 - Fix: ensure admin-cli isn't classified as a sub-session
 
