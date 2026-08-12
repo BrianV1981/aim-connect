@@ -16,7 +16,6 @@ from main import (
     AGENT_WORKSPACES_DIR, HOME_DIR
 )
 from e2ee import encrypt_bytes, decrypt_message
-from routes_sessions import kill_all_user_sessions
 import logging
 
 router = APIRouter()
@@ -91,6 +90,15 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
+    try:
+        await _websocket_endpoint(websocket)
+    except Exception as e:
+        print(f"CRASH in websocket_endpoint: {e}", flush=True)
+        raise
+    finally:
+        print("WEBSOCKET_ENDPOINT EXITED!", flush=True)
+
+async def _websocket_endpoint(websocket: WebSocket) -> None:
     """
     Primary WebSocket handler for streaming terminal I/O.
     Enforces a strict 10-second API Token authentication window on connection.
@@ -280,6 +288,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         # email before checking/spawning. This prevents ghost sessions
         # from harness switches, browser crashes, or failed DELETE calls.
         # The new session (target_session_override) will be created fresh.
+        from routes_sessions import kill_all_user_sessions
         await kill_all_user_sessions(base_agent_name, exclude_session=target_session_override)
         # ──────────────────────────────────────────────────────────────────
 
@@ -386,35 +395,134 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     f"--chdir {workspace_dir} {cli_args}"
                 )
 
-        else:  # admin-cli and agy harnesses
-            import watchfiles
+            elif client_harness == "admin-cli":
+                cli_args = f"{HOME_DIR}/.local/bin/agy --dangerously-skip-permissions --log-file /dev/null"
+                if client_gemini_model:
+                    model_mapping = {
+                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
+                        "gemini-3.5-flash": "gemini-flash-latest",
+                        "gemini-3.1-pro": "gemini-2.5-pro",
+                        "opencode": "gemini-flash-lite-latest",
+                        "admin-cli": "gemini-flash-lite-latest",
+                        "grok": "gemini-flash-lite-latest"
+                    }
+                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
+                    cli_args += f" --model {mapped_model}"
+                
+                env_injections = f"--setenv AIM_VESSEL_CLI 'admin-cli' "
+                if client_gemini_api_key:
+                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' --setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
+                
+                bwrap_cmd = (
+                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                    f"--tmpfs {HOME_DIR} "
+                    f"{env_injections}"
+                    f"--ro-bind {HOME_DIR}/.local {HOME_DIR}/.local "
+                    f"--ro-bind {HOME_DIR}/.gemini {HOME_DIR}/.gemini "
+                    f"--bind {HOME_DIR}/.gemini/antigravity-cli/bin {HOME_DIR}/.gemini/antigravity-cli/bin "
+                    f"--bind {workspace_dir} {workspace_dir} "
+                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
+                    f"--bind {agent_brain_dir} {HOME_DIR}/.gemini/antigravity-cli/brain "
+                    f"--bind {agent_conv_dir} {HOME_DIR}/.gemini/antigravity-cli/conversations "
+                    f"--bind {HOME_DIR}/.gemini/trustedFolders.json {HOME_DIR}/.gemini/trustedFolders.json "
+                    f"--bind {agent_brain_dir}/.system_generated/logs {HOME_DIR}/.gemini/antigravity-cli/log "
+                    f"--bind {agent_brain_dir}/.system_generated/crashes {HOME_DIR}/.gemini/antigravity-cli/crashes "
+                    f"--bind {agent_brain_dir}/.system_generated/implicit {HOME_DIR}/.gemini/antigravity-cli/implicit "
+                    f"--bind {agent_brain_dir}/summary_store.db {HOME_DIR}/.gemini/antigravity-cli/summary_store.db "
+                    f"--chdir {workspace_dir} {cli_args}"
+                )
+                
+            else:
+                # Default AGY Harness
+                cli_args = f"{HOME_DIR}/.local/bin/agy --log-file /dev/null"
+                if client_gemini_model:
+                    model_mapping = {
+                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
+                        "gemini-3.5-flash": "gemini-flash-latest",
+                        "gemini-3.1-pro": "gemini-2.5-pro",
+                        "opencode": "gemini-flash-lite-latest",
+                        "admin-cli": "gemini-flash-lite-latest",
+                        "grok": "gemini-flash-lite-latest"
+                    }
+                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
+                    cli_args += f" --model {mapped_model}"
+                
+                env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
+                if client_gemini_api_key:
+                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
+                
+                oauth_binds = (
+                    f"--bind {agent_brain_dir}/antigravity-oauth-token {HOME_DIR}/.gemini/antigravity-cli/antigravity-oauth-token "
+                )
+                
+                bwrap_cmd = (
+                    f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
+                    f"--tmpfs {HOME_DIR} "
+                    f"{env_injections}"
+                    f"--ro-bind {HOME_DIR}/.local {HOME_DIR}/.local "
+                    f"--ro-bind {HOME_DIR}/.gemini {HOME_DIR}/.gemini "
+                    f"--bind {HOME_DIR}/.gemini/antigravity-cli/bin {HOME_DIR}/.gemini/antigravity-cli/bin "
+                    f"--bind {workspace_dir} {workspace_dir} "
+                    f"--bind {shared_data_dir} {workspace_dir}/shared_database "
+                    f"--bind {agent_brain_dir} {HOME_DIR}/.gemini/antigravity-cli/brain "
+                    f"--bind {agent_conv_dir} {HOME_DIR}/.gemini/antigravity-cli/conversations "
+                    f"--bind {HOME_DIR}/.gemini/trustedFolders.json {HOME_DIR}/.gemini/trustedFolders.json "
+                    f"--bind {agent_brain_dir}/.system_generated/logs {HOME_DIR}/.gemini/antigravity-cli/log "
+                    f"--bind {agent_brain_dir}/.system_generated/crashes {HOME_DIR}/.gemini/antigravity-cli/crashes "
+                    f"--bind {agent_brain_dir}/.system_generated/implicit {HOME_DIR}/.gemini/antigravity-cli/implicit "
+                    f"--bind {agent_brain_dir}/summary_store.db {HOME_DIR}/.gemini/antigravity-cli/summary_store.db "
+                    f"{oauth_binds}"
+                    f"--chdir {workspace_dir} {cli_args}"
+                )
+
+            with open("/tmp/bwrap_cmd.log", "w") as f: f.write(bwrap_cmd)
+
+            start_proc = await asyncio.create_subprocess_exec(
+                "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await start_proc.communicate()
+            if start_proc.returncode != 0:
+                logger.error(f"Failed to create TMUX session. stdout: {stdout.decode()} stderr: {stderr.decode()}")
+            else:
+                logger.info(f"TMUX session {target_session_override} created successfully.")
+                if client_gemini_api_key:
+                    subprocess.run(["tmux", "set-environment", "-t", target_session_override, "BYOK_API_KEY", client_gemini_api_key])
+
+            # Give the CLI a moment to initialize the UI
+            await asyncio.sleep(5)
+            # Send Enter to auto-accept "Do you trust this folder?"
+            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+
+        import watchfiles
             
-            async def ingest_task():
-                while True:
-                    try:
-                        message = await websocket.receive_text()
-                        if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
-                            message = decrypt_message(message, E2EE_SECRET)
+        async def ingest_task():
+            while True:
+                try:
+                    message = await websocket.receive_text()
+                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
+                        message = decrypt_message(message, E2EE_SECRET)
 
-                        data = json.loads(message)
-                        if data.get("type") in ("input", "submit"):
-                            prompt = data["payload"].strip()
-                            if not prompt:
-                                continue
-                            
-                            subprocess.run(["tmux", "set-buffer", prompt])
-                            subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
-                            sleep_time = max(0.5, len(prompt) / 20000.0)
-                            await asyncio.sleep(sleep_time)
-                            subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
-                    except WebSocketDisconnect:
-                        logger.info(f"WebSocket disconnected ({client_harness} ingest)")
-                        break
-                    except Exception as e:
-                        logger.error(f"Ingest loop error: {e}", exc_info=True)
-                        break
+                    data = json.loads(message)
+                    if data.get("type") in ("input", "submit"):
+                        prompt = data["payload"].strip()
+                        if not prompt:
+                            continue
+                        
+                        subprocess.run(["tmux", "set-buffer", prompt])
+                        subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
+                        sleep_time = max(0.5, len(prompt) / 20000.0)
+                        await asyncio.sleep(sleep_time)
+                        subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+                except WebSocketDisconnect:
+                    logger.info(f"WebSocket disconnected ({client_harness} ingest)")
+                    break
+                except Exception as e:
+                    print(f"Ingest loop error: {e}", flush=True)
+                    break
 
-            async def egress_task():
+        async def egress_task():
+            try:
                 log_dir = os.path.join(agent_brain_dir)
                 last_pos_map = {}
                 
@@ -428,63 +536,75 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             last_pos_map[lf] = f.tell()
                 
                 last_keepalive = time.time()
-                try:
-                    async for changes in watchfiles.awatch(log_dir, rust_timeout=15000, yield_on_timeout=True):
-                        now = time.time()
-                        if now - last_keepalive >= 15.0:
-                            last_keepalive = now
-                            if not await ws_send_app_text(websocket, "keepalive_ping"):
-                                break
+            except Exception as e:
+                print(f"Egress task setup error: {e}", flush=True)
+                logger.error(f"Egress task setup error: {e}", exc_info=True)
+                return
+            try:
+                async for changes in watchfiles.awatch(log_dir, rust_timeout=15000, yield_on_timeout=True):
+                    now = time.time()
+                    if now - last_keepalive >= 15.0:
+                        last_keepalive = now
+                        if not await ws_send_app_text(websocket, "keepalive_ping"):
+                            break
+                    
+                    if not changes:
+                        continue
                         
-                        if not changes:
-                            continue
+                    modified_transcripts = set()
+                    for change_type, path in changes:
+                        if path.endswith("transcript.jsonl"):
+                            modified_transcripts.add(path)
                             
-                        modified_transcripts = set()
-                        for change_type, path in changes:
-                            if path.endswith("transcript.jsonl"):
-                                modified_transcripts.add(path)
-                                
-                        for lf in modified_transcripts:
-                            if not os.path.exists(lf):
-                                continue
-                            if lf not in last_pos_map:
-                                last_pos_map[lf] = 0
-                                
-                            with open(lf, "r") as f:
-                                f.seek(last_pos_map[lf])
-                                log_lines = f.readlines()
-                                
-                                for line in log_lines:
-                                    if not line.endswith("\n"):
-                                        break
-                                    last_pos_map[lf] += len(line)
-                                    try:
-                                        log_data = json.loads(line)
-                                        if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
-                                            content = log_data.get("content")
-                                            if content:
-                                                clean_output = content
-                                                if ENABLE_E2EE and E2EE_SECRET:
-                                                    encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                                                    logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
-                                                    await websocket.send_bytes(encrypted)
-                                                else:
-                                                    logger.info(f"Sending response back to frontend: {clean_output}")
-                                                    await websocket.send_text(clean_output)
-                                    except Exception:
-                                        pass
-                except asyncio.CancelledError:
-                    pass
-                except Exception as e:
-                    logger.error(f"Egress loop error: {e}", exc_info=True)
+                    for lf in modified_transcripts:
+                        if not os.path.exists(lf):
+                            continue
+                        if lf not in last_pos_map:
+                            last_pos_map[lf] = 0
+                            
+                        with open(lf, "r") as f:
+                            f.seek(last_pos_map[lf])
+                            log_lines = f.readlines()
+                            
+                            for line in log_lines:
+                                if not line.endswith("\n"):
+                                    break
+                                last_pos_map[lf] += len(line)
+                                try:
+                                    log_data = json.loads(line)
+                                    if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
+                                        content = log_data.get("content")
+                                        if content:
+                                            clean_output = content
+                                            if ENABLE_E2EE and E2EE_SECRET:
+                                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                                                await websocket.send_bytes(encrypted)
+                                            else:
+                                                logger.info(f"Sending response back to frontend: {clean_output}")
+                                                await websocket.send_text(clean_output)
+                                except Exception:
+                                    pass
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                print(f"Egress loop error: {e}", flush=True)
+                logger.error(f"Egress loop error: {e}", exc_info=True)
+            print("Egress task finished normally!", flush=True)
 
-            ingest = asyncio.create_task(ingest_task())
-            egress = asyncio.create_task(egress_task())
-            
-            done, pending = await asyncio.wait([ingest, egress], return_when=asyncio.FIRST_COMPLETED)
-            
-            for p in pending:
-                p.cancel()
+        ingest = asyncio.create_task(ingest_task())
+        egress = asyncio.create_task(egress_task())
+        
+        done, pending = await asyncio.wait([ingest, egress], return_when=asyncio.FIRST_COMPLETED)
+        print(f"Tasks finished: {[t.get_name() for t in done]}", flush=True)
+        for t in done:
+            try:
+                t.result()
+            except Exception as e:
+                print(f"Task failed: {e}", flush=True)
+        
+        for p in pending:
+            p.cancel()
         return
 
     # ADMIN CONNECTIONS (RAW PTY & TMUX MODE)
@@ -562,8 +682,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 message = await websocket.receive_text()
                 last_activity = time.time()
                 try:
+                    logger.info(f"Processing message (len={len(message)}): {message[:50]}...")
                     if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
-                        message = decrypt_message(message, E2EE_SECRET)
+                        try:
+                            message = decrypt_message(message, E2EE_SECRET)
+                        except Exception as dec_err:
+                            logger.warning(f"E2EE Decryption failed (Invalid Secret?): {dec_err}")
+                            await ws_send_app_text(websocket, json.dumps({"type": "error", "message": "E2EE Decryption Failed. Check your E2EE Secret."}))
+                            continue
                     data = json.loads(message)
                     if data.get("type") == "input":
                         os.write(fd, data["payload"].encode("utf-8"))
@@ -601,6 +727,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
                         result = subprocess.run(["tmux", "list-clients", "-F", "#{client_tty} #{client_pid}"], capture_output=True, text=True)
                         client_tty = None
+                        logger.info(f"[SWITCH_SESSION] Target session: {data['session']}, our pid: {pid}")
+                        logger.info(f"[SWITCH_SESSION] tmux list-clients:\n{result.stdout.strip()}")
                         for line in result.stdout.strip().split('\n'):
                             if line:
                                 parts = line.split()
@@ -609,7 +737,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     break
                         
                         if client_tty:
-                            subprocess.run(["tmux", "switch-client", "-c", client_tty, "-t", data["session"]])
+                            logger.info(f"[SWITCH_SESSION] Switching {client_tty} to {data['session']}")
+                            res = subprocess.run(["tmux", "switch-client", "-c", client_tty, "-t", data["session"]], capture_output=True, text=True)
+                            logger.info(f"[SWITCH_SESSION] Switch result: {res.returncode}, {res.stderr}")
                         else:
                             logger.warning(f"Could not find tmux client for pid {pid}")
                 except json.JSONDecodeError:
@@ -618,7 +748,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 logger.info("WebSocket disconnected")
                 break
             except Exception as e:
-                logger.error(f"PTY write error: {e}")
+                logger.error(f"PTY write error: {e}", exc_info=True)
                 break
 
     async def inactivity_monitor():

@@ -131,6 +131,7 @@ export class E2EESocketWrapper {
         }
       } catch (err) {
         console.error("E2EE Decrypt error", err);
+        this.onmessage({ data: JSON.stringify({ type: 'error', message: 'E2EE Decryption Failed on Frontend. Check your E2EE Secret.' }) });
       }
     }
     
