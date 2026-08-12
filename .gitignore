@@ -31,15 +31,15 @@ docs/ngrok.md
 .gemini/
 AGENTS.md
 aim-agy_os/
-memory-wiki/
-workspace/
+joshua_os/memory-wiki/
+joshua_os/workspace/
 macros.json
 backend/webauthn.json
 
 # Runtime / generated
 agent_workspaces/
 shared_database/
-scratch/
+joshua_os/scratch/
 output.txt
 ngrok.log
 backend/backend.log
@@ -60,10 +60,10 @@ backend/test_*.py
 !backend/tests/**
 
 # Planning artifacts
-planning-artifacts/
-fix_summary.md
-REINCARNATION_WAKE.md
-REINCARNATION_GAMEPLAN.md
+joshua_os/planning-artifacts/
+joshua_os/fix_summary.md
+joshua_os/REINCARNATION_WAKE.md
+joshua_os/REINCARNATION_GAMEPLAN.md
 
 # Backup
 backup_dbs.sh
