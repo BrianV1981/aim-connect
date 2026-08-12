@@ -34,3 +34,8 @@ Chronological record of knowledge ingestion and architectural decisions.
 - Documented the cleanup of the repository root by moving `workspace/`, `scratch/`, `archive/`, `planning-artifacts/`, and `memory-wiki/` into the `joshua_os/` directory.
 - Documented the pitfall where `.aim_core/` and `venv/` are excluded by `.gitignore` and must be manually restored/rebuilt after migrating or cloning `joshua_os/`.
 - Updated `index.md` to include the new J.O.S.H.U.A. OS Directory Nesting Mandate page.
+
+## [2026-08-12] ingest | Phase 4 Security Hardening & CLI Bug Fixes
+- Updated `pages/security_hardening.md` to include the completion of the Phase 4 Audit issues (#169, #170, #171, #172, #173).
+- Documented GitOps workarounds for the brittle `aim promote` script which was incorrectly resolving `repo_root` inside worktrees and blindly assuming the default branch was `main` instead of `master`. Fixed the `repo_root` logic in `aim_cli.py`.
+- Finalized version bump to `v1.8.0` for the system.

@@ -4,7 +4,7 @@
 
 ## Overview
 
-A comprehensive security audit and hardening sprint covering credential rotation, IDOR protection, input sanitization, path portability, and architectural refactoring of the backend monolith. All 17 tickets executed in a single session (~19 minutes).
+A comprehensive security audit and hardening sprint covering credential rotation, IDOR protection, input sanitization, path portability, and architectural refactoring of the backend monolith. Sprint was executed in phases and finalized in v1.8.0.
 
 ## Credential Management (#158)
 
@@ -86,6 +86,27 @@ HOME_DIR = os.path.expanduser("~")
 AGENT_WORKSPACES_DIR = os.path.join(AIM_CONNECT_ROOT, "agent_workspaces")
 ```
 50+ hardcoded `/home/kingb/aim-connect/` and `/home/kingb/` paths replaced. Zero hardcoded paths remaining.
+
+## Path Integrity & Repository Hygiene (#169, #172)
+
+- Bound all secrets (`totp.secret`, `password.hash`, etc.) strictly to `os.path.dirname(os.path.abspath(__file__))` in `backend/main.py` instead of the process `cwd`.
+- Added `docs/credentials.md` to `.gitignore` to prevent secret dumps.
+
+## File API 4xx Mapping (#170)
+
+- Generic 200 JSON exception responses in `routes_files.py` were mapped to native FastAPI `JSONResponse` objects with appropriate HTTP status codes (404 for FileNotFoundError, 403 for Path Traversal / PermissionError).
+- Maintained the exact `{"error": str(e)}` payload structure to ensure zero frontend breakages.
+
+## CSP & SPA Risk Documentation (#173)
+
+- Stripped `'unsafe-eval'` from the `Content-Security-Policy` header in `backend/main.py` to harden against XSS.
+- Created `SECURITY.md` in the root repository to formally document the residual XSS risks of storing the `API Token` and `E2EE Secret` in a Single Page Application's `localStorage`.
+
+## Docs Truth Pass & v1.8.0 (#171)
+
+- Bumped `frontend/package.json` and `VERSION` to `v1.8.0`.
+- Clarified `README.md` to explicitly describe how to achieve Multi-User functionality using `users.json` (3FA) vs. the Sovereign Agent Gateway (magic-link JWTs).
+- Updated `.env.example` to point `AIM_WORKSPACE` to `workspace/` by default.
 
 ## Module Split (#174)
 
