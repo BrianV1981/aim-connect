@@ -30,7 +30,6 @@ docs/ngrok.md
 .aim_core/
 .gemini/
 AGENTS.md
-aim-agy_os/
 joshua_os/memory-wiki/
 joshua_os/workspace/
 macros.json
