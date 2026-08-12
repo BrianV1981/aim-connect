@@ -73,6 +73,12 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
     ['\\', '|', ';', ':', "'", '"', '<', '>', '/', '?'],
   ];
 
+  const fnRows = [
+    [{label: 'F1', val: '\x1bOP'}, {label: 'F2', val: '\x1bOQ'}, {label: 'F3', val: '\x1bOR'}, {label: 'F4', val: '\x1bOS'}],
+    [{label: 'F5', val: '\x1b[15~'}, {label: 'F6', val: '\x1b[17~'}, {label: 'F7', val: '\x1b[18~'}, {label: 'F8', val: '\x1b[19~'}],
+    [{label: 'F9', val: '\x1b[20~'}, {label: 'F10', val: '\x1b[21~'}, {label: 'F11', val: '\x1b[23~'}, {label: 'F12', val: '\x1b[24~'}],
+  ];
+
   // ===================== HACKER MODE =====================
   const hackerNormalRows = [
     ['\x1b', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
@@ -164,7 +170,9 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
   const toggleLayout = (e) => {
     e.preventDefault();
     triggerFeedback();
-    setLayout(layout === 'alpha' ? 'symbols' : 'alpha');
+    if (layout === 'alpha') setLayout('symbols');
+    else if (layout === 'symbols') setLayout('fkeys');
+    else setLayout('alpha');
   };
 
   const toggleMode = (e) => {
@@ -226,6 +234,23 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
     );
   };
 
+  const renderFnRow = (row, i) => {
+    return (
+      <div key={`fn-${i}`} className="kb-row">
+        {row.map(k => (
+          <button key={k.label} className="kb-key" onPointerDown={(e) => handlePointerDown(e, k.val)} onPointerUp={(e) => handlePointerUp(e, k.val)} onPointerCancel={(e) => handlePointerUp(e, k.val)}>
+            {k.label}
+          </button>
+        ))}
+        {i === 2 && (
+          <button className="kb-key kb-backspace" onPointerDown={(e) => handlePointerDown(e, '\x7f')} onPointerUp={(e) => handlePointerUp(e, '\x7f')} onPointerCancel={(e) => handlePointerUp(e, '\x7f')}>
+            ⌫
+          </button>
+        )}
+      </div>
+    );
+  };
+
   if (mode === 'hacker') {
     return (
       <div className="sovereign-keyboard hacker-mode">
@@ -264,6 +289,12 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
         </>
       )}
 
+      {layout === 'fkeys' && (
+        <>
+          {fnRows.map((row, i) => renderFnRow(row, i))}
+        </>
+      )}
+
       <div className="kb-row">
         <button 
           className="kb-key kb-ctrl" 
@@ -276,7 +307,7 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
           className="kb-key kb-ctrl" 
           onPointerDown={toggleLayout}
         >
-          {layout === 'alpha' ? '?123' : 'ABC'}
+          {layout === 'alpha' ? '?123' : layout === 'symbols' ? 'Fn' : 'ABC'}
         </button>
         <button className="kb-key" onPointerDown={(e) => handlePointerDown(e, ',')} onPointerUp={(e) => handlePointerUp(e, ',')} onPointerCancel={(e) => handlePointerUp(e, ',')}>,</button>
         <button className="kb-key kb-space" onPointerDown={(e) => handlePointerDown(e, ' ')} onPointerUp={(e) => handlePointerUp(e, ' ')} onPointerCancel={(e) => handlePointerUp(e, ' ')}>Space</button>
