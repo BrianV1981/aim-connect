@@ -120,7 +120,9 @@ async def add_security_headers(request: Request, call_next):
 DEFAULT_WORKSPACE = os.environ.get("AIM_WORKSPACE", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "workspace")))
 os.makedirs(DEFAULT_WORKSPACE, exist_ok=True)
 
-SECRET_FILE = "totp.secret"
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+
+SECRET_FILE = os.path.join(BACKEND_DIR, "totp.secret")
 
 def get_or_create_totp():
     if os.path.exists(SECRET_FILE):
@@ -148,7 +150,7 @@ def get_or_create_totp():
 # Initialize TOTP on startup
 totp_instance = get_or_create_totp()
 
-PASSWORD_FILE = "password.hash"
+PASSWORD_FILE = os.path.join(BACKEND_DIR, "password.hash")
 
 def get_or_create_password():
     if os.path.exists(PASSWORD_FILE):
@@ -172,7 +174,7 @@ def get_or_create_password():
 admin_password_hash = get_or_create_password()
 
 # --- Passphrase (Stealth "Name" field — third auth factor) ---
-PASSPHRASE_FILE = "passphrase.hash"
+PASSPHRASE_FILE = os.path.join(BACKEND_DIR, "passphrase.hash")
 
 def get_or_create_passphrase():
     if os.path.exists(PASSPHRASE_FILE):
@@ -195,7 +197,7 @@ def get_or_create_passphrase():
 admin_passphrase_hash = get_or_create_passphrase()
 
 # --- Multi-User Support (optional users.json) ---
-USERS_FILE = "users.json"
+USERS_FILE = os.path.join(BACKEND_DIR, "users.json")
 
 def load_users():
     """Load multi-user config. Returns dict of users or None for single-user mode."""
@@ -211,7 +213,7 @@ def load_users():
 
 users_db = load_users()
 
-TOKEN_FILE = "tokens.json"
+TOKEN_FILE = os.path.join(BACKEND_DIR, "tokens.json")
 VALID_API_TOKENS = {}  # token -> {"expires": float, "user": str, "role": str, "prefix": str}
 if os.path.exists(TOKEN_FILE):
     try:
