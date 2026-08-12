@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}"
+exec "$ROOT/joshua_os/venv/bin/python3" "$ROOT/joshua_os/.aim_core/aim_cli.py" "$@"
