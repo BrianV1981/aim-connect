@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.8.0] - 2026-08-12
+- Security: Completed Audit #4 Multi-Tenant Security Freeze (B+)
+- Security: Absolute paths bound for secret files to prevent CWD vulnerabilities (Closes #169)
+- Security: Migrated shell=False and patched unsafe CSV integrations (Closes #165)
+- Security: Hardened CORS configuration natively via CORS_ORIGINS (Closes #164)
+- Security: File API now returns proper HTTP 4xx status codes for authorization failures (Closes #170)
+- Security: Hardened frontend Content-Security-Policy (CSP) and documented residual SPA risk (Closes #173)
+- Fix: Updated docs and bumped version to v1.8.0 (Closes #171)
+
 ## [v1.7.14] - 2026-08-11
 - Fix: Overhaul ws_handler.py for event-driven async file watching (Closes #206)
 
