@@ -301,6 +301,9 @@ if os.path.exists(frontend_path):
             
         if not os.path.exists(file_path) or not os.path.isfile(file_path):
             file_path = os.path.join(frontend_path, "index.html")
+
+        if file_path.endswith("index.html"):
+            return FileResponse(file_path, headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
             
         if file_path.endswith("manifest.json"):
             import json
