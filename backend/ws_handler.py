@@ -771,3 +771,16 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     for task in pending:
         task.cancel()
 
+    # Cleanup the PTY and child process
+    try:
+        os.close(fd)
+    except Exception as e:
+        logger.error(f"Error closing PTY fd: {e}")
+    
+    try:
+        import signal
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+    except Exception as e:
+        logger.error(f"Error killing child process {pid}: {e}")
+
