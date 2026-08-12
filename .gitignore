@@ -25,6 +25,7 @@ backend/macros.json
 # Agent Specific
 docs/archive/
 docs/ngrok.md
+docs/credentials.md
 
 # --- A.I.M. OS Exoskeleton ---
 .aim_core/
