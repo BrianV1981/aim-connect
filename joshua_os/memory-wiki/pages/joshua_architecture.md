@@ -19,6 +19,12 @@ The JOSHUA backend natively intercepts the conversation history in real-time by 
 - **The Solution:** The backend MUST connect to the SQLite database strictly using URI parameters `?mode=ro`. A read-only SQLite connection (`mode=ro`) correctly bypasses acquiring disruptive locks and inherently avoids checkpointing or deleting the `-wal` file when the connection is closed.
 - **Warning:** Do *not* use `nolock=1` in the connection string. While it prevents lock collisions, `nolock=1` entirely disables SQLite's ability to read `-wal` files. This causes complex `JOIN` queries against the live database to fail with an `unable to open database file` error.
 
+## 4b. Joshua pre-chat gate (#189)
+Customers: OpenCode or Grok only (`admin-cli` is allowlisted). Last harness is restored, then a **verification homepage** runs before the input unlocks.
+- **Grok:** API key **or** `grok_data/auth.json` &gt; 100 bytes on the **registry `op_*` seat**. Else device-auth popup (URL + code). Never mint a 0-byte `auth.json`. Never delete a good token unless `force` reauth. `/oauth/init` and `/status` use JWT → `resolve_workspace_id`, not the email-slug folder. Disk status survives uvicorn restart.
+- **OpenCode:** key + WS `auth_success`. No xAI account.
+- Gate is auth/process ready, not “the model already answered.”
+
 ## 4a. Customer sandbox mail (#186)
 bwrap does **not** inherit host mail secrets. SoT is aim-connect `.env` (`LEADDEED_SMTP_HOST/PORT/USER/PASS/SECURE`, `LEADDEED_MAIL_FROM`) — same LeadDeed Bluehost mailer as Vercel. `sandbox_smtp.bwrap_smtp_setenv()` adds quoted `--setenv` on **every** harness (opencode / grok / agy / admin-cli). `/tmp/bwrap_cmd.log` is redacted.
 
