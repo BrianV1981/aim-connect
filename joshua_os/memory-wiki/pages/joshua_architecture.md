@@ -19,5 +19,8 @@ The JOSHUA backend natively intercepts the conversation history in real-time by 
 - **The Solution:** The backend MUST connect to the SQLite database strictly using URI parameters `?mode=ro`. A read-only SQLite connection (`mode=ro`) correctly bypasses acquiring disruptive locks and inherently avoids checkpointing or deleting the `-wal` file when the connection is closed.
 - **Warning:** Do *not* use `nolock=1` in the connection string. While it prevents lock collisions, `nolock=1` entirely disables SQLite's ability to read `-wal` files. This causes complex `JOIN` queries against the live database to fail with an `unable to open database file` error.
 
+## 4a. Customer sandbox mail
+bwrap does **not** inherit host mail secrets. `LEADDEED_SMTP_*` + `LEADDEED_MAIL_FROM` must live in aim-connect `.env` and be `--setenv` into every harness (#186). Agents must use those vars and `OPERATOR_EMAIL` as the To: address. Never ask the customer for SMTP host/password; never print `LEADDEED_SMTP_PASS`. Existing tmux sessions need a reconnect to pick up env.
+
 ## 4. Live egress is not History
 `/history` and the live `/analyst` spinner are different readers. Grok live output lives in `grok_data/sessions/**/chat_history.jsonl`, not AGY `transcript.jsonl`. Stream **every** visible assistant turn (preview + later real answer). Full map: [harness_live_egress.md](harness_live_egress.md) (#183).

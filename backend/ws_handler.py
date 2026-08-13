@@ -21,6 +21,7 @@ from harness_transcript import (
     iter_new_opencode_assistant_texts,
     opencode_max_part_ts,
 )
+from sandbox_smtp import bwrap_smtp_setenv, redact_bwrap_cmd, smtp_configured
 import logging
 
 router = APIRouter()
@@ -320,6 +321,11 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 
         if proc.returncode != 0 or needs_reboot:
             logger.info(f"Starting TMUX session for {target_session_override}...")
+            smtp_flags = bwrap_smtp_setenv()
+            if smtp_configured():
+                logger.info("Injecting LEADDEED_SMTP_* into sandbox (values redacted).")
+            else:
+                logger.warning("LEADDEED_SMTP_* missing on host — customer agents cannot send mail.")
             
             # Completely decoupled execution pipelines for each harness
             if client_harness == "opencode":
@@ -339,7 +345,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     else:
                         cli_args += f" --model {mapped_model}"
                 
-                env_injections = f"--setenv AIM_VESSEL_CLI 'opencode' "
+                env_injections = f"--setenv AIM_VESSEL_CLI 'opencode' {smtp_flags}"
                 if client_gemini_api_key:
                     env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' --setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
                 
@@ -381,7 +387,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     mapped_model = model_mapping.get(client_gemini_model, "grok-4.5")
                     cli_args += f" --model {mapped_model}"
                 
-                env_injections = f"--setenv AIM_VESSEL_CLI 'grok' "
+                env_injections = f"--setenv AIM_VESSEL_CLI 'grok' {smtp_flags}"
                 if client_gemini_api_key:
                     env_injections += f"--setenv XAI_API_KEY '{client_gemini_api_key}' "
                 if client_grok_thinking:
@@ -414,7 +420,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
                     cli_args += f" --model {mapped_model}"
                 
-                env_injections = f"--setenv AIM_VESSEL_CLI 'admin-cli' "
+                env_injections = f"--setenv AIM_VESSEL_CLI 'admin-cli' {smtp_flags}"
                 if client_gemini_api_key:
                     env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' --setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
                 
@@ -452,7 +458,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
                     cli_args += f" --model {mapped_model}"
                 
-                env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' "
+                env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' {smtp_flags}"
                 if client_gemini_api_key:
                     env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' "
                 
@@ -480,7 +486,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     f"--chdir {workspace_dir} {cli_args}"
                 )
 
-            with open("/tmp/bwrap_cmd.log", "w") as f: f.write(bwrap_cmd)
+            with open("/tmp/bwrap_cmd.log", "w") as f:
+                f.write(redact_bwrap_cmd(bwrap_cmd))
 
             start_proc = await asyncio.create_subprocess_exec(
                 "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,

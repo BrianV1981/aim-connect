@@ -61,3 +61,6 @@ Chronological record of knowledge ingestion and architectural decisions.
 - Same spinner as Grok: History reads `opencode.db` assistant `part.type=text`; live egress did not poll SQLite.
 - Two-turn: tools (`step-finish`/`tool-calls`) then text + `reason=stop`. Stream every new text part after a `MAX(time_created)` cursor. WAL `mode=ro` only.
 - Updated `harness_live_egress.md`.
+
+## [2026-08-13] ingest | Sandbox SMTP inject (#186)
+- Customer agents asked for SMTP because bwrap never received `LEADDEED_SMTP_*`. Host aim-connect `.env` now holds the LeadDeed mailer; all harnesses `--setenv` those keys. `/tmp/bwrap_cmd.log` is redacted. Reconnect required.
