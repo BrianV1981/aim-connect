@@ -15,6 +15,10 @@ These nested directories include:
 
 These directories should NEVER exist loose in the root of the `aim-connect` repository. If an agent creates a scratch script, it must clean it up or store it in `joshua_os/scratch/`.
 
+**`workspace/` at repo root is the `aim fix` worktree floor** (`workspace/issue-N`). Do **not** drop marketing binaries or scratch there — they collide with GitOps. Product screenshots live in **`docs/screenshots/`** and are linked from the README (#187).
+
+**Wiki markdown is tracked** under `joshua_os/memory-wiki/` (index, log, pages). The ignore list below is for *runtime* dirs (`workspace/`, `scratch/`, `venv/`, `.aim_core/`). Do not treat the wiki as disposable.
+
 ## 3. Git Ignore Rules
 To prevent bloating the git repository with heavy runtime dependencies or agent garbage, the `.gitignore` explicitly ignores these nested structures:
 - `joshua_os/workspace/`

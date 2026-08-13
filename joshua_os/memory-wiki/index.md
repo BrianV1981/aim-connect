@@ -9,7 +9,7 @@ This wiki serves as the persistent, compounding knowledge base for the A.I.M. ar
 
 ## Architecture
 - [Backend Module Architecture](pages/backend_architecture.md) - Post-#174 module map, shared state, auth flow, and design decisions.
-- [Harness Live Egress vs History](pages/harness_live_egress.md) - Grok `chat_history.jsonl` vs AGY `transcript.jsonl`; two-chat burst; #183.
+- [Harness Live Egress vs History](pages/harness_live_egress.md) - Independent pipes: AGY jsonl, Grok `chat_history.jsonl`, OpenCode `opencode.db` (#183/#185).
 - **Sandbox Model**: bwrap documentation lives in `docs/SANDBOX_MODEL.md` (created in #168).
 
 ## Components
@@ -20,7 +20,7 @@ This wiki serves as the persistent, compounding knowledge base for the A.I.M. ar
 - **E2EE**: Optional end-to-end encryption for WebSocket traffic via `e2ee.py`.
 
 ## Configuration
-- **Environment Variables**: Documented in `.env.example` — covers CORS, E2EE, JWT TTL, WebAuthn RP ID, theming.
+- **Environment Variables**: `.env.example` — CORS, E2EE, JWT, WebAuthn, **`LEADDEED_SMTP_*`** (injected into customer bwrap; #186).
 - **Path Constants**: `AIM_CONNECT_ROOT`, `HOME_DIR`, `AGENT_WORKSPACES_DIR` — all configurable via env vars (#167).
 - **Secret Files**: `backend/totp.secret`, `backend/password.hash`, `backend/passphrase.hash`, `backend/tokens.json`, `backend/webauthn.json` — all 600-permed, gitignored.
 

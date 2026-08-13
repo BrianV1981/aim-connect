@@ -64,3 +64,9 @@ Chronological record of knowledge ingestion and architectural decisions.
 
 ## [2026-08-13] ingest | Sandbox SMTP inject (#186)
 - Customer agents asked for SMTP because bwrap never received `LEADDEED_SMTP_*`. Host aim-connect `.env` now holds the LeadDeed mailer; all harnesses `--setenv` those keys. `/tmp/bwrap_cmd.log` is redacted. Reconnect required.
+
+## [2026-08-13] ingest | SMTP + harness independence + screenshot path
+- Tightened `joshua_architecture.md` §4a: never ask the customer for SMTP; recycle tmux after inject; SMS not wired.
+- `harness_live_egress.md`: three independent live pipes; leftover `brain/` watch on Grok/OpenCode connections.
+- `joshua_os_nesting_mandate.md`: root `workspace/` is `aim fix` only; screenshots → `docs/screenshots/` (#187); wiki markdown is tracked.
+- `index.md` SMTP + egress one-liners.

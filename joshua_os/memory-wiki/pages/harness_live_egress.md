@@ -20,7 +20,9 @@
 | **Grok** | `grok_data/sessions/` | `*/*/chat_history.jsonl` | `type=assistant` (or `role=model`) with non-empty text |
 | **OpenCode** | `opencode_data/` | `opencode.db` (+ `-wal`) `?mode=ro` **never `nolock=1`** | `message.role=assistant` + `part.type=text`. Seed cursor at `MAX(time_created)`. Poll on db/wal inotify **and** watchfiles timeout. |
 
-Extractor: `backend/harness_transcript.py` (`extract_live_agent_text`). Skip system / user / reasoning / empty / tool-only assistant rows. Keep `user_query` / `system-reminder` tags out of the payload.
+Extractor: `backend/harness_transcript.py`. Skip system / user / reasoning / empty / tool-only assistant rows.
+
+**Independence:** each `/analyst` WebSocket is one harness. Grok jsonl watcher does not poll `opencode.db`; OpenCode SQLite poll does not parse Grok jsonl; `#183`/`#185` did not change AGY. Cursors (`last_pos` / `MAX(time_created)`) are per connection. Leftover: Grok/OpenCode connections still *also* watch `brain/` — a stray AGY `PLANNER_RESPONSE` in the **same** workspace could theoretically appear; one active harness at a time avoids it.
 
 ## Two-chat burst (AGY and Grok)
 
