@@ -16,7 +16,11 @@ from main import (
     AGENT_WORKSPACES_DIR, HOME_DIR
 )
 from e2ee import encrypt_bytes, decrypt_message
-from harness_transcript import extract_live_agent_text
+from harness_transcript import (
+    extract_live_agent_text,
+    iter_new_opencode_assistant_texts,
+    opencode_max_part_ts,
+)
 import logging
 
 router = APIRouter()
@@ -546,17 +550,55 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 watch_roots = [log_dir]
                 if client_harness == "grok":
                     watch_roots.append(grok_sessions_root)
+                opencode_db_path = os.path.join(workspace_dir, "opencode_data", "opencode.db")
+                opencode_data_dir = os.path.join(workspace_dir, "opencode_data")
+                opencode_last_ts = 0
+                if client_harness == "opencode":
+                    os.makedirs(opencode_data_dir, exist_ok=True)
+                    watch_roots.append(opencode_data_dir)
+                    if os.path.exists(opencode_db_path):
+                        try:
+                            opencode_last_ts = opencode_max_part_ts(opencode_db_path)
+                        except Exception as e:
+                            logger.warning(f"OpenCode cursor seed failed: {e}")
             except Exception as e:
                 print(f"Egress task setup error: {e}", flush=True)
                 logger.error(f"Egress task setup error: {e}", exc_info=True)
                 return
             try:
+                async def drain_opencode():
+                    nonlocal opencode_last_ts
+                    if client_harness != "opencode" or not os.path.exists(opencode_db_path):
+                        return
+                    try:
+                        new_bits = iter_new_opencode_assistant_texts(opencode_db_path, opencode_last_ts)
+                    except Exception as e:
+                        logger.warning(f"OpenCode live scrape failed: {e}")
+                        return
+                    for ts, clean_output in new_bits:
+                        opencode_last_ts = max(opencode_last_ts, ts)
+                        if ENABLE_E2EE and E2EE_SECRET:
+                            encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                            logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                            await websocket.send_bytes(encrypted)
+                        else:
+                            logger.info(f"Sending response back to frontend: {clean_output}")
+                            await websocket.send_text(clean_output)
+
                 async for changes in watchfiles.awatch(*watch_roots, rust_timeout=15000, yield_on_timeout=True):
                     now = time.time()
                     if now - last_keepalive >= 15.0:
                         last_keepalive = now
                         if not await ws_send_app_text(websocket, "keepalive_ping"):
                             break
+
+                    db_touched = False
+                    if changes:
+                        for change_type, path in changes:
+                            if path.endswith("opencode.db") or path.endswith("opencode.db-wal") or path.endswith("opencode.db-shm"):
+                                db_touched = True
+                    if client_harness == "opencode" and (db_touched or not changes):
+                        await drain_opencode()
                     
                     if not changes:
                         continue

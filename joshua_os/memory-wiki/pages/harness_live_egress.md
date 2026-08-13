@@ -1,6 +1,6 @@
 # Harness Live Egress vs History
 
-> **Last updated:** 2026-08-13 (#183)
+> **Last updated:** 2026-08-13 (#183, #185)
 
 `/analyst` has **two** readers of harness output. They are not the same code path.
 
@@ -9,7 +9,8 @@
 | **History** | `routes_agents.py` `/history/...` | Grok: newest `grok_data/sessions/**/chat_history.jsonl`. AGY: `brain/**/transcript.jsonl`. OpenCode: `opencode.db?mode=ro` | Empty or stale History page |
 | **Live UI** | `ws_handler.egress_task` + `watchfiles.awatch` | Must watch the **same files** and push E2EE bytes as new lines land | Spinner **awaiting transmission** while History already has the answer |
 
-#183: Grok History worked; live UI hung. `egress_task` only watched AGY `transcript.jsonl` for `source=MODEL` + `type=PLANNER_RESPONSE`. Grok never writes that file.
+#183: Grok History worked; live UI hung. `egress_task` only watched AGY `transcript.jsonl`.
+#185: same spinner on OpenCode. History already queried `opencode.db`; live egress never did.
 
 ## Per-harness live files
 
@@ -17,7 +18,7 @@
 |---------|------------|------|--------------|
 | **AGY / admin-cli** | `brain/` | `*/.system_generated/logs/transcript.jsonl` | `PLANNER_RESPONSE` with text |
 | **Grok** | `grok_data/sessions/` | `*/*/chat_history.jsonl` | `type=assistant` (or `role=model`) with non-empty text |
-| **OpenCode** | (history uses SQLite WAL `mode=ro`; live still via AGY-style or PTY depending on spawn) | `opencode.db` | see [joshua_architecture.md](joshua_architecture.md) §3 |
+| **OpenCode** | `opencode_data/` | `opencode.db` (+ `-wal`) `?mode=ro` **never `nolock=1`** | `message.role=assistant` + `part.type=text`. Seed cursor at `MAX(time_created)`. Poll on db/wal inotify **and** watchfiles timeout. |
 
 Extractor: `backend/harness_transcript.py` (`extract_live_agent_text`). Skip system / user / reasoning / empty / tool-only assistant rows. Keep `user_query` / `system-reminder` tags out of the payload.
 

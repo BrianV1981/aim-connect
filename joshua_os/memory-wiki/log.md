@@ -56,3 +56,8 @@ Chronological record of knowledge ingestion and architectural decisions.
 - Grok (like AGY) emits a two-chat burst: “I’ll check…” + tools, then the real answer. Keep watching; send every visible assistant text; skip empty tool-only turns.
 - Extractor: `backend/harness_transcript.py`. After a scrape fix: bounce uvicorn only; hard-refresh `/analyst`.
 - Linked from `index.md`, `joshua_architecture.md` §4, `backend_architecture.md` module map.
+
+## [2026-08-13] ingest | OpenCode live egress (#185)
+- Same spinner as Grok: History reads `opencode.db` assistant `part.type=text`; live egress did not poll SQLite.
+- Two-turn: tools (`step-finish`/`tool-calls`) then text + `reason=stop`. Stream every new text part after a `MAX(time_created)` cursor. WAL `mode=ro` only.
+- Updated `harness_live_egress.md`.
