@@ -18,6 +18,7 @@ backend/
 ├── routes_fleet.py        Fleet dashboard session list/kill (JWT-authenticated)
 ├── routes_webauthn.py     WebAuthn passkey register/authenticate
 ├── ws_handler.py          WebSocket /ws endpoint, PTY bridge, bwrap sandbox spawning
+├── harness_transcript.py  Live egress extractors (AGY PLANNER_RESPONSE + Grok assistant)
 ├── webauthn_manager.py    WebAuthn credential storage and verification logic
 └── e2ee.py                End-to-end encryption helpers (encrypt_bytes, decrypt_message)
 ```

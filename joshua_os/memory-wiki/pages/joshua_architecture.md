@@ -18,3 +18,6 @@ The JOSHUA backend natively intercepts the conversation history in real-time by 
 - **The Challenge:** OpenCode uses SQLite in Write-Ahead Log (WAL) mode. When the Python backend queries the database, standard connections can inadvertently unlink or delete the `-wal` and `-shm` files upon closure (`conn.close()`), destroying the open file descriptors of the sandboxed OpenCode process and crashing it ("Connection closed by remote node").
 - **The Solution:** The backend MUST connect to the SQLite database strictly using URI parameters `?mode=ro`. A read-only SQLite connection (`mode=ro`) correctly bypasses acquiring disruptive locks and inherently avoids checkpointing or deleting the `-wal` file when the connection is closed.
 - **Warning:** Do *not* use `nolock=1` in the connection string. While it prevents lock collisions, `nolock=1` entirely disables SQLite's ability to read `-wal` files. This causes complex `JOIN` queries against the live database to fail with an `unable to open database file` error.
+
+## 4. Live egress is not History
+`/history` and the live `/analyst` spinner are different readers. Grok live output lives in `grok_data/sessions/**/chat_history.jsonl`, not AGY `transcript.jsonl`. Stream **every** visible assistant turn (preview + later real answer). Full map: [harness_live_egress.md](harness_live_egress.md) (#183).

@@ -9,6 +9,7 @@ This wiki serves as the persistent, compounding knowledge base for the A.I.M. ar
 
 ## Architecture
 - [Backend Module Architecture](pages/backend_architecture.md) - Post-#174 module map, shared state, auth flow, and design decisions.
+- [Harness Live Egress vs History](pages/harness_live_egress.md) - Grok `chat_history.jsonl` vs AGY `transcript.jsonl`; two-chat burst; #183.
 - **Sandbox Model**: bwrap documentation lives in `docs/SANDBOX_MODEL.md` (created in #168).
 
 ## Components

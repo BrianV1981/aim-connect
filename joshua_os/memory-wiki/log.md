@@ -50,3 +50,9 @@ Chronological record of knowledge ingestion and architectural decisions.
 - **Durable rule:** aim-connect `.env` `LEADDEED_DOWNLOAD_SIGNING_SECRET` is SoT. Copy it to Vercel Production and **redeploy** `leaddeed-dashboard`. Hard-refresh `/analyst`. Bounce uvicorn only (clear 5/300 lockout). Never comment out HMAC. Never chase a third secret.
 - Documented traps: `vercel env pull` writes `[SENSITIVE]` for Sensitive vars (not the real secret); `NEXT_PUBLIC_AIM_CONNECT_WS` / `NEXT_PUBLIC_API_URL` must be real URLs before a production rebuild.
 - Empirical close: fleet 200 + `/ws` open + E2EE traffic on 2026-08-13 after option 1.
+
+## [2026-08-13] ingest | Grok live egress vs History (#183)
+- Created `pages/harness_live_egress.md`. History already parsed `grok_data/sessions/**/chat_history.jsonl`; live `egress_task` only watched AGY `transcript.jsonl` → UI **awaiting transmission** while History was complete.
+- Grok (like AGY) emits a two-chat burst: “I’ll check…” + tools, then the real answer. Keep watching; send every visible assistant text; skip empty tool-only turns.
+- Extractor: `backend/harness_transcript.py`. After a scrape fix: bounce uvicorn only; hard-refresh `/analyst`.
+- Linked from `index.md`, `joshua_architecture.md` §4, `backend_architecture.md` module map.
