@@ -96,6 +96,8 @@ def _bootstrap_app():
     if backend_dir not in sys.path:
         sys.path.insert(0, backend_dir)
 
+    os.environ.setdefault("AIM_CONNECT_TEST", "1")
+
     snap = _snapshot_files(backend_dir)
     _write_credential_files(backend_dir)
 
