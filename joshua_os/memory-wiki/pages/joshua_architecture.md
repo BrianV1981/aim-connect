@@ -19,11 +19,16 @@ The JOSHUA backend natively intercepts the conversation history in real-time by 
 - **The Solution:** The backend MUST connect to the SQLite database strictly using URI parameters `?mode=ro`. A read-only SQLite connection (`mode=ro`) correctly bypasses acquiring disruptive locks and inherently avoids checkpointing or deleting the `-wal` file when the connection is closed.
 - **Warning:** Do *not* use `nolock=1` in the connection string. While it prevents lock collisions, `nolock=1` entirely disables SQLite's ability to read `-wal` files. This causes complex `JOIN` queries against the live database to fail with an `unable to open database file` error.
 
-## 4b. Joshua pre-chat gate (#189)
-Customers: OpenCode or Grok only (`admin-cli` is allowlisted). Last harness is restored, then a **verification homepage** runs before the input unlocks.
-- **Grok:** API key **or** `grok_data/auth.json` &gt; 100 bytes on the **registry `op_*` seat**. Else device-auth popup (URL + code). Never mint a 0-byte `auth.json`. Never delete a good token unless `force` reauth. `/oauth/init` and `/status` use JWT → `resolve_workspace_id`, not the email-slug folder. Disk status survives uvicorn restart.
-- **OpenCode:** key + WS `auth_success`. No xAI account.
-- Gate is auth/process ready, not “the model already answered.”
+## 4b. Joshua pre-chat gate (#189 / aim-ld #220)
+Customers: OpenCode or Grok only (`admin-cli` is allowlisted — Brian + temp testers). Last harness (`leaddeed_joshua_harness`) is restored, then a **verification homepage** runs before the input unlocks.
+
+**Oliveira vs Willvas (2026-08-13):** folder names did **not** block send. `mikeywillvas2018` (`op_a562`) ingested on OpenCode with no Grok account (API only). `michaeloliveira84` (`op_761e`) hung because (1) Grok device-auth ran in tmux and never appeared in Joshua, (2) `/oauth/init` wrote a real token to `agent-michaeloliveira84_icloud_com/grok_data/` while the CLI mounts `agent-op_761e…/grok_data/`, (3) spawn minted a **0-byte** `auth.json` that Grok treats as “need login”, (4) AGY later *did* reply (`Hi` same-second; zip tools ~2m51s) but the spinner only clears on non-JSON agent text.
+
+**Rules:**
+- **Grok:** API key **or** `grok_data/auth.json` &gt; 100 bytes (`AUTH_MIN_BYTES`) on the **registry `op_*` seat**. Else device-auth popup (URL + `XXXX-XXXX`). Never mint a 0-byte `auth.json`. Never delete a good token unless `force=1`. Do not reauth every visit.
+- `/api/joshua/ready?token=&harness=` — JWT `e` → `resolve_workspace_id_for_email`. Grok `ready` iff disk state `ok`. OpenCode/admin-cli: disk `ready=true`; process gate is WS `auth_success`.
+- `/api/grok/oauth/init` and `/status` use the same JWT → `op_*` path. Status is **disk-first** (survives uvicorn restart), then in-memory `grok_oauth_processes`. Log `GROK_DEVICE_AUTH seat=op_…`.
+- Gate is auth/process ready, **not** “the model already answered.” Long AGY/Grok tool work can still look idle — that is a later ⏳ ticket, not this gate.
 
 ## 4a. Customer sandbox mail (#186)
 bwrap does **not** inherit host mail secrets. SoT is aim-connect `.env` (`LEADDEED_SMTP_HOST/PORT/USER/PASS/SECURE`, `LEADDEED_MAIL_FROM`) — same LeadDeed Bluehost mailer as Vercel. `sandbox_smtp.bwrap_smtp_setenv()` adds quoted `--setenv` on **every** harness (opencode / grok / agy / admin-cli). `/tmp/bwrap_cmd.log` is redacted.

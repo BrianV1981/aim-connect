@@ -70,3 +70,9 @@ Chronological record of knowledge ingestion and architectural decisions.
 - `harness_live_egress.md`: three independent live pipes; leftover `brain/` watch on Grok/OpenCode connections.
 - `joshua_os_nesting_mandate.md`: root `workspace/` is `aim fix` only; screenshots → `docs/screenshots/` (#187); wiki markdown is tracked.
 - `index.md` SMTP + egress one-liners.
+
+## [2026-08-13] ingest | Joshua pre-chat gate (#189)
+- Oliveira hung on silent Grok device-auth + 0-byte `auth.json` on the `op_*` seat while reauth wrote the email-slug folder. Willvas send was never blocked by folder names.
+- `grok_auth.py`: valid token = `auth.json` > 100 bytes. `ws_handler` no longer touches a stub file.
+- `GET /api/joshua/ready`, oauth init/status resolve JWT → `op_*`. Status is disk-first. `force=1` is the only delete.
+- Log `GROK_DEVICE_AUTH seat=op_…`. Pair: aim-ld #220 (homepage overlay + popup).

@@ -3,7 +3,7 @@
 This wiki serves as the persistent, compounding knowledge base for the A.I.M. architecture and its surrounding ecosystem.
 
 ## Core Concepts
-- [J.O.S.H.U.A. Architecture](pages/joshua_architecture.md) - Sovereign Orchestration, Fleet Agent Sandboxing, and SQLite WAL management.
+- [J.O.S.H.U.A. Architecture](pages/joshua_architecture.md) - Sovereign Orchestration, Fleet Agent Sandboxing, SQLite WAL, **§4b pre-chat gate** (`/api/joshua/ready`, `op_*` Grok auth).
 - [J.O.S.H.U.A. OS Directory Nesting Mandate](pages/joshua_os_nesting_mandate.md) - Clean repository pattern, directory nesting requirements, and .aim_core recovery.
 - [Security Hardening](pages/security_hardening.md) - Full Freeze Sprint (#157–#174): credential rotation, IDOR guards, input sanitization, path portability, module split.
 
