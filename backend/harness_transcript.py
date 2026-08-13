@@ -2,15 +2,18 @@
 
 AGY writes PLANNER_RESPONSE lines to brain/**/transcript.jsonl.
 Grok writes type=assistant lines to grok_data/sessions/**/chat_history.jsonl.
+OpenCode writes assistant part.type=text rows to opencode_data/opencode.db (WAL).
 
-Both CLIs often emit a short \"I'll check…\" turn (sometimes with tool_calls)
-and then a second assistant turn with the real answer — no user message in
-between. Callers must keep watching and deliver every visible assistant text.
+All three often emit a short \"I'll check…\" turn (tools / tool-calls) and then
+a second assistant turn with the real answer — no user message in between.
+Callers must keep watching and deliver every visible assistant text.
 """
 
 from __future__ import annotations
 
+import json
 import re
+import sqlite3
 from typing import Any, Optional
 
 _USER_QUERY = re.compile(r"</?user_query>")
@@ -60,6 +63,57 @@ def extract_grok_assistant_text(record: dict) -> Optional[str]:
     return text or None
 
 
+def extract_opencode_assistant_text(message: dict, part: dict) -> Optional[str]:
+    """Visible OpenCode assistant text part, or None.
+
+    OpenCode stores role on the message and type/text on the part.
+    step-start / step-finish / tool / patch are not user-visible.
+    """
+    if message.get("role") != "assistant":
+        return None
+    if part.get("type") != "text":
+        return None
+    return _clean_user_visible(part.get("text") or "") or None
+
+
+def opencode_max_part_ts(db_path: str) -> int:
+    """Seed cursor so a new WS does not replay History. WAL-safe mode=ro."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        row = conn.execute("SELECT COALESCE(MAX(time_created), 0) FROM part").fetchone()
+        return int(row[0] or 0)
+    finally:
+        conn.close()
+
+
+def iter_new_opencode_assistant_texts(db_path: str, after_ts: int) -> list[tuple[int, str]]:
+    """Assistant text parts newer than *after_ts*. Never uses nolock=1."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        rows = conn.execute(
+            """
+            SELECT p.time_created, m.data, p.data
+            FROM part p
+            JOIN message m ON m.id = p.message_id
+            WHERE p.time_created > ?
+            ORDER BY p.time_created ASC
+            """,
+            (after_ts,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    out: list[tuple[int, str]] = []
+    for ts, mdata, pdata in rows:
+        try:
+            text = extract_opencode_assistant_text(json.loads(mdata), json.loads(pdata))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if text:
+            out.append((int(ts), text))
+    return out
+
+
 def extract_live_agent_text(record: dict) -> Optional[str]:
-    """Harness-agnostic: AGY planner or Grok assistant."""
+    """Harness-agnostic JSONL: AGY planner or Grok assistant."""
     return extract_agy_planner_text(record) or extract_grok_assistant_text(record)
