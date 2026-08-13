@@ -7,6 +7,20 @@
 
 AIM-Connect transforms any web browser on any device into a secure, root-level control panel for your Linux server. No SSH keys to carry, no terminal apps to download, and no corporate bouncers. Just raw, unrestricted access to your machine from anywhere on Earth.
 
+<p align="center">
+  <img src="docs/screenshots/aim-connect_homepage.png" alt="AIM-Connect desktop home" width="820" />
+</p>
+
+### Desktop
+| 3FA + WebAuthn login | Settings | Voice macros | E2EE (ciphertext on the wire) |
+|---|---|---|---|
+| <img src="docs/screenshots/aim-connect_login.png" alt="Desktop login" width="200" /> | <img src="docs/screenshots/aim-connect_settings.png" alt="Settings" width="200" /> | <img src="docs/screenshots/aim-connect_voice-macros.png" alt="Voice macros" width="200" /> | <img src="docs/screenshots/aim-connect_e2ee-protection.png" alt="E2EE ciphertext" width="200" /> |
+
+### Android
+| Login | Home | Settings | Voice |
+|---|---|---|---|
+| <img src="docs/screenshots/aim-joshua-login-android.jpg" alt="Android login" width="160" /> | <img src="docs/screenshots/aim-joshua-home-android.jpg" alt="Android home" width="160" /> | <img src="docs/screenshots/aim-joshua-settings-android.jpg" alt="Android settings" width="160" /> | <img src="docs/screenshots/aim-joshua-voice-settings-android.jpg" alt="Android voice" width="160" /> |
+
 ---
 
 ## ⚡ The Philosophy
