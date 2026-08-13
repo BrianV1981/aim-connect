@@ -1,9 +1,12 @@
 """
 Test fixtures for aim-connect backend.
 
-Strategy: create temp credential files with KNOWN values before (re)loading
-main.py so every module-level global (`totp_instance`, `admin_password_hash`,
-`admin_passphrase_hash`) is initialised against our test secrets.
+#169 bound totp.secret / password.hash / passphrase.hash to BACKEND_DIR
+(dirname(abspath(main.py))). Tests must write known credentials to that
+same directory — cwd-relative tmp files are invisible to main.py.
+
+Existing files (if any) are snapshotted and restored after the session
+so a local checkout's operator secrets are not left as test fixtures.
 """
 
 import importlib
@@ -21,9 +24,47 @@ TEST_PASSWORD = "testpass123"
 TEST_PASSPHRASE = "testphrase456"
 TEST_TOTP_SECRET = pyotp.random_base32()
 
+# Files main.py reads from BACKEND_DIR. Isolate all of them so login tests
+# hit the single-user path and do not persist tokens into a real store.
+_MANAGED_FILES = (
+    "totp.secret",
+    "password.hash",
+    "passphrase.hash",
+    "tokens.json",
+    "users.json",
+)
+
+
+def _backend_dir() -> str:
+    """Same resolution main.py uses: dirname(abspath(__file__)) of main.py."""
+    return os.path.dirname(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "main.py")))
+
+
+def _snapshot_files(directory: str) -> dict:
+    snap = {}
+    for name in _MANAGED_FILES:
+        path = os.path.join(directory, name)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                snap[name] = f.read()
+        else:
+            snap[name] = None
+    return snap
+
+
+def _restore_files(directory: str, snap: dict) -> None:
+    for name, data in snap.items():
+        path = os.path.join(directory, name)
+        if data is None:
+            if os.path.exists(path):
+                os.remove(path)
+        else:
+            with open(path, "wb") as f:
+                f.write(data)
+
 
 def _write_credential_files(directory: str) -> None:
-    """Write password.hash, passphrase.hash, and totp.secret into *directory*."""
+    """Write known test hashes/secret into BACKEND_DIR (and empty token store)."""
     pw_hash = bcrypt.hashpw(TEST_PASSWORD.encode(), bcrypt.gensalt()).decode()
     pp_hash = bcrypt.hashpw(TEST_PASSPHRASE.encode(), bcrypt.gensalt()).decode()
 
@@ -33,49 +74,52 @@ def _write_credential_files(directory: str) -> None:
         f.write(pp_hash)
     with open(os.path.join(directory, "totp.secret"), "w") as f:
         f.write(TEST_TOTP_SECRET)
-
-    os.makedirs(os.path.join(directory, "workspace"), exist_ok=True)
+    with open(os.path.join(directory, "tokens.json"), "w") as f:
+        f.write("{}")
+    users_path = os.path.join(directory, "users.json")
+    if os.path.exists(users_path):
+        os.remove(users_path)
 
 
 # ---------------------------------------------------------------------------
-# Session-scoped fixture — sets up the temp env and (re)loads main once
+# Session-scoped fixture — writes creds to BACKEND_DIR and (re)loads main once
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="session", autouse=True)
-def _bootstrap_app(tmp_path_factory):
+def _bootstrap_app():
     """
-    Prepare a temporary working directory with known credential files,
+    Write known credential files into the same BACKEND_DIR main.py reads,
     then (re)import ``main`` so its module-level globals use them.
 
-    This is session-scoped so the heavy bcrypt hashing + module reload
-    only happens once per test run.
+    Session-scoped so the heavy bcrypt hashing + module reload happens once.
     """
-    tmp = tmp_path_factory.mktemp("aim")
-    _write_credential_files(str(tmp))
-
-    # Ensure backend/ is on sys.path so ``import main`` works
-    backend_dir = os.path.join(os.path.dirname(__file__), "..")
+    backend_dir = _backend_dir()
     if backend_dir not in sys.path:
         sys.path.insert(0, backend_dir)
 
-    # chdir so main.py's relative file reads hit our temp files
-    original_cwd = os.getcwd()
-    os.chdir(str(tmp))
+    snap = _snapshot_files(backend_dir)
+    _write_credential_files(backend_dir)
 
-    # (Re)load main so the module-level init picks up our creds
-    if "main" in sys.modules:
-        importlib.reload(sys.modules["main"])
-    else:
-        import main  # noqa: F401
+    try:
+        if "main" in sys.modules:
+            importlib.reload(sys.modules["main"])
+        else:
+            import main  # noqa: F401
 
-    # Reload route modules that cache credential references from main
-    for mod_name in ["routes_auth", "routes_sessions", "routes_files",
-                     "routes_agents", "routes_fleet", "routes_webauthn"]:
-        if mod_name in sys.modules:
-            importlib.reload(sys.modules[mod_name])
+        # Reload route modules that cache credential references from main
+        for mod_name in [
+            "routes_auth",
+            "routes_sessions",
+            "routes_files",
+            "routes_agents",
+            "routes_fleet",
+            "routes_webauthn",
+        ]:
+            if mod_name in sys.modules:
+                importlib.reload(sys.modules[mod_name])
 
-    yield
-
-    os.chdir(original_cwd)
+        yield
+    finally:
+        _restore_files(backend_dir, snap)
 
 
 @pytest.fixture(autouse=True)

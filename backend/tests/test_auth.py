@@ -3,13 +3,14 @@ Integration tests for three-factor auth, rate limiting, TOTP replay,
 and session-name validation in aim-connect.
 """
 
+import os
 import time
 
 import pyotp
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import TEST_PASSWORD, TEST_PASSPHRASE, TEST_TOTP_SECRET
+from tests.conftest import TEST_PASSWORD, TEST_PASSPHRASE, TEST_TOTP_SECRET, _backend_dir
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -30,6 +31,21 @@ def _valid_auth_payload() -> dict:
         "password": TEST_PASSWORD,
         "passphrase": TEST_PASSPHRASE,
     }
+
+
+# ---------------------------------------------------------------------------
+# Harness — #169 BACKEND_DIR alignment
+# ---------------------------------------------------------------------------
+class TestBootstrapUsesBackendDir:
+    def test_totp_and_hashes_loaded_from_backend_dir(self):
+        """Creds must come from dirname(main.py), not cwd/tmp."""
+        import main
+
+        assert main.BACKEND_DIR == _backend_dir()
+        assert main.totp_instance.secret == TEST_TOTP_SECRET
+        assert os.path.isfile(os.path.join(main.BACKEND_DIR, "totp.secret"))
+        with open(os.path.join(main.BACKEND_DIR, "totp.secret")) as f:
+            assert f.read().strip() == TEST_TOTP_SECRET
 
 
 # ---------------------------------------------------------------------------
