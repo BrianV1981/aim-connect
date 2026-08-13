@@ -39,3 +39,8 @@ Chronological record of knowledge ingestion and architectural decisions.
 - Updated `pages/security_hardening.md` to include the completion of the Phase 4 Audit issues (#169, #170, #171, #172, #173).
 - Documented GitOps workarounds for the brittle `aim promote` script which was incorrectly resolving `repo_root` inside worktrees and blindly assuming the default branch was `main` instead of `master`. Fixed the `repo_root` logic in `aim_cli.py`.
 - Finalized version bump to `v1.8.0` for the system.
+
+## [2026-08-12] ingest | Cloudflare Tunnel & JWT Masking Resolution
+- Created `pages/cloudflare_tunnel_jwt_mismatch.md` to document the opaque "Connection closed by remote node" UI bug in `AgentTerminal.tsx`.
+- Documented the diagnostic workflow for identifying Cloudflare 530 Argo Tunnel Errors vs HTTP 1008 JWT Invalid Signature errors.
+- Documented that killing the backend tmux sessions without verifying the `cloudflared` tunnel will sever the Vercel production frontend WebSocket (`wss://api.leaddeeds.com/ws`).
