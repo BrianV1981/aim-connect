@@ -16,6 +16,7 @@ from main import (
     AGENT_WORKSPACES_DIR, HOME_DIR
 )
 from e2ee import encrypt_bytes, decrypt_message
+from harness_transcript import extract_live_agent_text
 import logging
 
 router = APIRouter()
@@ -529,6 +530,12 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 # Pre-populate last_pos_map so we don't stream old history
                 import glob
                 current_log_files = glob.glob(os.path.join(agent_brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+                grok_sessions_root = os.path.join(workspace_dir, "grok_data", "sessions")
+                if client_harness == "grok":
+                    os.makedirs(grok_sessions_root, exist_ok=True)
+                    current_log_files.extend(
+                        glob.glob(os.path.join(grok_sessions_root, "*", "*", "chat_history.jsonl"))
+                    )
                 for lf in current_log_files:
                     if os.path.exists(lf):
                         with open(lf, "r") as f:
@@ -536,12 +543,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                             last_pos_map[lf] = f.tell()
                 
                 last_keepalive = time.time()
+                watch_roots = [log_dir]
+                if client_harness == "grok":
+                    watch_roots.append(grok_sessions_root)
             except Exception as e:
                 print(f"Egress task setup error: {e}", flush=True)
                 logger.error(f"Egress task setup error: {e}", exc_info=True)
                 return
             try:
-                async for changes in watchfiles.awatch(log_dir, rust_timeout=15000, yield_on_timeout=True):
+                async for changes in watchfiles.awatch(*watch_roots, rust_timeout=15000, yield_on_timeout=True):
                     now = time.time()
                     if now - last_keepalive >= 15.0:
                         last_keepalive = now
@@ -553,7 +563,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         
                     modified_transcripts = set()
                     for change_type, path in changes:
-                        if path.endswith("transcript.jsonl"):
+                        if path.endswith("transcript.jsonl") or path.endswith("chat_history.jsonl"):
                             modified_transcripts.add(path)
                             
                     for lf in modified_transcripts:
@@ -572,17 +582,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                                 last_pos_map[lf] += len(line)
                                 try:
                                     log_data = json.loads(line)
-                                    if log_data.get("source") == "MODEL" and log_data.get("type") == "PLANNER_RESPONSE":
-                                        content = log_data.get("content")
-                                        if content:
-                                            clean_output = content
-                                            if ENABLE_E2EE and E2EE_SECRET:
-                                                encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
-                                                logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
-                                                await websocket.send_bytes(encrypted)
-                                            else:
-                                                logger.info(f"Sending response back to frontend: {clean_output}")
-                                                await websocket.send_text(clean_output)
+                                    clean_output = extract_live_agent_text(log_data)
+                                    if clean_output:
+                                        if ENABLE_E2EE and E2EE_SECRET:
+                                            encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                            logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
+                                            await websocket.send_bytes(encrypted)
+                                        else:
+                                            logger.info(f"Sending response back to frontend: {clean_output}")
+                                            await websocket.send_text(clean_output)
                                 except Exception:
                                     pass
             except asyncio.CancelledError:
