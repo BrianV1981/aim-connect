@@ -28,4 +28,4 @@ This wiki serves as the persistent, compounding knowledge base for the A.I.M. ar
 - [Tmux Ghost Clients & Dashboard Bug](pages/tmux_ghost_clients_and_dash_switching.md) - Resolutions for orphaned background clients and dashboard window persistence.
 - [Anti-Pattern Domain Hacks](pages/anti-pattern-domain-hacks.md) - System constraints against hardcoding domains/IPs.
 - [Tmux Pkill Mandate](pages/tmux_pkill_mandate.md) - Specific rules for safely interacting with tmux via `pkill`.
-- [Cloudflare Tunnel & JWT UI Masking](pages/cloudflare_tunnel_jwt_mismatch.md) - Diagnostic workflow for WebSocket 530 Cloudflare errors vs 1008 JWT failures.
+- [Cloudflare Tunnel & JWT UI Masking](pages/cloudflare_tunnel_jwt_mismatch.md) - 530 vs 1008 vs lockout-403; option-1 signing-secret SoT (aim-connect `.env` → Vercel Production + redeploy). Never HMAC-bypass.

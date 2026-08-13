@@ -11,7 +11,7 @@ A comprehensive security audit and hardening sprint covering credential rotation
 ### Architecture
 - All secrets live under `backend/` only: `totp.secret`, `password.hash`, `passphrase.hash`, `tokens.json`, `webauthn.json`
 - Root-level duplicates were stale leftovers from early development — deleted
-- `.env` holds runtime secrets: `NGROK_AUTHTOKEN`, `E2EE_SECRET`, `LEADDEED_DOWNLOAD_SIGNING_SECRET`
+- `.env` holds runtime secrets: `NGROK_AUTHTOKEN`, `E2EE_SECRET`, `LEADDEED_DOWNLOAD_SIGNING_SECRET` (SoT for analyst/fleet magic-link HMAC — see [cloudflare_tunnel_jwt_mismatch.md](cloudflare_tunnel_jwt_mismatch.md))
 - `.gitignore` expanded to cover `agent_workspaces/`, `*.bak*`, debug scripts, and all secret files
 
 ### Rotation Protocol

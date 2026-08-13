@@ -44,7 +44,7 @@ backend/
 2. **Token issued**: `secrets.token_hex(32)` with 4h expiry, stored in `VALID_API_TOKENS`
 3. **API calls**: Client sends token via `X-API-Token` header
 4. **WebSocket**: Client sends `{type: "auth", token: "..."}` as first message within 10s
-5. **Dashboard JWT**: LeadDeed dashboard uses HMAC-signed JWTs for fleet/download/history routes
+5. **Dashboard JWT**: LeadDeed dashboard uses HMAC-signed JWTs for fleet/download/history routes. Signing-secret SoT and Vercel sync: [cloudflare_tunnel_jwt_mismatch.md](cloudflare_tunnel_jwt_mismatch.md).
 
 ## Key Design Decisions
 

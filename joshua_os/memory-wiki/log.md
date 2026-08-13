@@ -44,3 +44,9 @@ Chronological record of knowledge ingestion and architectural decisions.
 - Created `pages/cloudflare_tunnel_jwt_mismatch.md` to document the opaque "Connection closed by remote node" UI bug in `AgentTerminal.tsx`.
 - Documented the diagnostic workflow for identifying Cloudflare 530 Argo Tunnel Errors vs HTTP 1008 JWT Invalid Signature errors.
 - Documented that killing the backend tmux sessions without verifying the `cloudflared` tunnel will sever the Vercel production frontend WebSocket (`wss://api.leaddeeds.com/ws`).
+
+## [2026-08-13] ingest | Analyst JWT signing-secret SoT (option 1)
+- Updated `pages/cloudflare_tunnel_jwt_mismatch.md` after a live `/analyst` restore: HMAC was re-enabled (pass 9/10), origin was up, tokens 401'd because Vercel was minting with a ghost secret.
+- **Durable rule:** aim-connect `.env` `LEADDEED_DOWNLOAD_SIGNING_SECRET` is SoT. Copy it to Vercel Production and **redeploy** `leaddeed-dashboard`. Hard-refresh `/analyst`. Bounce uvicorn only (clear 5/300 lockout). Never comment out HMAC. Never chase a third secret.
+- Documented traps: `vercel env pull` writes `[SENSITIVE]` for Sensitive vars (not the real secret); `NEXT_PUBLIC_AIM_CONNECT_WS` / `NEXT_PUBLIC_API_URL` must be real URLs before a production rebuild.
+- Empirical close: fleet 200 + `/ws` open + E2EE traffic on 2026-08-13 after option 1.
