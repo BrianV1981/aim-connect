@@ -124,6 +124,21 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SECRET_FILE = os.path.join(BACKEND_DIR, "totp.secret")
 
+def _should_print_first_run_creds() -> bool:
+    """Print generated secrets only on an Operator TTY (./startup.sh first launch).
+
+    CI, pytest, and non-TTY pipes must stay quiet (#181). File generation is unchanged.
+    """
+    ci = os.environ.get("CI", "").strip().lower()
+    if ci in ("1", "true", "yes"):
+        return False
+    if os.environ.get("AIM_CONNECT_TEST", "").strip():
+        return False
+    try:
+        return bool(sys.stdout.isatty())
+    except Exception:
+        return False
+
 def get_or_create_totp():
     if os.path.exists(SECRET_FILE):
         with open(SECRET_FILE, "r") as f:
@@ -134,16 +149,17 @@ def get_or_create_totp():
             f.write(secret)
         os.chmod(SECRET_FILE, 0o600)
         
-        # Print QR Code to console for setup
-        print("\n\033[92m=== aim-connect TOTP SETUP ===\033[0m")
-        print("Scan this QR code with Google Authenticator or Authy:\n")
-        uri = pyotp.totp.TOTP(secret).provisioning_uri(name="aim-connect", issuer_name="aim-connect")
-        qr = qrcode.QRCode(version=1, box_size=2, border=1)
-        qr.add_data(uri)
-        qr.make(fit=True)
-        # Use invert=True for dark terminals
-        qr.print_ascii(invert=True)
-        print("\nIf you can't scan the QR code, manually enter this secret: \033[93m" + secret + "\033[0m\n")
+        # Print QR Code to console for setup (Operator TTY only)
+        if _should_print_first_run_creds():
+            print("\n\033[92m=== aim-connect TOTP SETUP ===\033[0m")
+            print("Scan this QR code with Google Authenticator or Authy:\n")
+            uri = pyotp.totp.TOTP(secret).provisioning_uri(name="aim-connect", issuer_name="aim-connect")
+            qr = qrcode.QRCode(version=1, box_size=2, border=1)
+            qr.add_data(uri)
+            qr.make(fit=True)
+            # Use invert=True for dark terminals
+            qr.print_ascii(invert=True)
+            print("\nIf you can't scan the QR code, manually enter this secret: \033[93m" + secret + "\033[0m\n")
     
     return pyotp.TOTP(secret)
 
@@ -164,10 +180,11 @@ def get_or_create_password():
             f.write(hashed_password)
         os.chmod(PASSWORD_FILE, 0o600)
         
-        print("\n\033[91m=== aim-connect PASSWORD SETUP ===\033[0m")
-        print("A new secure admin password has been generated for you.")
-        print(f"Password: \033[93m{raw_password}\033[0m")
-        print("Please save this password in your password manager immediately.\n")
+        if _should_print_first_run_creds():
+            print("\n\033[91m=== aim-connect PASSWORD SETUP ===\033[0m")
+            print("A new secure admin password has been generated for you.")
+            print(f"Password: \033[93m{raw_password}\033[0m")
+            print("Please save this password in your password manager immediately.\n")
         return hashed_password
 
 # Initialize Password hash on startup
@@ -187,10 +204,11 @@ def get_or_create_passphrase():
             f.write(hashed_passphrase)
         os.chmod(PASSPHRASE_FILE, 0o600)
         
-        print("\n\033[95m=== aim-connect PASSPHRASE SETUP ===\033[0m")
-        print("A stealth passphrase has been generated (the 'Name' field on login).")
-        print(f"Passphrase: \033[93m{raw_passphrase}\033[0m")
-        print("This is your third auth factor. Save it in your password manager.\n")
+        if _should_print_first_run_creds():
+            print("\n\033[95m=== aim-connect PASSPHRASE SETUP ===\033[0m")
+            print("A stealth passphrase has been generated (the 'Name' field on login).")
+            print(f"Passphrase: \033[93m{raw_passphrase}\033[0m")
+            print("This is your third auth factor. Save it in your password manager.\n")
         return hashed_passphrase
 
 # Initialize Passphrase hash on startup
