@@ -15,6 +15,7 @@ from main import (
     verify_token, require_admin, AGENT_WORKSPACES_DIR, HOME_DIR
 )
 from ws_handler import resolve_workspace_id_for_email, legacy_sanitize_email
+from grok_auth import grok_auth_path, grok_auth_ready, grok_auth_state
 import logging
 
 router = APIRouter()
@@ -174,24 +175,48 @@ def save_integrations(agent_id: str, req: IntegrationRequest):
         
     return {"status": "success"}
 
-@router.post("/api/grok/oauth/init")
-async def init_grok_oauth(agent_id: str, token: str = ""):
-    _verify_dashboard_jwt(token)
-    
-    parts = agent_id.split('-')
-    if len(parts) >= 3 and parts[0] == 'agent':
-        base_agent_name = f"agent-{parts[1]}"
-        # Unified workspace: workspace_dir IS the user root (no harness- subdirs)
-        workspace_dir = f"{AGENT_WORKSPACES_DIR}/{base_agent_name}"
-    else:
-        base_agent_name = agent_id.replace('@', '_').replace('.', '_')
-        if not base_agent_name.startswith("agent-"):
-            base_agent_name = "agent-" + base_agent_name
-        workspace_dir = f"{AGENT_WORKSPACES_DIR}/{base_agent_name}"
+def _workspace_dir_from_token(token: str) -> tuple[str, str]:
+    """JWT email → (workspace_id, absolute workspace dir). Always registry op_*."""
+    payload = _verify_dashboard_jwt(token)
+    email = payload.get("e") or ""
+    wid = resolve_workspace_id_for_email(email)
+    return wid, os.path.join(AGENT_WORKSPACES_DIR, f"agent-{wid}")
 
+
+@router.get("/api/joshua/ready")
+async def joshua_ready(token: str = "", harness: str = "opencode"):
+    """Pre-chat gate: is this harness allowed to take a line? (#189)"""
+    wid, workspace_dir = _workspace_dir_from_token(token)
+    h = (harness or "opencode").strip().lower()
+    if h == "grok":
+        state = grok_auth_state(workspace_dir)
+        ready = state == "ok"
+        return {
+            "ready": ready,
+            "harness": "grok",
+            "workspace_id": wid,
+            "grok_auth": state,
+            "reason": "ok" if ready else f"grok_auth_{state}",
+        }
+    # OpenCode / admin-cli: process gate is WS auth_success (frontend). Disk is ready.
+    return {
+        "ready": True,
+        "harness": h,
+        "workspace_id": wid,
+        "grok_auth": grok_auth_state(workspace_dir),
+        "reason": "ok",
+    }
+
+
+@router.post("/api/grok/oauth/init")
+async def init_grok_oauth(agent_id: str = "", token: str = "", force: str = ""):
+    wid, workspace_dir = _workspace_dir_from_token(token)
     os.makedirs(os.path.join(workspace_dir, "grok_data"), exist_ok=True)
-    auth_file = os.path.join(workspace_dir, "grok_data", "auth.json")
-    if os.path.exists(auth_file):
+    auth_file = grok_auth_path(workspace_dir)
+    # Do not throw away a good token unless the operator asked to force reauth.
+    if grok_auth_ready(workspace_dir) and str(force).lower() not in ("1", "true", "yes"):
+        return {"already_ready": True, "workspace_id": wid}
+    if os.path.exists(auth_file) and str(force).lower() in ("1", "true", "yes"):
         try:
             os.remove(auth_file)
         except Exception:
@@ -218,7 +243,7 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
         logger.error(f"Failed to spawn grok login: {e}")
         return {"error": str(e)}
         
-    grok_oauth_processes[agent_id] = {"process": proc, "status": "pending"}
+    grok_oauth_processes[wid] = {"process": proc, "status": "pending"}
     
     url = None
     code = None
@@ -265,9 +290,9 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
                 pass
 
         if success:
-            grok_oauth_processes[agent_id]["status"] = "success"
+            grok_oauth_processes[wid]["status"] = "success"
         else:
-            grok_oauth_processes[agent_id]["status"] = "failed"
+            grok_oauth_processes[wid]["status"] = "failed"
             
         try:
             proc.terminate()
@@ -277,16 +302,20 @@ async def init_grok_oauth(agent_id: str, token: str = ""):
     asyncio.create_task(wait_for_auth())
     
     if url and code:
-        return {"url": url, "code": code}
-    else:
-        return {"error": "Failed to parse device code from Grok CLI.", "output": "\n".join(captured_output)}
+        logger.info("GROK_DEVICE_AUTH seat=%s code_issued=1", wid)
+        return {"url": url, "code": code, "workspace_id": wid}
+    logger.warning("GROK_DEVICE_AUTH seat=%s parse_failed=1", wid)
+    return {"error": "Failed to parse device code from Grok CLI.", "output": "\n".join(captured_output), "workspace_id": wid}
 
 @router.get("/api/grok/oauth/status")
-async def get_grok_oauth_status(agent_id: str, token: str = ""):
-    _verify_dashboard_jwt(token)
-    if agent_id not in grok_oauth_processes:
-        return {"status": "not_found"}
-    return {"status": grok_oauth_processes[agent_id]["status"]}
+async def get_grok_oauth_status(agent_id: str = "", token: str = ""):
+    wid, workspace_dir = _workspace_dir_from_token(token)
+    if grok_auth_ready(workspace_dir):
+        return {"status": "success", "workspace_id": wid, "source": "disk"}
+    mem = grok_oauth_processes.get(wid)
+    if mem:
+        return {"status": mem["status"], "workspace_id": wid, "source": "memory"}
+    return {"status": grok_auth_state(workspace_dir), "workspace_id": wid, "source": "disk"}
 
 @router.get("/history/{agent_id}")
 async def get_history(agent_id: str, token: str = Query(None), limit: int = Query(3, description="Number of reincarnations to show")):
