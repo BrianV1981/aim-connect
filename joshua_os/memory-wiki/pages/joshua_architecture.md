@@ -30,6 +30,11 @@ Customers: OpenCode or Grok only (`admin-cli` is allowlisted — Brian + temp te
 - `/api/grok/oauth/init` and `/status` use the same JWT → `op_*` path. Status is **disk-first** (survives uvicorn restart), then in-memory `grok_oauth_processes`. Log `GROK_DEVICE_AUTH seat=op_…`.
 - Gate is auth/process ready, **not** “the model already answered.” Long AGY/Grok tool work can still look idle — that is a later ⏳ ticket, not this gate.
 
+**Live closeout (Operator `brianv1981`, 2026-08-13):** Grok OAuth + Grok chat worked. Then two *different* failures:
+
+1. **AGY first submit after harness switch is a lie.** Switch Grok → `admin-cli`, type `hello`: Joshua paints the bubble + spinner; tmux does **not** have the line. Leave `/analyst` and come back → resend works. Cause: `ws_handler` sends `auth_success` as soon as the JWT verifies, **before** `kill_all_user_sessions` + tmux spawn. Public `ingest_task` pastes immediately. The admin PTY path waits ~4s on `is_new_session`; the Joshua path does not. UI `Connected` ≠ “AGY is at a prompt.” Reload is a workaround, not a fix. Track a follow-up; do not treat this as a folder-name or gate-auth bug.
+2. **OpenCode `hello` did reach tmux.** The free Gemini key stalled. That is provider quality, not a dropped `submit`. Next product slice is aim-ld **#163**: persist one Gemini key + one DeepSeek key, bind model → provider. Do not open a duplicate ticket.
+
 ## 4a. Customer sandbox mail (#186)
 bwrap does **not** inherit host mail secrets. SoT is aim-connect `.env` (`LEADDEED_SMTP_HOST/PORT/USER/PASS/SECURE`, `LEADDEED_MAIL_FROM`) — same LeadDeed Bluehost mailer as Vercel. `sandbox_smtp.bwrap_smtp_setenv()` adds quoted `--setenv` on **every** harness (opencode / grok / agy / admin-cli). `/tmp/bwrap_cmd.log` is redacted.
 

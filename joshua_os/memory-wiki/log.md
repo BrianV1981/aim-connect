@@ -76,3 +76,9 @@ Chronological record of knowledge ingestion and architectural decisions.
 - `grok_auth.py`: valid token = `auth.json` > 100 bytes. `ws_handler` no longer touches a stub file.
 - `GET /api/joshua/ready`, oauth init/status resolve JWT → `op_*`. Status is disk-first. `force=1` is the only delete.
 - Log `GROK_DEVICE_AUTH seat=op_…`. Pair: aim-ld #220 (homepage overlay + popup).
+
+## [2026-08-13] ingest | Grok gate live + AGY first-submit lie (#190)
+- Operator `brianv1981`: Grok OAuth + Grok harness OK after #189/#220.
+- Switch to AGY: first `hello` painted in Joshua, **absent** from tmux. Leave/return `/analyst` → resend works. `auth_success` is JWT-only; public ingest has no new-session wait.
+- OpenCode `hello` **was** in tmux; free Gemini stall ≠ send bug. Multi-provider = aim-ld #163 (Gemini + DeepSeek), not a new connect ticket.
+- Pages: `joshua_architecture.md` §4b, `index.md`, `log.md`.
