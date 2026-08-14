@@ -22,6 +22,11 @@ from harness_transcript import (
     opencode_max_part_ts,
 )
 from sandbox_smtp import bwrap_smtp_setenv, redact_bwrap_cmd, smtp_configured
+from opencode_providers import (
+    map_opencode_cli_model,
+    opencode_bwrap_setenv,
+    resolve_opencode_auth,
+)
 import logging
 
 router = APIRouter()
@@ -146,6 +151,9 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     client_gemini_model = None
     client_grok_thinking = None
     client_harness = "opencode"
+    client_byok_fingerprint = ""
+    client_opencode_cli_model = None
+    client_opencode_provider = "google"
     try:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(auth_message)
@@ -156,6 +164,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             client_gemini_model = data.get("gemini_model")
             client_grok_thinking = data.get("grok_thinking")
             client_harness = data.get("harness", "opencode")
+            if client_harness == "opencode":
+                resolved = resolve_opencode_auth(data)
+                client_gemini_api_key = resolved.api_key
+                client_gemini_model = resolved.ui_model
+                client_opencode_cli_model = resolved.cli_model
+                client_opencode_provider = resolved.provider
+                client_byok_fingerprint = resolved.byok_fingerprint
+            else:
+                client_byok_fingerprint = client_gemini_api_key or ""
             
             if token in VALID_API_TOKENS:
                 token_data = VALID_API_TOKENS[token]
@@ -318,7 +335,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         await proc.wait()
         
         needs_reboot = False
-        if proc.returncode == 0 and client_gemini_api_key:
+        if proc.returncode == 0 and client_byok_fingerprint:
             env_proc = await asyncio.create_subprocess_exec(
                 "tmux", "show-environment", "-t", target_session_override, "BYOK_API_KEY",
                 stdout=asyncio.subprocess.PIPE,
@@ -326,7 +343,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             )
             stdout, _ = await env_proc.communicate()
             existing_key = stdout.decode().strip()
-            if existing_key != f"BYOK_API_KEY={client_gemini_api_key}":
+            if existing_key != f"BYOK_API_KEY={client_byok_fingerprint}":
                 logger.info(f"API key changed for {target_session_override}. Killing old session.")
                 await asyncio.create_subprocess_exec("tmux", "kill-session", "-t", target_session_override)
                 needs_reboot = True
@@ -342,24 +359,16 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             # Completely decoupled execution pipelines for each harness
             if client_harness == "opencode":
                 cli_args = f"{HOME_DIR}/.opencode/bin/opencode --auto"
-                if client_gemini_model:
-                    model_mapping = {
-                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
-                        "gemini-3.5-flash": "gemini-flash-latest",
-                        "gemini-3.1-pro": "gemini-2.5-pro",
-                        "opencode": "gemini-flash-lite-latest",
-                        "admin-cli": "gemini-flash-lite-latest",
-                        "grok": "gemini-flash-lite-latest"
-                    }
-                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
-                    if "/" not in mapped_model:
-                        cli_args += f" --model google/{mapped_model}"
-                    else:
-                        cli_args += f" --model {mapped_model}"
+                cli_model = client_opencode_cli_model or map_opencode_cli_model(
+                    client_opencode_provider, client_gemini_model
+                )
+                if cli_model:
+                    cli_args += f" --model {cli_model}"
                 
                 env_injections = f"--setenv AIM_VESSEL_CLI 'opencode' {smtp_flags}"
-                if client_gemini_api_key:
-                    env_injections += f"--setenv GEMINI_API_KEY '{client_gemini_api_key}' --setenv GOOGLE_GENERATIVE_AI_API_KEY '{client_gemini_api_key}' "
+                env_injections += opencode_bwrap_setenv(
+                    client_opencode_provider, client_gemini_api_key or ""
+                )
                 
                 oauth_binds = (
                     f"--bind {agent_brain_dir}/antigravity-oauth-token {HOME_DIR}/.gemini/antigravity-cli/antigravity-oauth-token "
@@ -499,7 +508,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 )
 
             with open("/tmp/bwrap_cmd.log", "w") as f:
-                f.write(redact_bwrap_cmd(bwrap_cmd))
+                f.write(redact_bwrap_cmd(bwrap_cmd, secrets=[client_gemini_api_key or ""]))
 
             start_proc = await asyncio.create_subprocess_exec(
                 "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,
@@ -515,8 +524,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 await websocket.close(code=1011, reason="Harness spawn failed")
                 return
             logger.info(f"TMUX session {target_session_override} created successfully.")
-            if client_gemini_api_key:
-                subprocess.run(["tmux", "set-environment", "-t", target_session_override, "BYOK_API_KEY", client_gemini_api_key])
+            if client_byok_fingerprint:
+                subprocess.run(["tmux", "set-environment", "-t", target_session_override, "BYOK_API_KEY", client_byok_fingerprint])
 
             # Trust-folder splash, then the same settle the admin PTY uses on
             # is_new_session. Only then is paste safe (#191).
