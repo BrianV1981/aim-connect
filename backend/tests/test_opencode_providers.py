@@ -3,9 +3,12 @@
 from opencode_providers import (
     infer_opencode_provider,
     map_opencode_cli_model,
+    normalize_opencode_variant,
     opencode_bwrap_setenv,
     opencode_env_pairs,
+    opencode_user_config,
     resolve_opencode_auth,
+    write_opencode_user_config,
 )
 
 
@@ -77,7 +80,8 @@ class TestResolveAuth:
         assert r.provider == "deepseek"
         assert r.api_key == "sk-ds"
         assert r.cli_model == "deepseek/deepseek-chat"
-        assert r.byok_fingerprint == "deepseek:sk-ds"
+        assert r.variant is None
+        assert r.byok_fingerprint == "deepseek:sk-ds:default"
 
     def test_legacy_gemini_fields(self):
         r = resolve_opencode_auth(
@@ -89,7 +93,7 @@ class TestResolveAuth:
         assert r.provider == "google"
         assert r.api_key == "gk-old"
         assert r.cli_model == "google/gemini-flash-lite-latest"
-        assert r.byok_fingerprint == "google:gk-old"
+        assert r.byok_fingerprint == "google:gk-old:default"
 
     def test_does_not_keep_inactive_key(self):
         r = resolve_opencode_auth(
@@ -102,3 +106,47 @@ class TestResolveAuth:
         )
         assert r.api_key == "sk-ds"
         assert "gk-should-not-win" not in r.byok_fingerprint
+
+
+class TestVariants:
+    def test_v4_flash_accepts_high(self):
+        assert normalize_opencode_variant("deepseek/deepseek-v4-flash", "high") == "high"
+        assert normalize_opencode_variant("deepseek/deepseek-v4-pro", "max") == "max"
+
+    def test_default_and_empty_are_omitted(self):
+        assert normalize_opencode_variant("deepseek/deepseek-v4-flash", "default") is None
+        assert normalize_opencode_variant("deepseek/deepseek-v4-flash", "") is None
+
+    def test_chat_has_no_variants(self):
+        assert normalize_opencode_variant("deepseek/deepseek-chat", "high") is None
+
+    def test_config_sets_agent_build_variant(self):
+        cfg = opencode_user_config("deepseek/deepseek-v4-flash", "medium")
+        assert cfg["model"] == "deepseek/deepseek-v4-flash"
+        assert cfg["agent"]["build"]["variant"] == "medium"
+
+    def test_config_default_has_no_agent_variant(self):
+        cfg = opencode_user_config("deepseek/deepseek-v4-flash", "default")
+        assert "agent" not in cfg
+
+    def test_resolve_reads_opencode_variant(self):
+        r = resolve_opencode_auth(
+            {
+                "opencode_provider": "deepseek",
+                "opencode_api_key": "sk-ds",
+                "opencode_model": "deepseek/deepseek-v4-flash",
+                "opencode_variant": "high",
+            }
+        )
+        assert r.variant == "high"
+        assert r.byok_fingerprint == "deepseek:sk-ds:high"
+
+    def test_write_config_file(self, tmp_path):
+        path = write_opencode_user_config(
+            str(tmp_path / "joshua_config"),
+            "deepseek/deepseek-v4-pro",
+            "low",
+        )
+        body = (tmp_path / "joshua_config" / "opencode.json").read_text()
+        assert path.endswith("opencode.json")
+        assert '"variant": "low"' in body

@@ -1,15 +1,25 @@
-"""OpenCode provider → env / --model table (#163).
+"""OpenCode provider → env / --model / variant table (#163).
 
 Confirmed on this host against `~/.opencode/bin/opencode` and models.dev:
 - Google: GEMINI_API_KEY + GOOGLE_GENERATIVE_AI_API_KEY; --model google/...
 - DeepSeek: DEEPSEEK_API_KEY; --model deepseek/...
-OpenCode has no --reasoning-effort flag. DeepSeek "thinking" is the
-deepseek-reasoner model, not a separate slider.
+DeepSeek V4 Flash/Pro expose variants low|medium|high|max (plus default).
+TUI `opencode --auto` does **not** accept `--variant` (prints help). Apply
+the selection via `~/.config/opencode/opencode.json` `agent.build.variant`.
 """
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
+
+# models.dev / `opencode models deepseek --verbose` on this host.
+# "default" means omit the variant key (OpenCode's built-in default).
+OPENCODE_MODEL_VARIANTS: dict[str, tuple[str, ...]] = {
+    "deepseek/deepseek-v4-flash": ("low", "medium", "high", "max"),
+    "deepseek/deepseek-v4-pro": ("low", "medium", "high", "max"),
+}
 
 
 OPENCODE_PROVIDERS: dict[str, dict] = {
@@ -81,12 +91,45 @@ def opencode_bwrap_setenv(provider: str, api_key: str) -> str:
     return "".join(flags)
 
 
+def normalize_opencode_variant(cli_model: str, variant: str | None) -> str | None:
+    """Return a real variant id, or None for default / unsupported."""
+    raw = (variant or "").strip().lower()
+    if not raw or raw == "default":
+        return None
+    allowed = OPENCODE_MODEL_VARIANTS.get(cli_model, ())
+    if raw in allowed:
+        return raw
+    return None
+
+
+def opencode_user_config(cli_model: str, variant: str | None) -> dict:
+    """Sandbox ~/.config/opencode/opencode.json body."""
+    cfg: dict = {
+        "$schema": "https://opencode.ai/config.json",
+        "model": cli_model,
+    }
+    nv = normalize_opencode_variant(cli_model, variant)
+    if nv:
+        cfg["agent"] = {"build": {"model": cli_model, "variant": nv}}
+    return cfg
+
+
+def write_opencode_user_config(config_dir: str, cli_model: str, variant: str | None) -> str:
+    os.makedirs(config_dir, exist_ok=True)
+    path = os.path.join(config_dir, "opencode.json")
+    with open(path, "w") as fh:
+        json.dump(opencode_user_config(cli_model, variant), fh, indent=2)
+        fh.write("\n")
+    return path
+
+
 @dataclass(frozen=True)
 class ResolvedOpencodeAuth:
     provider: str
     api_key: str
     ui_model: str
     cli_model: str
+    variant: str | None
     byok_fingerprint: str
 
 
@@ -100,11 +143,16 @@ def resolve_opencode_auth(data: dict) -> ResolvedOpencodeAuth:
     provider = infer_opencode_provider(ui_model, data.get("opencode_provider"))
     api_key = data.get("opencode_api_key") or data.get("gemini_api_key") or ""
     cli_model = map_opencode_cli_model(provider, ui_model)
-    fingerprint = f"{provider}:{api_key}" if api_key else ""
+    variant = normalize_opencode_variant(
+        cli_model,
+        data.get("opencode_variant") or data.get("opencode_thinking"),
+    )
+    fingerprint = f"{provider}:{api_key}:{variant or 'default'}" if api_key else ""
     return ResolvedOpencodeAuth(
         provider=provider,
         api_key=api_key,
         ui_model=ui_model,
         cli_model=cli_model,
+        variant=variant,
         byok_fingerprint=fingerprint,
     )

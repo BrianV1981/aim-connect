@@ -26,6 +26,7 @@ from opencode_providers import (
     map_opencode_cli_model,
     opencode_bwrap_setenv,
     resolve_opencode_auth,
+    write_opencode_user_config,
 )
 import logging
 
@@ -154,6 +155,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     client_byok_fingerprint = ""
     client_opencode_cli_model = None
     client_opencode_provider = "google"
+    client_opencode_variant = None
     try:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(auth_message)
@@ -170,6 +172,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 client_gemini_model = resolved.ui_model
                 client_opencode_cli_model = resolved.cli_model
                 client_opencode_provider = resolved.provider
+                client_opencode_variant = resolved.variant
                 client_byok_fingerprint = resolved.byok_fingerprint
             else:
                 client_byok_fingerprint = client_gemini_api_key or ""
@@ -364,6 +367,9 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 )
                 if cli_model:
                     cli_args += f" --model {cli_model}"
+                # TUI rejects --variant (prints help). Set it via sandbox config.
+                oc_cfg_dir = os.path.join(workspace_dir, "opencode_data", "joshua_config")
+                write_opencode_user_config(oc_cfg_dir, cli_model, client_opencode_variant)
                 
                 env_injections = f"--setenv AIM_VESSEL_CLI 'opencode' {smtp_flags}"
                 env_injections += opencode_bwrap_setenv(
@@ -379,6 +385,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
                     f"--tmpfs {HOME_DIR} "
                     f"{env_injections}"
+                    f"--dir {HOME_DIR}/.config "
+                    f"--bind {oc_cfg_dir} {HOME_DIR}/.config/opencode "
                     f"--ro-bind {HOME_DIR}/.local {HOME_DIR}/.local "
                     f"--ro-bind {HOME_DIR}/.gemini {HOME_DIR}/.gemini "
                     f"--ro-bind {HOME_DIR}/.opencode {HOME_DIR}/.opencode "
