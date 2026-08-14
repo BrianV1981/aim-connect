@@ -103,15 +103,41 @@ def normalize_opencode_variant(cli_model: str, variant: str | None) -> str | Non
 
 
 def opencode_user_config(cli_model: str, variant: str | None) -> dict:
-    """Sandbox ~/.config/opencode/opencode.json body."""
+    """Sandbox ~/.config/opencode/opencode.json body.
+
+    snapshot=false is required in Joshua: OpenCode otherwise ``git add --all``
+    the customer workspace, which includes multi-GB ``opencode_data``.
+    """
     cfg: dict = {
         "$schema": "https://opencode.ai/config.json",
         "model": cli_model,
+        "snapshot": False,
     }
     nv = normalize_opencode_variant(cli_model, variant)
     if nv:
         cfg["agent"] = {"build": {"model": cli_model, "variant": nv}}
     return cfg
+
+
+def opencode_auth_json(provider: str, api_key: str) -> dict:
+    """Same shape as host ``~/.local/share/opencode/auth.json`` (type=api)."""
+    if not api_key or provider not in OPENCODE_PROVIDERS:
+        return {}
+    return {provider: {"type": "api", "key": api_key}}
+
+
+def write_opencode_auth_json(share_dir: str, provider: str, api_key: str) -> str | None:
+    """Write credentials into the bound OpenCode share dir. Never log the key."""
+    payload = opencode_auth_json(provider, api_key)
+    if not payload:
+        return None
+    os.makedirs(share_dir, exist_ok=True)
+    path = os.path.join(share_dir, "auth.json")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(payload, fh)
+        fh.write("\n")
+    return path
 
 
 def write_opencode_user_config(config_dir: str, cli_model: str, variant: str | None) -> str:
