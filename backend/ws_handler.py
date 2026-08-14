@@ -27,6 +27,12 @@ import logging
 router = APIRouter()
 logger = logging.getLogger("aim-connect")
 
+# Public ingest must not paste until the CLI can accept it (#191).
+# Boot matches the existing trust-folder wait; settle matches the admin
+# PTY is_new_session pause. Do not emit auth_success before both finish.
+PUBLIC_HARNESS_BOOT_S = 5
+PUBLIC_HARNESS_SETTLE_S = 4
+
 def resolve_workspace_id_for_email(email: str) -> str:
     """Map login email → agent_workspaces/agent-{id}/ (#184).
 
@@ -202,8 +208,14 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         if not authenticated:
             await websocket.close(code=1008, reason="Invalid API Token")
             return
-        
-        await websocket.send_text(json.dumps({"type": "auth_success"}))
+
+        # Public Joshua seats must not unlock on JWT alone (#191).
+        # auth_success is emitted after the harness can accept paste.
+        is_public_agent = bool(
+            target_session_override and str(target_session_override).startswith("agent-")
+        )
+        if not is_public_agent:
+            await websocket.send_text(json.dumps({"type": "auth_success"}))
     except Exception as e:
         logger.error(f"Auth failed: {e}")
         await websocket.close(code=1008, reason="Auth Timeout or Error")
@@ -496,15 +508,24 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             stdout, stderr = await start_proc.communicate()
             if start_proc.returncode != 0:
                 logger.error(f"Failed to create TMUX session. stdout: {stdout.decode()} stderr: {stderr.decode()}")
-            else:
-                logger.info(f"TMUX session {target_session_override} created successfully.")
-                if client_gemini_api_key:
-                    subprocess.run(["tmux", "set-environment", "-t", target_session_override, "BYOK_API_KEY", client_gemini_api_key])
+                await websocket.send_text(json.dumps({
+                    "type": "ingest_error",
+                    "message": "Failed to start the harness session. The CLI is not ready.",
+                }))
+                await websocket.close(code=1011, reason="Harness spawn failed")
+                return
+            logger.info(f"TMUX session {target_session_override} created successfully.")
+            if client_gemini_api_key:
+                subprocess.run(["tmux", "set-environment", "-t", target_session_override, "BYOK_API_KEY", client_gemini_api_key])
 
-            # Give the CLI a moment to initialize the UI
-            await asyncio.sleep(5)
-            # Send Enter to auto-accept "Do you trust this folder?"
+            # Trust-folder splash, then the same settle the admin PTY uses on
+            # is_new_session. Only then is paste safe (#191).
+            await asyncio.sleep(PUBLIC_HARNESS_BOOT_S)
             subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
+            await asyncio.sleep(PUBLIC_HARNESS_SETTLE_S)
+
+        # JWT is already verified. Unlock Joshua only now that tmux can take paste.
+        await websocket.send_text(json.dumps({"type": "auth_success"}))
 
         import watchfiles
             
@@ -522,7 +543,18 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                             continue
                         
                         subprocess.run(["tmux", "set-buffer", prompt])
-                        subprocess.run(["tmux", "paste-buffer", "-p", "-t", target_session_override])
+                        paste = subprocess.run(
+                            ["tmux", "paste-buffer", "-p", "-t", target_session_override]
+                        )
+                        if paste.returncode != 0:
+                            logger.error(
+                                f"tmux paste-buffer failed for {target_session_override} rc={paste.returncode}"
+                            )
+                            await websocket.send_text(json.dumps({
+                                "type": "ingest_error",
+                                "message": "Failed to deliver the message to the harness. The CLI was not ready to accept input.",
+                            }))
+                            continue
                         sleep_time = max(0.5, len(prompt) / 20000.0)
                         await asyncio.sleep(sleep_time)
                         subprocess.run(["tmux", "send-keys", "-t", target_session_override, "Enter"])
