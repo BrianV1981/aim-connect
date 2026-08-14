@@ -26,6 +26,7 @@ from opencode_providers import (
     map_opencode_cli_model,
     opencode_bwrap_setenv,
     resolve_opencode_auth,
+    write_opencode_auth_json,
     write_opencode_user_config,
 )
 import logging
@@ -368,8 +369,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 if cli_model:
                     cli_args += f" --model {cli_model}"
                 # TUI rejects --variant (prints help). Set it via sandbox config.
-                oc_cfg_dir = os.path.join(workspace_dir, "opencode_data", "joshua_config")
+                oc_data_dir = os.path.join(workspace_dir, "opencode_data")
+                oc_cfg_dir = os.path.join(oc_data_dir, "joshua_config")
+                oc_state_dir = os.path.join(oc_data_dir, "joshua_state")
+                os.makedirs(oc_state_dir, exist_ok=True)
                 write_opencode_user_config(oc_cfg_dir, cli_model, client_opencode_variant)
+                # Match the working host login: auth.json, not env-only.
+                write_opencode_auth_json(
+                    oc_data_dir, client_opencode_provider, client_gemini_api_key or ""
+                )
                 
                 env_injections = f"--setenv AIM_VESSEL_CLI 'opencode' {smtp_flags}"
                 env_injections += opencode_bwrap_setenv(
@@ -388,9 +396,10 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     f"--dir {HOME_DIR}/.config "
                     f"--bind {oc_cfg_dir} {HOME_DIR}/.config/opencode "
                     f"--ro-bind {HOME_DIR}/.local {HOME_DIR}/.local "
+                    f"--bind {oc_state_dir} {HOME_DIR}/.local/state/opencode "
                     f"--ro-bind {HOME_DIR}/.gemini {HOME_DIR}/.gemini "
                     f"--ro-bind {HOME_DIR}/.opencode {HOME_DIR}/.opencode "
-                    f"--bind {workspace_dir}/opencode_data {HOME_DIR}/.local/share/opencode "
+                    f"--bind {oc_data_dir} {HOME_DIR}/.local/share/opencode "
                     f"--bind {HOME_DIR}/.gemini/antigravity-cli/bin {HOME_DIR}/.gemini/antigravity-cli/bin "
                     f"--bind {workspace_dir} {workspace_dir} "
                     f"--bind {shared_data_dir} {workspace_dir}/shared_database "

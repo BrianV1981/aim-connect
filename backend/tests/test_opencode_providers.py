@@ -4,10 +4,12 @@ from opencode_providers import (
     infer_opencode_provider,
     map_opencode_cli_model,
     normalize_opencode_variant,
+    opencode_auth_json,
     opencode_bwrap_setenv,
     opencode_env_pairs,
     opencode_user_config,
     resolve_opencode_auth,
+    write_opencode_auth_json,
     write_opencode_user_config,
 )
 
@@ -128,6 +130,19 @@ class TestVariants:
     def test_config_default_has_no_agent_variant(self):
         cfg = opencode_user_config("deepseek/deepseek-v4-flash", "default")
         assert "agent" not in cfg
+        assert cfg["snapshot"] is False
+
+    def test_auth_json_matches_host_login_shape(self):
+        body = opencode_auth_json("deepseek", "sk-test")
+        assert body == {"deepseek": {"type": "api", "key": "sk-test"}}
+        assert opencode_auth_json("deepseek", "") == {}
+
+    def test_write_auth_json_file(self, tmp_path):
+        path = write_opencode_auth_json(str(tmp_path), "deepseek", "sk-test")
+        assert path.endswith("auth.json")
+        raw = (tmp_path / "auth.json").read_text()
+        assert '"type": "api"' in raw
+        assert "sk-test" in raw
 
     def test_resolve_reads_opencode_variant(self):
         r = resolve_opencode_auth(
