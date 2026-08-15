@@ -26,14 +26,15 @@ Customers: OpenCode or Grok only (`admin-cli` is allowlisted — Brian + temp te
 
 **Rules:**
 - **Grok:** API key **or** `grok_data/auth.json` &gt; 100 bytes (`AUTH_MIN_BYTES`) on the **registry `op_*` seat**. Else device-auth popup (URL + `XXXX-XXXX`). Never mint a 0-byte `auth.json`. Never delete a good token unless `force=1`. Do not reauth every visit.
-- `/api/joshua/ready?token=&harness=` — JWT `e` → `resolve_workspace_id_for_email`. Grok `ready` iff disk state `ok`. OpenCode/admin-cli: disk `ready=true`; process gate is WS `auth_success`.
+- `/api/joshua/ready?token=&harness=` — JWT `e` → `resolve_workspace_id_for_email`. Grok `ready` iff disk state `ok`. OpenCode/admin-cli: disk `ready=true`; process gate is WS `auth_success` (**#191:** that event is *after* spawn + boot, not JWT-only).
 - `/api/grok/oauth/init` and `/status` use the same JWT → `op_*` path. Status is **disk-first** (survives uvicorn restart), then in-memory `grok_oauth_processes`. Log `GROK_DEVICE_AUTH seat=op_…`.
 - Gate is auth/process ready, **not** “the model already answered.” Long AGY/Grok tool work can still look idle — that is a later ⏳ ticket, not this gate.
 
-**Live closeout (Operator `brianv1981`, 2026-08-13):** Grok OAuth + Grok chat worked. Then two *different* failures:
+**Live closeout (Operator `brianv1981`, 2026-08-13 → 08-14):** Grok OAuth + Grok chat worked. Then:
 
-1. **AGY first submit after harness switch is a lie.** Switch Grok → `admin-cli`, type `hello`: Joshua paints the bubble + spinner; tmux does **not** have the line. Leave `/analyst` and come back → resend works. Cause: `ws_handler` sends `auth_success` as soon as the JWT verifies, **before** `kill_all_user_sessions` + tmux spawn. Public `ingest_task` pastes immediately. The admin PTY path waits ~4s on `is_new_session`; the Joshua path does not. UI `Connected` ≠ “AGY is at a prompt.” Reload is a workaround, not a fix. Track a follow-up; do not treat this as a folder-name or gate-auth bug.
-2. **OpenCode `hello` did reach tmux.** The free Gemini key stalled. That is provider quality, not a dropped `submit`. Next product slice is aim-ld **#163**: persist one Gemini key + one DeepSeek key, bind model → provider. Do not open a duplicate ticket.
+1. **AGY first submit after harness switch was a lie — shipped #191.** JWT used to emit `auth_success` before `kill_all_user_sessions` + spawn. Public ingest pasted immediately; admin PTY waited ~4s. Now public unlock is after session exists, 5s trust-folder Enter, and the same 4s settle. Spawn/paste failure sends `ingest_error`. Operator verified harness switching. Reload is not the product.
+2. **OpenCode Gemini flash-lite works** (Brian history 2026-08-14 00:42 UTC: “powered by Google's Gemini flash model”). A painted spinner with **no** tmux line is #191; a tmux line with no model text is the model or a sandbox hang — see [opencode_byok.md](opencode_byok.md).
+3. **#163 shipped** (aim-ld `2b9aeb2` + connect `5124cfc`): Gemini + DeepSeek key vault, **OpenCode (API)** label, V4 variants. DeepSeek 0-token hang after that was snapshot/`auth.json`, not a missing inject — `c4cc7a6`, Operator confirmed DeepSeek works.
 
 ## 4a. Customer sandbox mail (#186)
 bwrap does **not** inherit host mail secrets. SoT is aim-connect `.env` (`LEADDEED_SMTP_HOST/PORT/USER/PASS/SECURE`, `LEADDEED_MAIL_FROM`) — same LeadDeed Bluehost mailer as Vercel. `sandbox_smtp.bwrap_smtp_setenv()` adds quoted `--setenv` on **every** harness (opencode / grok / agy / admin-cli). `/tmp/bwrap_cmd.log` is redacted.

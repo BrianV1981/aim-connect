@@ -3,7 +3,8 @@
 This wiki serves as the persistent, compounding knowledge base for the A.I.M. architecture and its surrounding ecosystem.
 
 ## Core Concepts
-- [J.O.S.H.U.A. Architecture](pages/joshua_architecture.md) - Sovereign Orchestration, Fleet Agent Sandboxing, SQLite WAL, **§4b pre-chat gate** + AGY first-submit lie (`auth_success` ≠ tmux ready).
+- [J.O.S.H.U.A. Architecture](pages/joshua_architecture.md) - Sovereign Orchestration, Fleet Agent Sandboxing, SQLite WAL, **§4b gate** (#189/#191 shipped).
+- [OpenCode BYOK & snapshot hang](pages/opencode_byok.md) - Gemini+DeepSeek vault (#163), host vs seat `auth.json`, 7GB snapshot 0-token hang (`c4cc7a6`).
 - [J.O.S.H.U.A. OS Directory Nesting Mandate](pages/joshua_os_nesting_mandate.md) - Clean repository pattern, directory nesting requirements, and .aim_core recovery.
 - [Security Hardening](pages/security_hardening.md) - Full Freeze Sprint (#157–#174): credential rotation, IDOR guards, input sanitization, path portability, module split.
 

@@ -82,3 +82,10 @@ Chronological record of knowledge ingestion and architectural decisions.
 - Switch to AGY: first `hello` painted in Joshua, **absent** from tmux. Leave/return `/analyst` → resend works. `auth_success` is JWT-only; public ingest has no new-session wait.
 - OpenCode `hello` **was** in tmux; free Gemini stall ≠ send bug. Multi-provider = aim-ld #163 (Gemini + DeepSeek), not a new connect ticket.
 - Pages: `joshua_architecture.md` §4b, `index.md`, `log.md`.
+
+## [2026-08-14] ingest | #191 ready-gate + #163 BYOK + DeepSeek hang (#192)
+- **#191 shipped:** public `auth_success` after spawn + 5s Enter + 4s settle. `ingest_error` on spawn/paste fail. Operator verified harness switch.
+- **#163 shipped:** OpenCode (API), Gemini+DeepSeek slots, V4 variants via sandbox `agent.build.variant` (TUI rejects `--variant`).
+- **Hang:** DeepSeek env was present; pane 0 tokens while `git add --all` on 7.3GB `opencode_data`. No seat `auth.json`. EROFS on `~/.local/state/opencode`. Fix `c4cc7a6`. Gemini flash-lite **works**. Host auth.json ≠ Joshua seat file.
+- **Ops:** cloudflared is a tmux window, not systemd — reboot drops the tunnel (restored 2026-08-13).
+- Pages: `joshua_architecture.md` §4b, `opencode_byok.md` (new), `index.md`, `log.md`.
