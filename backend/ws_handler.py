@@ -418,11 +418,12 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 cli_args = f"{HOME_DIR}/.grok/bin/grok --always-approve --disallowed-tools ask_question"
                 if client_gemini_model:
                     model_mapping = {
-                        "grok-4.5": "grok-4.5",
+                        "grok-4.6": "grok-4.6",
+                        "grok-4.5": "grok-4.6",
                         "grok-4.3": "grok-4.3",
                         "grok-beta": "grok-beta"
                     }
-                    mapped_model = model_mapping.get(client_gemini_model, "grok-4.5")
+                    mapped_model = model_mapping.get(client_gemini_model, "grok-4.6")
                     cli_args += f" --model {mapped_model}"
                 
                 env_injections = f"--setenv AIM_VESSEL_CLI 'grok' {smtp_flags}"
