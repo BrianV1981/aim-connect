@@ -9,6 +9,7 @@ This wiki serves as the persistent, compounding knowledge base for the A.I.M. ar
 - [Security Hardening](pages/security_hardening.md) - Full Freeze Sprint (#157–#174): credential rotation, IDOR guards, input sanitization, path portability, module split.
 
 ## Architecture
+- [MCP Architecture Pivot](pages/mcp_architecture.md) - The transition to a Model Context Protocol (MCP) Server for Bring-Your-Own-Agent orchestration.
 - [Backend Module Architecture](pages/backend_architecture.md) - Post-#174 module map, shared state, auth flow, and design decisions.
 - [Harness Live Egress vs History](pages/harness_live_egress.md) - Independent pipes: AGY jsonl, Grok `chat_history.jsonl`, OpenCode `opencode.db` (#183/#185).
 - **Sandbox Model**: bwrap documentation lives in `docs/SANDBOX_MODEL.md` (created in #168).
@@ -26,6 +27,7 @@ This wiki serves as the persistent, compounding knowledge base for the A.I.M. ar
 - **Secret Files**: `backend/totp.secret`, `backend/password.hash`, `backend/passphrase.hash`, `backend/tokens.json`, `backend/webauthn.json` — all 600-permed, gitignored.
 
 ## Operations & Debugging
+- [Google OAuth 7-Day Bypass](pages/google_oauth_7day_bypass.md) - How to push personal Google Cloud apps to Production without verification to prevent Rclone token expiration.
 - [Vite Cache Issue](pages/frontend_vite_cache_issue.md) - Fix for stale assets serving on Safari/iOS.
 - [Tmux Ghost Clients & Dashboard Bug](pages/tmux_ghost_clients_and_dash_switching.md) - Resolutions for orphaned background clients and dashboard window persistence.
 - [Anti-Pattern Domain Hacks](pages/anti-pattern-domain-hacks.md) - System constraints against hardcoding domains/IPs.

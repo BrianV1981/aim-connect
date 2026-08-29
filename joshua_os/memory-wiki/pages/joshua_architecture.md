@@ -1,5 +1,9 @@
 # J.O.S.H.U.A. Architecture & Sandboxing
 
+> [!WARNING]
+> **ARCHITECTURAL PIVOT (August 2026)**
+> The CLI/tmux sandboxing architecture described below is now feature-frozen (not sunset). It will remain operational to power the baseline `/analyst` web page, but will not evolve further. The project's future development focus is shifting to a Bring-Your-Own-Agent model powered by a remote Model Context Protocol (MCP) server. See [MCP Architecture Pivot](mcp_architecture.md) for details.
+
 J.O.S.H.U.A. is a sovereign AI orchestrator designed to run headless LLM agent instances (using the OpenCode CLI) securely. It enforces strict boundary constraints via OS-level sandboxing while maintaining real-time communication bridges to web frontends.
 
 ## 1. Fleet Agents & Boundary Sandboxing (`bwrap`)

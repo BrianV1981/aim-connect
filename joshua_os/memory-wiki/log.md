@@ -89,3 +89,14 @@ Chronological record of knowledge ingestion and architectural decisions.
 - **Hang:** DeepSeek env was present; pane 0 tokens while `git add --all` on 7.3GB `opencode_data`. No seat `auth.json`. EROFS on `~/.local/state/opencode`. Fix `c4cc7a6`. Gemini flash-lite **works**. Host auth.json ≠ Joshua seat file.
 - **Ops:** cloudflared is a tmux window, not systemd — reboot drops the tunnel (restored 2026-08-13).
 - Pages: `joshua_architecture.md` §4b, `opencode_byok.md` (new), `index.md`, `log.md`.
+
+## [2026-08-28] ingest | The MCP Server Pivot & Google OAuth Bypass
+- **Architectural Shift:** Project shifted from fat CLI processes (joshua_os sandboxing) to an MCP server model (`aim-mcp`) serving data over SSE. The `joshua_os` architecture is now feature-frozen to serve the baseline `/analyst` page, while primary development focuses on a "Bring Your Own Agent" model (via Antigravity/Claude desktop clients).
+- **aim-mcp Bugfixes:** We deployed the MCP server and encountered a mismatch between `mcp` SDK v1.x (which the code was written against) and the installed `mcp==2.1.1` in the virtualenv. Downgrading to `1.29.0` resolved the `AttributeError`. Added a rigid `LIMIT 100` and `fetchmany(100)` lock to prevent SQLite OOMs from uncontrolled AI queries. Fixed `nohup` script using absolute path for `uvicorn`. (See aim-mcp repo).
+- **Google OAuth Hack:** Documented a 7-day token expiration bypass for personal apps on Google Cloud. Instead of submitting the app for production verification, we created dummy Cloudflare Tunnels (e.g. `cloudflared tunnel route dns <tunnel-id> aim-google.yourdomain.com`) to bypass the automated DNS and Privacy Policy checks. Once Published, users can click "Go to App (unsafe)" to acquire permanent tokens without Google's human review.
+- **Pages Modified/Created:** 
+  - `mcp_architecture.md` (new)
+  - `joshua_architecture.md` (added feature-freeze warning)
+  - `google_oauth_7day_bypass.md` (new)
+  - `index.md` (linked new pages)
+  - `README.md` (updated ecosystem map & added OAuth pro-tip)
