@@ -2,7 +2,7 @@ import os
 import shutil
 import json
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from main import verify_token, require_admin, DEFAULT_WORKSPACE
 
@@ -128,5 +128,16 @@ def save_macros(req: MacroSaveRequest):
         with open(MACROS_FILE, "w", encoding="utf-8") as f:
             json.dump(req.macros, f)
         return {"status": "success"}
+    except Exception as e:
+        return handle_file_error(e)
+
+
+@router.post("/api/upload", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def upload_file(file: UploadFile = File(...), path: str = ""):
+    try:
+        target = secure_path(path or file.filename)
+        with open(target, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {"status": "success", "path": target}
     except Exception as e:
         return handle_file_error(e)

@@ -261,7 +261,11 @@ def save_tokens():
         pass
 MAX_TOKENS = 100
 
+STATIC_API_KEY = os.environ.get('STATIC_API_KEY')
+
 def verify_token(x_api_token: str = Header(None)):
+    if STATIC_API_KEY and x_api_token == STATIC_API_KEY:
+        return
     if not x_api_token or x_api_token not in VALID_API_TOKENS:
         raise HTTPException(status_code=401, detail="Unauthorized API Access")
     token_data = VALID_API_TOKENS[x_api_token]
@@ -274,6 +278,8 @@ def verify_token(x_api_token: str = Header(None)):
 
 def _get_user_from_token(x_api_token: str = Header(None)):
     """Extract user info from token. Returns (role, prefix) tuple."""
+    if STATIC_API_KEY and x_api_token == STATIC_API_KEY:
+        return ("admin", "")
     if not x_api_token or x_api_token not in VALID_API_TOKENS:
         return ("anonymous", "")
     token_data = VALID_API_TOKENS[x_api_token]
