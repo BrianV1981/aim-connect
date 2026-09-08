@@ -132,9 +132,9 @@ def save_macros(req: MacroSaveRequest):
         return handle_file_error(e)
 
 
-def verify_upload_webhook_secret(x_upload_secret: str = Header(None)):
+def verify_upload_webhook_secret(aim_connect_webhook_secret: str = Header(None)):
     expected_secret = os.environ.get("UPLOAD_WEBHOOK_SECRET")
-    if not expected_secret or x_upload_secret != expected_secret:
+    if not expected_secret or aim_connect_webhook_secret != expected_secret:
         raise HTTPException(status_code=401, detail="Unauthorized Webhook Access")
 
 @router.post("/api/upload", dependencies=[Depends(verify_upload_webhook_secret)])
