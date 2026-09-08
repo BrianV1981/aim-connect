@@ -131,6 +131,14 @@ router = APIRouter()
 ```
 `main.py` includes all routers before mounting the static frontend catch-all.
 
+## M2M Webhook Security (#197)
+
+Machine-to-Machine integrations (e.g., the Ad-Free SMS Backup pipeline) must adhere to strict isolation principles. 
+- **No Global Bypasses:** M2M tokens must NEVER bypass the core `verify_token` middleware. Static keys granting `admin` role are strictly forbidden.
+- **Dedicated Dependencies:** Webhooks must implement their own narrow dependency functions (e.g., `verify_upload_webhook_secret`).
+- **Header Branding:** Custom webhook secrets must use explicitly branded headers (e.g., `Aim-Connect-Webhook-Secret`) rather than generic `X-API-Token` headers to prevent namespace collision and clarify the transport boundary.
+- **Route Isolation:** The `/api/upload` endpoint is specifically segregated to rely on the `UPLOAD_WEBHOOK_SECRET` environment variable, ensuring the caller can only upload files and cannot access `verify_token`-protected endpoints like session management.
+
 ## Related Pages
 - [J.O.S.H.U.A. Architecture](joshua_architecture.md) — Agent sandboxing model
 - [Sandbox Model](../../docs/SANDBOX_MODEL.md) — bwrap documentation (#168)

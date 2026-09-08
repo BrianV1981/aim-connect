@@ -100,3 +100,16 @@ Chronological record of knowledge ingestion and architectural decisions.
   - `google_oauth_7day_bypass.md` (new)
   - `index.md` (linked new pages)
   - `README.md` (updated ecosystem map & added OAuth pro-tip)
+
+## [2026-09-02] aim-mcp Sister Project & Startup Integration
+- **Sister Project Documented:** Formally discovered and documented that `aim-mcp` is a completely isolated sister project residing in `~/aim-mcp`, distinct from the `aim-connect` OS structure.
+- **Startup Sync:** Modified the master `startup.sh` script inside `aim-connect` to automatically boot the `aim-mcp` project in a parallel tmux window. This ensures that the FastAPI Backend (`api.leaddeeds.com`) and the MCP Server (`mcp.leaddeeds.com`) always spin up together reliably upon server restart.
+- **Semantic SQL Strategy:** Established that the `aim-mcp` server currently has generic SQL read abilities (Option A). A Github Issue (#4) has been created to inject semantic wrapper tools (Option B) directly into `server.py` to give agents safer, faster querying options.
+
+## [2026-09-08] ingest | M2M SMS Upload Pipeline & Webhook Security
+- **Context:** An M2M (Machine-to-Machine) file upload pipeline was requested for the Ad-Free SMS Backup app. Initial implementation introduced a severe security regression via a global `STATIC_API_KEY` bypass. This was caught and remediated.
+- **Architectural Decision:** M2M webhooks must NEVER bypass the core `verify_token` global admin middleware. Instead, dedicated webhook endpoints must implement their own strictly scoped dependencies.
+- **Implementation:** Added a dedicated `/api/upload` endpoint in `routes_files.py`. Created a `verify_upload_webhook_secret` dependency that strictly checks for the `Aim-Connect-Webhook-Secret` header, matching it against the `UPLOAD_WEBHOOK_SECRET` environment variable.
+- **Pages Touched:**
+  - `pages/security_hardening.md` (Added webhook security rules)
+  - `pages/backend_architecture.md` (Noted the upload webhook flow)

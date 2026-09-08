@@ -47,6 +47,7 @@ backend/
 3. **API calls**: Client sends token via `X-API-Token` header
 4. **WebSocket**: Client sends `{type: "auth", token: "..."}` as first message within 10s
 5. **Dashboard JWT**: LeadDeed dashboard uses HMAC-signed JWTs for fleet/download/history routes. Signing-secret SoT and Vercel sync: [cloudflare_tunnel_jwt_mismatch.md](cloudflare_tunnel_jwt_mismatch.md).
+6. **M2M Upload Webhook**: Dedicated machine-to-machine integrations (e.g. SMS upload in `routes_files.py`) use an isolated static secret passed via the `Aim-Connect-Webhook-Secret` header, checked against the `UPLOAD_WEBHOOK_SECRET` environment variable, totally bypassing the standard `verify_token` global scope.
 
 ## Key Design Decisions
 
