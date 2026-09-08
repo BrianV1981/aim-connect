@@ -2,7 +2,7 @@ import os
 import shutil
 import json
 from pydantic import BaseModel
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Header
 from fastapi.responses import JSONResponse
 from main import verify_token, require_admin, DEFAULT_WORKSPACE
 
@@ -132,7 +132,12 @@ def save_macros(req: MacroSaveRequest):
         return handle_file_error(e)
 
 
-@router.post("/api/upload", dependencies=[Depends(verify_token), Depends(require_admin)])
+def verify_upload_webhook_secret(x_upload_secret: str = Header(None)):
+    expected_secret = os.environ.get("UPLOAD_WEBHOOK_SECRET")
+    if not expected_secret or x_upload_secret != expected_secret:
+        raise HTTPException(status_code=401, detail="Unauthorized Webhook Access")
+
+@router.post("/api/upload", dependencies=[Depends(verify_upload_webhook_secret)])
 async def upload_file(file: UploadFile = File(...), path: str = ""):
     try:
         target = secure_path(path or file.filename)
