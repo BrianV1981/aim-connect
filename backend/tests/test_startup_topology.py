@@ -3,11 +3,13 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STARTUP_SH = REPO_ROOT / "startup.sh"
-AGENTS_MD = (REPO_ROOT / "AGENTS.md") if (REPO_ROOT / "AGENTS.md").exists() else Path("/home/operator/aim-connect/AGENTS.md")
-AIM_MCP_START_SH = Path("/home/operator/aim-mcp/start_mcp.sh")
+AGENTS_MD = (REPO_ROOT / "AGENTS.md") if (REPO_ROOT / "AGENTS.md").exists() else (REPO_ROOT.parent.parent / "AGENTS.md")
+AIM_MCP_START_SH = Path(os.environ.get("AIM_MCP_DIR", str(Path.home() / "aim-mcp"))) / "start_mcp.sh"
 
 
 def _make_mock_bin(tmp_path: Path, lsof_8000: str = "", lsof_8001: str = "", pgrep_cf: str = "", has_session: int = 0) -> tuple[Path, Path]:
@@ -109,8 +111,16 @@ def test_startup_sh_starts_only_stopped_services(tmp_path):
     bin_dir, log_file = _make_mock_bin(
         tmp_path, lsof_8000="3449", lsof_8001="", pgrep_cf="", has_session=0
     )
+    mock_mcp_dir = tmp_path / "aim-mcp"
+    mock_mcp_dir.mkdir()
+    (mock_mcp_dir / "start_mcp.sh").write_text("#!/bin/bash\n")
+    mock_cf_cfg = tmp_path / "cloudflared.yml"
+    mock_cf_cfg.write_text("tunnel: mock\n")
+
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    env["AIM_MCP_DIR"] = str(mock_mcp_dir)
+    env["CLOUDFLARED_CONFIG"] = str(mock_cf_cfg)
 
     res = subprocess.run(
         ["bash", str(STARTUP_SH)],
@@ -129,6 +139,7 @@ def test_startup_sh_starts_only_stopped_services(tmp_path):
     assert any("aim-connect-workspace:cloudflared" in c for c in send_keys_calls)
 
 
+@pytest.mark.skipif(not AGENTS_MD.exists(), reason="AGENTS.md is gitignored and only present on Operator host")
 def test_agents_md_codifies_operator_and_service_topology():
     """AGENTS.md must include the Operator name and the 3-window service topology."""
     content = AGENTS_MD.read_text()
@@ -140,6 +151,7 @@ def test_agents_md_codifies_operator_and_service_topology():
     assert "cloudflared" in content
 
 
+@pytest.mark.skipif(not AIM_MCP_START_SH.exists(), reason="aim-mcp is a sister repo only present on Operator host")
 def test_aim_mcp_runs_in_foreground_for_tmux_resurrect():
     """start_mcp.sh must run python3 + uvicorn via exec in foreground by default so tmux-resurrect restores it."""
     content = AIM_MCP_START_SH.read_text()

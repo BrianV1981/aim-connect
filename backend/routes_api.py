@@ -8,7 +8,7 @@ import base64
 import hmac
 import hashlib
 import time
-from main import AGENT_WORKSPACES_DIR
+from main import AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 logger = logging.getLogger("aim-connect")
@@ -52,8 +52,12 @@ def get_operator_db_path(email: str) -> str:
     import re
     try:
         import sys
-        if '/home/operator/aim-ld/scripts' not in sys.path:
-            sys.path.insert(0, '/home/operator/aim-ld/scripts')
+        aim_ld_scripts = os.environ.get(
+            "AIM_LD_SCRIPTS",
+            os.path.join(os.path.dirname(AIM_CONNECT_ROOT), "aim-ld", "scripts"),
+        )
+        if aim_ld_scripts not in sys.path:
+            sys.path.insert(0, aim_ld_scripts)
         from core.identity import resolve_workspace_id_for_email
         workspace_id = resolve_workspace_id_for_email(email)
     except Exception as e:
