@@ -22,24 +22,35 @@ logs/
 backend/*.bak*
 backend/macros.json
 
-# Agent Specific
+# Agent Specific & Operational State
 docs/archive/
 docs/ngrok.md
 docs/credentials.md
+docs/TICKET_*.md
+docs/aim_connect_launch_plan.md
+docs/transcript_*.md
+docs/summary_*.md
+docs/grok_session_*.md
+HANDOFF.md
+aim
+aim-communicate.md
+testjay.md
 
 # --- A.I.M. OS Exoskeleton ---
 .aim_core/
 .gemini/
 AGENTS.md
-joshua_os/workspace/
+joshua_os/
+workspace/
+archive/
+planning-artifacts/
+synapse/
 macros.json
 backend/webauthn.json
 
 # Runtime / generated
 agent_workspaces/
 shared_database/
-joshua_os/scratch/
-joshua_os/.scratch/
 output.txt
 ngrok.log
 backend/backend.log
@@ -59,11 +70,4 @@ backend/trigger_*.py
 backend/test_*.py
 !backend/tests/**
 backend/tests/__pycache__/
-
-# Planning artifacts
-joshua_os/planning-artifacts/
-joshua_os/archive/
-joshua_os/fix_summary.md
-joshua_os/REINCARNATION_WAKE.md
-joshua_os/REINCARNATION_GAMEPLAN.md
 

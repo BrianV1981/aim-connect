@@ -23,6 +23,12 @@ if [ -f "$DIR/.env" ]; then
     set +a
 fi
 
+AIM_MCP_DIR="${AIM_MCP_DIR:-$HOME/aim-mcp}"
+CLOUDFLARED_BIN="${CLOUDFLARED_BIN:-$HOME/.local/bin/cloudflared}"
+CLOUDFLARED_CONFIG="${CLOUDFLARED_CONFIG:-$HOME/.cloudflared/config.yml}"
+AIM_PUBLIC_URL="${AIM_PUBLIC_URL:-https://api.leaddeeds.com}"
+AIM_MCP_PUBLIC_URL="${AIM_MCP_PUBLIC_URL:-https://mcp.leaddeeds.com/sse}"
+
 ensure_window() {
     local win="$1"
     if ! tmux list-windows -t aim-connect-workspace -F "#{window_name}" 2>/dev/null | grep -qx "$win"; then
@@ -50,29 +56,35 @@ else
     fi
 fi
 
-# [2/3] MCP SSE Server (Port 8001)
-ensure_window "mcp"
+# [2/3] Optional MCP SSE Server (Port 8001)
 PID_8001="$(lsof -ti :8001 2>/dev/null | head -n 1)"
 if [ -n "$PID_8001" ]; then
+    ensure_window "mcp"
     echo -e "\033[92m[2/3] MCP SSE Server already running on :8001 (PID $PID_8001)\033[0m"
-else
+elif [ -f "$AIM_MCP_DIR/start_mcp.sh" ]; then
+    ensure_window "mcp"
     echo -e "\033[36m[2/3] Starting MCP SSE Server (Port 8001)...\033[0m"
-    tmux send-keys -t aim-connect-workspace:mcp "cd /home/kingb/aim-mcp && ./start_mcp.sh" Enter
+    tmux send-keys -t aim-connect-workspace:mcp "cd \"$AIM_MCP_DIR\" && ./start_mcp.sh" Enter
+else
+    echo -e "\033[33m[2/3] Skipping MCP SSE Server ($AIM_MCP_DIR/start_mcp.sh not found)\033[0m"
 fi
 
 # [3/3] Cloudflared Tunnel
-ensure_window "cloudflared"
 PID_CF="$(pgrep -f "cloudflared tunnel" 2>/dev/null | head -n 1)"
 if [ -n "$PID_CF" ]; then
+    ensure_window "cloudflared"
     echo -e "\033[92m[3/3] Cloudflared Tunnel already active (PID $PID_CF)\033[0m"
-else
+elif [ -f "$CLOUDFLARED_CONFIG" ]; then
+    ensure_window "cloudflared"
     echo -e "\033[36m[3/3] Opening Secure Cloudflared Tunnel...\033[0m"
-    tmux send-keys -t aim-connect-workspace:cloudflared "/home/kingb/.local/bin/cloudflared tunnel --config /home/kingb/.cloudflared/config.yml run" Enter
+    tmux send-keys -t aim-connect-workspace:cloudflared "\"$CLOUDFLARED_BIN\" tunnel --config \"$CLOUDFLARED_CONFIG\" run" Enter
+else
+    echo -e "\033[33m[3/3] Skipping Cloudflared Tunnel ($CLOUDFLARED_CONFIG not found)\033[0m"
 fi
 
 echo -e "\n\033[92m==========================================\033[0m"
 echo -e "\033[92m🚀 SYSTEM ONLINE & SECURE!\033[0m"
-echo -e "Your URL: \033[93mhttps://api.leaddeeds.com\033[0m"
-echo -e "Your MCP: \033[93mhttps://mcp.leaddeeds.com/sse\033[0m"
+echo -e "Your URL: \033[93m$AIM_PUBLIC_URL\033[0m"
+echo -e "Your MCP: \033[93m$AIM_MCP_PUBLIC_URL\033[0m"
 echo -e "To access, scan the backend TOTP code and punch the PIN into the web lock screen."
 echo -e "\033[92m==========================================\033[0m\n"
