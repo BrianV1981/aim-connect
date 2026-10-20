@@ -39,6 +39,21 @@ class TestModelMap:
         )
         assert map_opencode_cli_model("google", "gemini-3.1-pro") == "google/gemini-2.5-pro"
 
+    def test_argon_and_38_flash_ids(self):
+        assert (
+            map_opencode_cli_model("google", "gemini-3.8-flash")
+            == "google/gemini-3.8-flash"
+        )
+        assert (
+            map_opencode_cli_model("google", "gemini-4-argon")
+            == "google/gemini-4-argon"
+        )
+        assert (
+            map_opencode_cli_model("deepseek", "deepseek/deepseek-flash")
+            == "deepseek/deepseek-flash"
+        )
+        assert normalize_opencode_variant("deepseek/deepseek-flash", "high") == "high"
+
     def test_deepseek_passthrough(self):
         assert (
             map_opencode_cli_model("deepseek", "deepseek/deepseek-v4-flash")

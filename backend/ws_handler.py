@@ -339,7 +339,27 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         await proc.wait()
         
         needs_reboot = False
-        if proc.returncode == 0 and client_byok_fingerprint:
+        if proc.returncode == 0:
+            pane_proc = await asyncio.create_subprocess_exec(
+                "tmux", "list-panes", "-t", target_session_override, "-F", "#{pane_current_command}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            pane_stdout, _ = await pane_proc.communicate()
+            pane_cmd = pane_stdout.decode().strip().splitlines()[0].strip() if pane_stdout else ""
+            if pane_cmd in ("bash", "-bash", "sh", "-sh", "zsh", "-zsh"):
+                logger.warning(
+                    f"Session {target_session_override} has bare shell pane ({pane_cmd!r}); killing zombie session to respawn bwrap."
+                )
+                kill_proc = await asyncio.create_subprocess_exec(
+                    "tmux", "kill-session", "-t", target_session_override,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await kill_proc.wait()
+                needs_reboot = True
+
+        if proc.returncode == 0 and not needs_reboot and client_byok_fingerprint:
             env_proc = await asyncio.create_subprocess_exec(
                 "tmux", "show-environment", "-t", target_session_override, "BYOK_API_KEY",
                 stdout=asyncio.subprocess.PIPE,
@@ -446,18 +466,24 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 )
 
             elif client_harness == "admin-cli":
-                cli_args = f"{HOME_DIR}/.local/bin/agy --dangerously-skip-permissions --log-file /dev/null"
+                import glob as _glob
+                resume_flag = " -c" if _glob.glob(os.path.join(agent_conv_dir, "*.db")) else ""
+                cli_args = f"{HOME_DIR}/.local/bin/agy --dangerously-skip-permissions{resume_flag} --log-file /dev/null"
                 if client_gemini_model:
                     model_mapping = {
-                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
-                        "gemini-3.5-flash": "gemini-flash-latest",
-                        "gemini-3.1-pro": "gemini-2.5-pro",
-                        "opencode": "gemini-flash-lite-latest",
-                        "admin-cli": "gemini-flash-lite-latest",
-                        "grok": "gemini-flash-lite-latest"
+                        "gemini-3.5-flash-lite": "gemini-3.8-flash-low",
+                        "gemini-3.5-flash": "gemini-3.8-flash-medium",
+                        "gemini-3.1-pro": "gemini-4-argon-high",
+                        "gemini-3.8-flash-low": "gemini-3.8-flash-low",
+                        "gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
+                        "gemini-3.8-flash-high": "gemini-3.8-flash-high",
+                        "gemini-4-argon-low": "gemini-4-argon-low",
+                        "gemini-4-argon-medium": "gemini-4-argon-medium",
+                        "gemini-4-argon-high": "gemini-4-argon-high",
                     }
-                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
-                    cli_args += f" --model {mapped_model}"
+                    mapped_model = model_mapping.get(client_gemini_model)
+                    if mapped_model:
+                        cli_args += f" --model {mapped_model}"
                 
                 env_injections = f"--setenv AIM_VESSEL_CLI 'admin-cli' {smtp_flags}"
                 if client_gemini_api_key:
@@ -484,18 +510,24 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 
             else:
                 # Default AGY Harness
-                cli_args = f"{HOME_DIR}/.local/bin/agy --log-file /dev/null"
+                import glob as _glob
+                resume_flag = " -c" if _glob.glob(os.path.join(agent_conv_dir, "*.db")) else ""
+                cli_args = f"{HOME_DIR}/.local/bin/agy{resume_flag} --log-file /dev/null"
                 if client_gemini_model:
                     model_mapping = {
-                        "gemini-3.5-flash-lite": "gemini-flash-lite-latest",
-                        "gemini-3.5-flash": "gemini-flash-latest",
-                        "gemini-3.1-pro": "gemini-2.5-pro",
-                        "opencode": "gemini-flash-lite-latest",
-                        "admin-cli": "gemini-flash-lite-latest",
-                        "grok": "gemini-flash-lite-latest"
+                        "gemini-3.5-flash-lite": "gemini-3.8-flash-low",
+                        "gemini-3.5-flash": "gemini-3.8-flash-medium",
+                        "gemini-3.1-pro": "gemini-4-argon-high",
+                        "gemini-3.8-flash-low": "gemini-3.8-flash-low",
+                        "gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
+                        "gemini-3.8-flash-high": "gemini-3.8-flash-high",
+                        "gemini-4-argon-low": "gemini-4-argon-low",
+                        "gemini-4-argon-medium": "gemini-4-argon-medium",
+                        "gemini-4-argon-high": "gemini-4-argon-high",
                     }
-                    mapped_model = model_mapping.get(client_gemini_model, "gemini-flash-lite-latest")
-                    cli_args += f" --model {mapped_model}"
+                    mapped_model = model_mapping.get(client_gemini_model)
+                    if mapped_model:
+                        cli_args += f" --model {mapped_model}"
                 
                 env_injections = f"--setenv AIM_VESSEL_CLI '{client_harness}' {smtp_flags}"
                 if client_gemini_api_key:

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 # models.dev / `opencode models deepseek --verbose` on this host.
 # "default" means omit the variant key (OpenCode's built-in default).
 OPENCODE_MODEL_VARIANTS: dict[str, tuple[str, ...]] = {
+    "deepseek/deepseek-flash": ("low", "medium", "high", "max"),
     "deepseek/deepseek-v4-flash": ("low", "medium", "high", "max"),
     "deepseek/deepseek-v4-pro": ("low", "medium", "high", "max"),
 }
@@ -29,28 +30,35 @@ OPENCODE_PROVIDERS: dict[str, dict] = {
             "gemini-3.5-flash-lite": "google/gemini-flash-lite-latest",
             "gemini-3.5-flash": "google/gemini-flash-latest",
             "gemini-3.1-pro": "google/gemini-2.5-pro",
+            "gemini-3.8-flash-lite": "google/gemini-flash-lite-latest",
+            "gemini-3.8-flash": "google/gemini-3.8-flash",
+            "gemini-4-argon": "google/gemini-4-argon",
             "opencode": "google/gemini-flash-lite-latest",
             "admin-cli": "google/gemini-flash-lite-latest",
             "grok": "google/gemini-flash-lite-latest",
             "google/gemini-flash-lite-latest": "google/gemini-flash-lite-latest",
             "google/gemini-flash-latest": "google/gemini-flash-latest",
             "google/gemini-2.5-pro": "google/gemini-2.5-pro",
+            "google/gemini-3.8-flash": "google/gemini-3.8-flash",
+            "google/gemini-4-argon": "google/gemini-4-argon",
         },
         "default_model": "google/gemini-flash-lite-latest",
     },
     "deepseek": {
         "env": ("DEEPSEEK_API_KEY",),
         "models": {
+            "deepseek/deepseek-flash": "deepseek/deepseek-flash",
             "deepseek/deepseek-chat": "deepseek/deepseek-chat",
             "deepseek/deepseek-reasoner": "deepseek/deepseek-reasoner",
             "deepseek/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
             "deepseek/deepseek-v4-pro": "deepseek/deepseek-v4-pro",
+            "deepseek-flash": "deepseek/deepseek-flash",
             "deepseek-chat": "deepseek/deepseek-chat",
             "deepseek-reasoner": "deepseek/deepseek-reasoner",
             "deepseek-v4-flash": "deepseek/deepseek-v4-flash",
             "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
         },
-        "default_model": "deepseek/deepseek-chat",
+        "default_model": "deepseek/deepseek-flash",
     },
 }
 

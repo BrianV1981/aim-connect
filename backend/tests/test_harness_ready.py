@@ -233,3 +233,42 @@ class TestPublicHarnessReady:
         assert "harness_ready" not in events
         if first is not None:
             assert first.get("type") not in ("auth_success", "harness_ready")
+
+    def test_zombie_bash_pane_is_killed_and_respawned_in_bwrap(self, tmux_recorder, monkeypatch):
+        """If tmux-resurrect restored an agent-* session as a bare bash shell, kill it and spawn bwrap."""
+        events, _ = tmux_recorder
+        import ws_handler
+
+        async def _zombie_exec(*args, **_kwargs):
+            cmd = list(args)
+            events.append(("exec", cmd))
+            if cmd[:2] == ["tmux", "has-session"]:
+                return _FakeProc(0)
+            if cmd[:2] == ["tmux", "list-panes"]:
+                return _FakeProc(0, stdout=b"bash\n")
+            if cmd[:2] == ["tmux", "kill-session"]:
+                events.append("kill_zombie_bash")
+                return _FakeProc(0)
+            if cmd[:2] == ["tmux", "new-session"]:
+                events.append("spawn")
+                return _FakeProc(0)
+            return _FakeProc(0)
+
+        monkeypatch.setattr(ws_handler.asyncio, "create_subprocess_exec", _zombie_exec)
+        client = _client()
+        with client.websocket_connect("/ws") as ws:
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "auth",
+                        "token": _token(),
+                        "harness": "admin-cli",
+                    }
+                )
+            )
+            first = json.loads(ws.receive_text())
+            assert first["type"] == "auth_success"
+            assert "kill_zombie_bash" in events
+            assert "spawn" in events
+            assert events.index("kill_zombie_bash") < events.index("spawn") < events.index("auth_success")
+
