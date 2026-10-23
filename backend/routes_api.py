@@ -13,8 +13,6 @@ from main import AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT
 router = APIRouter(prefix="/api/v1", tags=["api"])
 logger = logging.getLogger("aim-connect")
 
-SECRET = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "REDACTED_SIGNING_SECRET")
-
 def b64url_decode(s: str) -> bytes:
     padded = s.replace("-", "+").replace("_", "/")
     padded += "=" * ((4 - len(padded) % 4) % 4)
@@ -23,7 +21,11 @@ def b64url_decode(s: str) -> bytes:
 def verify_vercel_jwt(authorization: str = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Bearer token")
-    
+
+    secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "").strip()
+    if not secret:
+        raise HTTPException(status_code=500, detail="Missing signing secret")
+
     token = authorization.replace("Bearer ", "").strip()
     try:
         if "." not in token:
@@ -31,7 +33,7 @@ def verify_vercel_jwt(authorization: str = Header(None)) -> str:
             
         body_b64, sig_b64 = token.split(".", 1)
         expected_sig = base64.urlsafe_b64encode(
-            hmac.new(SECRET.encode(), body_b64.encode(), hashlib.sha256).digest()
+            hmac.new(secret.encode(), body_b64.encode(), hashlib.sha256).digest()
         ).decode().rstrip("=")
         
         if not hmac.compare_digest(sig_b64, expected_sig):
@@ -45,6 +47,8 @@ def verify_vercel_jwt(authorization: str = Header(None)) -> str:
             raise HTTPException(status_code=401, detail="Token Expired")
             
         return payload["e"]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 

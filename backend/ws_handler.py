@@ -311,7 +311,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         if not os.path.exists(os.path.join(grok_data_dir, "config.toml")):
             open(os.path.join(grok_data_dir, "config.toml"), 'a').close()
         # Do not create a 0-byte auth.json. Grok treats that stub as "need login"
-        # and Joshua never shows the device code (#189 / Oliveira).
+        # and Joshua never shows the device code (#189).
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "logs"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "crashes"), exist_ok=True)
         os.makedirs(os.path.join(agent_brain_dir, ".system_generated", "implicit"), exist_ok=True)

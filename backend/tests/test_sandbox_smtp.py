@@ -19,10 +19,10 @@ class TestSmtpFlags:
         env = {
             "LEADDEED_SMTP_HOST": "192.0.2.1",
             "LEADDEED_SMTP_PORT": "587",
-            "LEADDEED_SMTP_USER": "noreply@leaddeeds.com",
+            "LEADDEED_SMTP_USER": "noreply@example.com",
             "LEADDEED_SMTP_PASS": "p@ss word",
             "LEADDEED_SMTP_SECURE": "false",
-            "LEADDEED_MAIL_FROM": "LeadDeeds <noreply@leaddeeds.com>",
+            "LEADDEED_MAIL_FROM": "Example <noreply@example.com>",
         }
         flags = bwrap_smtp_setenv(env)
         assert "--setenv LEADDEED_SMTP_HOST 192.0.2.1" in flags
