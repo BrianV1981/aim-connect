@@ -51,7 +51,7 @@ ALLOWED_IPS = os.environ.get("ALLOWED_IPS", "")
 ALLOW_HTTP = os.getenv("ALLOW_HTTP", "false").lower() == "true"
 ENABLE_E2EE = os.getenv("ENABLE_E2EE", "false").lower() == "true"
 E2EE_SECRET = os.getenv("E2EE_SECRET", "")
-WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", "leaddeeds.com")
+WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", "").strip()
 auth_attempts = {}
 MAX_AUTH_ATTEMPTS = 5
 LOCKOUT_TIME = 300 # 5 minutes

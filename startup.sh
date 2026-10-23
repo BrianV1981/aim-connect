@@ -26,8 +26,8 @@ fi
 AIM_MCP_DIR="${AIM_MCP_DIR:-$HOME/aim-mcp}"
 CLOUDFLARED_BIN="${CLOUDFLARED_BIN:-$HOME/.local/bin/cloudflared}"
 CLOUDFLARED_CONFIG="${CLOUDFLARED_CONFIG:-$HOME/.cloudflared/config.yml}"
-AIM_PUBLIC_URL="${AIM_PUBLIC_URL:-https://api.leaddeeds.com}"
-AIM_MCP_PUBLIC_URL="${AIM_MCP_PUBLIC_URL:-https://mcp.leaddeeds.com/sse}"
+AIM_PUBLIC_URL="${AIM_PUBLIC_URL:-http://localhost:8000}"
+AIM_MCP_PUBLIC_URL="${AIM_MCP_PUBLIC_URL:-}"
 
 ensure_window() {
     local win="$1"
@@ -85,6 +85,8 @@ fi
 echo -e "\n\033[92m==========================================\033[0m"
 echo -e "\033[92m🚀 SYSTEM ONLINE & SECURE!\033[0m"
 echo -e "Your URL: \033[93m$AIM_PUBLIC_URL\033[0m"
-echo -e "Your MCP: \033[93m$AIM_MCP_PUBLIC_URL\033[0m"
+if [ -n "$AIM_MCP_PUBLIC_URL" ]; then
+    echo -e "Your MCP: \033[93m$AIM_MCP_PUBLIC_URL\033[0m"
+fi
 echo -e "To access, scan the backend TOTP code and punch the PIN into the web lock screen."
 echo -e "\033[92m==========================================\033[0m\n"

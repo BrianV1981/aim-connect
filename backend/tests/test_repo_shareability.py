@@ -128,6 +128,70 @@ def test_routes_api_verify_jwt_fails_closed_without_env_secret(monkeypatch):
     assert routes_api.verify_vercel_jwt(f"Bearer {body_b64}.{valid_sig}") == "tester@example.com"
 
 
+def test_no_leaddeeds_domain_defaults_in_runtime_code():
+    """startup.sh, backend/main.py, and backend/routes_webauthn.py must not hardcode leaddeeds.com (#205)."""
+    for rel in ("startup.sh", "backend/main.py", "backend/routes_webauthn.py"):
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        assert "leaddeeds.com" not in text, f"{rel} still hardcodes leaddeeds.com"
+
+
+def test_webauthn_rp_id_derives_from_request_host_when_env_unset(monkeypatch):
+    """_resolve_rp_id uses request Host when WEBAUTHN_RP_ID is unset, and honors WEBAUTHN_RP_ID when set (#205)."""
+    from starlette.requests import Request
+    import routes_webauthn
+
+    def _make_req(host: str) -> Request:
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/webauthn/register/options",
+            "headers": [(b"host", host.encode("utf-8"))],
+            "query_string": b"",
+            "server": ("127.0.0.1", 8000),
+            "scheme": "https",
+        }
+        return Request(scope)
+
+    monkeypatch.delenv("WEBAUTHN_RP_ID", raising=False)
+    monkeypatch.setattr(routes_webauthn, "WEBAUTHN_RP_ID", "")
+    assert routes_webauthn._resolve_rp_id(_make_req("terminal.example.org:8443")) == "terminal.example.org"
+
+    monkeypatch.setenv("WEBAUTHN_RP_ID", "custom.example.com")
+    assert routes_webauthn._resolve_rp_id(_make_req("terminal.example.org:8443")) == "custom.example.com"
+
+
+def test_admin_initial_command_skips_agy_when_not_installed(monkeypatch, tmp_path):
+    """Standalone clones without agy installed must not auto-send agy into new admin tmux sessions (#205)."""
+    import ws_handler
+
+    monkeypatch.delenv("AIM_ADMIN_DEFAULT_CMD", raising=False)
+    assert ws_handler.build_admin_initial_command("opencode", home_dir=str(tmp_path), which_fn=lambda _: None) is None
+
+    # When agy binary exists on PATH, it returns the agy launch command
+    cmd = ws_handler.build_admin_initial_command("opencode", home_dir=str(tmp_path), which_fn=lambda _: "/usr/local/bin/agy")
+    assert cmd == "export AIM_VESSEL_CLI=opencode && agy --log-file /dev/null"
+
+    # Explicit AIM_ADMIN_DEFAULT_CMD overrides default
+    monkeypatch.setenv("AIM_ADMIN_DEFAULT_CMD", "htop")
+    assert ws_handler.build_admin_initial_command("opencode", home_dir=str(tmp_path), which_fn=lambda _: None) == "htop"
+
+
+def test_resolve_workspace_id_silent_fallback_when_aim_ld_absent(monkeypatch, tmp_path, caplog):
+    """Standalone clones without ../aim-ld/scripts must resolve workspace IDs without warning spam (#205)."""
+    import logging
+    import sys
+    import ws_handler
+
+    monkeypatch.setenv("AIM_LD_SCRIPTS", str(tmp_path / "nonexistent-aim-ld-scripts"))
+    monkeypatch.delitem(sys.modules, "core", raising=False)
+    monkeypatch.delitem(sys.modules, "core.identity", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="aim-connect"):
+        wid = ws_handler.resolve_workspace_id_for_email("Alice.Smith@Example.com")
+    assert wid == "alice_smith_example_com"
+    assert not any("operator registry resolve failed" in r.message for r in caplog.records)
+
+
 def test_startup_sh_skips_optional_mcp_and_cloudflared_when_absent(tmp_path):
     """A fresh open-source clone without aim-mcp or cloudflared config still starts :8000 cleanly."""
     bin_dir, log_file = _make_mock_bin(

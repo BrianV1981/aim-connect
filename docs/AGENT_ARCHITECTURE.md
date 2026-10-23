@@ -73,7 +73,7 @@ A 6-digit Google Authenticator / Authy code. The TOTP secret is in `backend/totp
 
 Configuration:
 ```bash
-WEBAUTHN_RP_ID="leaddeeds.com"  # Must match your domain
+WEBAUTHN_RP_ID="your-domain.com"  # Optional; defaults to incoming request hostname
 ```
 
 ### Token Lifecycle
@@ -171,7 +171,7 @@ All configurable via `.env` (see `.env.example` for full list):
 |----------|---------|---------|
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
 | `TOKEN_TTL` | `14400` (4h) | Token lifetime in seconds |
-| `WEBAUTHN_RP_ID` | `leaddeeds.com` | WebAuthn relying party domain |
+| `WEBAUTHN_RP_ID` | `(request hostname)` | WebAuthn relying party domain |
 | `AIM_CONNECT_ROOT` | Auto-detected | Project root directory |
 | `ENABLE_E2EE` | `false` | Enable WebSocket encryption |
 | `E2EE_SECRET` | — | AES key derivation secret |

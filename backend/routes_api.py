@@ -53,20 +53,8 @@ def verify_vercel_jwt(authorization: str = Header(None)) -> str:
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 
 def get_operator_db_path(email: str) -> str:
-    import re
-    try:
-        import sys
-        aim_ld_scripts = os.environ.get(
-            "AIM_LD_SCRIPTS",
-            os.path.join(os.path.dirname(AIM_CONNECT_ROOT), "aim-ld", "scripts"),
-        )
-        if aim_ld_scripts not in sys.path:
-            sys.path.insert(0, aim_ld_scripts)
-        from core.identity import resolve_workspace_id_for_email
-        workspace_id = resolve_workspace_id_for_email(email)
-    except Exception as e:
-        workspace_id = re.sub(r'[^a-zA-Z0-9]', '_', email.lower())
-    
+    from ws_handler import resolve_workspace_id_for_email
+    workspace_id = resolve_workspace_id_for_email(email)
     return os.path.join(AGENT_WORKSPACES_DIR, f"agent-{workspace_id}", "shared_database", "joshua.db")
 
 @router.get("/leads")

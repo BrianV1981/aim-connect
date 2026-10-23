@@ -43,20 +43,41 @@ PUBLIC_HARNESS_SETTLE_S = 4
 def resolve_workspace_id_for_email(email: str) -> str:
     """Map login email → agent_workspaces/agent-{id}/ (#184).
 
-    Prefer LeadDeed operators registry (opaque op_* ids). Fallback: sanitize email
-    for seats not yet migrated. Magic-link entitlement remains email-only on the
-    dashboard; this only picks the filesystem workspace.
+    Prefer external operators registry (opaque op_* ids) when AIM_LD_SCRIPTS
+    is present on disk. Fallback: sanitize email without warning spam on
+    standalone open-source installations (#205).
     """
-    try:
-        aim_ld_scripts = os.environ.get("AIM_LD_SCRIPTS", os.path.join(os.path.dirname(AIM_CONNECT_ROOT), "aim-ld", "scripts"))
-        if aim_ld_scripts not in sys.path:
-            sys.path.insert(0, aim_ld_scripts)
-        from core.identity import resolve_workspace_id_for_email as _resolve
+    aim_ld_scripts = os.environ.get(
+        "AIM_LD_SCRIPTS",
+        os.path.join(os.path.dirname(AIM_CONNECT_ROOT), "aim-ld", "scripts"),
+    )
+    if os.path.isdir(aim_ld_scripts):
+        try:
+            if aim_ld_scripts not in sys.path:
+                sys.path.insert(0, aim_ld_scripts)
+            from core.identity import resolve_workspace_id_for_email as _resolve
 
-        return _resolve(email)
-    except Exception as e:
-        logger.warning(f"operator registry resolve failed for {email!r}: {e}; using sanitize fallback")
-        return re.sub(r"[^a-zA-Z0-9]", "_", (email or "").strip().lower())
+            return _resolve(email)
+        except Exception as e:
+            logger.warning(f"operator registry resolve failed for {email!r}: {e}; using sanitize fallback")
+    return re.sub(r"[^a-zA-Z0-9]", "_", (email or "").strip().lower())
+
+
+def build_admin_initial_command(
+    client_harness: str,
+    home_dir: str = HOME_DIR,
+    which_fn=None,
+) -> str | None:
+    """Return initial command to send to a newly created admin tmux session, or None (#205)."""
+    import shutil as _shutil
+
+    custom_cmd = os.environ.get("AIM_ADMIN_DEFAULT_CMD", "").strip()
+    if custom_cmd:
+        return custom_cmd
+    checker = which_fn or _shutil.which
+    if checker("agy") or os.path.isfile(os.path.join(home_dir, ".local", "bin", "agy")):
+        return f"export AIM_VESSEL_CLI={client_harness} && agy --log-file /dev/null"
+    return None
 
 
 def legacy_sanitize_email(email: str) -> str:
@@ -797,8 +818,9 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             
         result = subprocess.run(["tmux", "new-session", "-d", "-s", target_session], capture_output=True)
         if result.returncode == 0:
-            admin_cli = f"export AIM_VESSEL_CLI={client_harness} && agy --log-file /dev/null"
-            subprocess.run(["tmux", "send-keys", "-t", target_session, admin_cli, "Enter"])
+            admin_cli = build_admin_initial_command(client_harness)
+            if admin_cli:
+                subprocess.run(["tmux", "send-keys", "-t", target_session, admin_cli, "Enter"])
         os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
     # Parent process
