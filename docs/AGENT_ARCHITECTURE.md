@@ -95,20 +95,21 @@ WEBAUTHN_RP_ID="your-domain.com"  # Optional; defaults to incoming request hostn
 
 This application runs persistently using `tmux` sessions. **Do not use standard backgrounding (`&`) to run core services.**
 
-### Primary Sessions
+### Primary Tmux Session (`aim-connect-workspace`)
 
-1.  **`aim-backend`:** Runs the Python FastAPI server.
-    *   *Command:* `cd backend && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000`
-2.  **`aim-frontend`:** Runs the Vite dev server.
-    *   *Command:* `cd frontend && npm run dev -- --host`
-3.  **`aim-ngrok` / `cloudflared`:** Secure tunnel to the internet.
+1.  **`aim-connect-workspace:servers` (`:8000`):** Runs the Python FastAPI server.
+    *   *Command:* `cd backend && ./venv/bin/python3 ./venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000`
+2.  **`aim-connect-workspace:mcp` (`:8001`, optional):** Runs the sister MCP SSE server if configured via `AIM_MCP_DIR`.
+3.  **`aim-connect-workspace:cloudflared` (optional):** Secure Cloudflare tunnel to the internet if `CLOUDFLARED_CONFIG` is present.
 
-### How to Restart
+### How to Start / Recycle
 
 ```bash
-tmux kill-session -t aim-backend
-tmux new-session -d -s aim-backend \
-  "cd $AIM_CONNECT_ROOT/backend && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"
+# Idempotent health-check startup (starts only stopped services)
+./startup.sh
+
+# Recycle only the :8000 FastAPI backend by PID
+kill "$(lsof -ti :8000)" && ./startup.sh
 ```
 
 ---

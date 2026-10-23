@@ -96,7 +96,7 @@ On first launch, AIM-Connect auto-generates three credentials and prints them to
 
 > ⚠️ You will **never** see these credentials again after first launch. If you lose them, delete the corresponding `.hash` or `.secret` file and restart to regenerate.
 >
-> **To reset:** `rm passphrase.hash && ./startup.sh` (or `password.hash` / `totp.secret`)
+> **To reset:** `rm backend/passphrase.hash && ./startup.sh` (or `backend/password.hash` / `backend/totp.secret`)
 
 ### Step 5: Accessing the Dashboard
 1. Look at your terminal output to find your secure public URL (e.g., `https://random-string.ngrok.app`).

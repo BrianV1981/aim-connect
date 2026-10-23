@@ -192,6 +192,44 @@ def test_resolve_workspace_id_silent_fallback_when_aim_ld_absent(monkeypatch, tm
     assert not any("operator registry resolve failed" in r.message for r in caplog.records)
 
 
+def test_env_example_disables_e2ee_by_default():
+    """.env.example must default ENABLE_E2EE=false so cp .env.example .env works out of the box (#206)."""
+    env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "ENABLE_E2EE=false" in env_example
+    assert "ENABLE_E2EE=true" not in [
+        line.strip() for line in env_example.splitlines() if not line.strip().startswith("#")
+    ]
+
+
+def test_dockerfile_and_readme_onboarding_correctness():
+    """Dockerfile must install lsof/procps and use --foreground; README must point to backend/*.hash (#206)."""
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "lsof" in dockerfile
+    assert "procps" in dockerfile
+    assert "--foreground" in dockerfile
+
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "rm backend/passphrase.hash" in readme
+
+
+def test_startup_sh_bootstraps_first_run_creds_and_supports_foreground():
+    """startup.sh must bootstrap missing 3FA creds in the foreground TTY and support --foreground (#206)."""
+    startup_text = STARTUP_SH.read_text(encoding="utf-8")
+    assert "backend/totp.secret" in startup_text
+    assert "backend/password.hash" in startup_text
+    assert "backend/passphrase.hash" in startup_text
+    assert "--foreground" in startup_text
+
+
+def test_restart_script_and_architecture_docs_use_aim_connect_workspace():
+    """backend/restart_server.sh and docs/AGENT_ARCHITECTURE.md must reference aim-connect-workspace (#206)."""
+    restart_sh = (REPO_ROOT / "backend" / "restart_server.sh").read_text(encoding="utf-8")
+    arch_md = (REPO_ROOT / "docs" / "AGENT_ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "aim-connect-backend" not in restart_sh
+    assert "aim-connect-workspace" in restart_sh
+    assert "aim-connect-workspace" in arch_md
+
+
 def test_startup_sh_skips_optional_mcp_and_cloudflared_when_absent(tmp_path):
     """A fresh open-source clone without aim-mcp or cloudflared config still starts :8000 cleanly."""
     bin_dir, log_file = _make_mock_bin(
