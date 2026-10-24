@@ -21,6 +21,7 @@ def test_no_personal_os_files_tracked_in_git():
     )
     tracked = res.stdout.splitlines()
     assert not any(f.startswith("joshua_os/") for f in tracked), "joshua_os/ must not be tracked in git"
+    assert not any(f.startswith("memory-wiki/") for f in tracked), "memory-wiki/ must not be tracked in git"
     assert "HANDOFF.md" not in tracked, "HANDOFF.md must not be tracked in git"
     assert "aim" not in tracked, "aim wrapper must not be tracked in git"
     assert not any(f.startswith("docs/TICKET_") for f in tracked), "Internal TICKET docs must not be tracked"
@@ -30,7 +31,8 @@ def test_no_personal_os_files_tracked_in_git():
 def test_gitignore_covers_local_operational_and_scratch_files():
     """git check-ignore must match local J.O.S.H.U.A. state, worktrees, and scratch artifacts (#172/#202)."""
     candidates = [
-        "joshua_os/memory-wiki/index.md",
+        "joshua_os/VERSION",
+        "memory-wiki/index.md",
         "HANDOFF.md",
         "aim",
         "workspace/issue-202",
