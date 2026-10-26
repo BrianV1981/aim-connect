@@ -15,6 +15,7 @@ import IntegrationsModal from './components/IntegrationsModal';
 import FleetSidebar from './components/FleetSidebar';
 import CommandPalette from './components/CommandPalette';
 import TokenGrabberModal from './components/TokenGrabberModal';
+import FileExplorer from './components/FileExplorer';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
 
@@ -48,6 +49,9 @@ function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showTokenGrabber, setShowTokenGrabber] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [splitMode, setSplitMode] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('');
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
@@ -1221,8 +1225,17 @@ function App() {
         {sessions.length === 0 && (
           <button className="macro-btn" onClick={createSession}>+ New Session</button>
         )}
-        <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
-          {showFiles ? '💻 Terminal' : '📁 Files'}
+        <button
+          className={`macro-btn ${showFiles ? 'action' : ''}`}
+          onClick={() => {
+            setShowFiles((prev) => !prev);
+            setTimeout(() => {
+              try { fitAddon.current?.fit(); } catch (e) {}
+            }, 80);
+          }}
+          title="Toggle Split-Pane Brain (HANDOFF.md / memory-wiki/), File Explorer, and Git DiffEditor"
+        >
+          {showFiles ? (splitMode ? '◫ Brain/Diff' : '💻 Terminal') : '🧠 Brain/Files'}
         </button>
         <button
           className="macro-btn action"
@@ -1298,60 +1311,7 @@ function App() {
           onSendSessionCommand={sendSessionCommand}
         />
 
-      <div className="file-explorer" style={{ display: showFiles ? 'flex' : 'none', flex: 1, flexDirection: 'column' }}>
-        <div className="file-toolbar">
-          {isEditingFile ? (
-            <>
-              <button className="macro-btn" onClick={() => { setIsEditingFile(false); setOpenFileContent(''); }}>← Back</button>
-              <span className="file-path">{openFilePath.split('/').pop()}</span>
-              <button id="save-btn" className="macro-btn action" onClick={saveFile}>Save</button>
-            </>
-          ) : (
-            <>
-              <button className="macro-btn" onClick={() => loadFiles(currentPath.split('/').slice(0, -1).join('/') || '/')}>
-                ← Back
-              </button>
-              <span className="file-path">{currentPath}</span>
-              <button className="macro-btn" onClick={() => createItem(false)}>+ File</button>
-              <button className="macro-btn" onClick={() => createItem(true)}>+ Dir</button>
-            </>
-          )}
-        </div>
-        <div className="file-content-area">
-          {isEditingFile ? (
-            <div style={{ flex: 1, height: '100%', minHeight: '500px', width: '100%', position: 'relative' }}>
-              <Editor 
-                height="100%"
-                path={openFilePath}
-                theme="vs-dark"
-                value={openFileContent} 
-                onChange={(value) => setOpenFileContent(value || '')}
-                onMount={(editor) => { editorRef.current = editor; }}
-                options={{
-                  minimap: { enabled: true },
-                  wordWrap: "on",
-                  automaticLayout: true,
-                  fontSize: 14,
-                }}
-              />
-            </div>
-          ) : (
-            <ul className="file-list">
-              {fileItems.map((item, idx) => (
-                <li key={idx} className="file-item" onClick={() => item.is_dir ? loadFiles(item.path) : loadFileContent(item.path)}>
-                  <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                    <span className="file-icon">{item.is_dir ? '📁' : '📄'}</span>
-                    <span className="file-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                  </div>
-                  <button className="macro-btn" style={{ padding: '4px 8px', fontSize: '12px', background: 'transparent' }} onClick={(e) => deleteItem(item.path, e)}>🗑️</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div style={{ display: showFiles ? 'none' : 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <div style={{ display: (!showFiles || splitMode) ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
         {!showKeyboard && (
           <div className="commander-toolbar">
             <div className="macro-group">
@@ -1500,6 +1460,25 @@ function App() {
           )}
         </div>
       </div>
+
+      <FileExplorer
+        isOpen={showFiles}
+        activeSession={activeSession}
+        splitMode={splitMode}
+        onToggleSplitMode={() => {
+          setSplitMode((prev) => !prev);
+          setTimeout(() => {
+            try { fitAddon.current?.fit(); } catch (e) {}
+          }, 80);
+        }}
+        onClose={() => {
+          setShowFiles(false);
+          setTimeout(() => {
+            try { fitAddon.current?.fit(); } catch (e) {}
+          }, 80);
+        }}
+        editorRef={editorRef}
+      />
       </div>
 
         {showKeyboard && (
