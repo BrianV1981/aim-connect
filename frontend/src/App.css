@@ -547,3 +547,431 @@ body {
 .hacker-mode .kb-space {
   max-width: 100px;
 }
+
+/* --- #209 Multi-Session Fleet Sidebar & 30%-Rule Context Gauges --- */
+.cockpit-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.fleet-header-unread-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 5px;
+  line-height: 1.2;
+}
+
+.fleet-sidebar {
+  width: 280px;
+  min-width: 260px;
+  max-width: 320px;
+  background: rgba(8, 15, 30, 0.96);
+  border-right: 1px solid #1c305c;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  z-index: 60;
+}
+
+@media (max-width: 767px) {
+  .fleet-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 85vw;
+    max-width: 320px;
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.75);
+  }
+}
+
+.fleet-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #1c305c;
+  background: rgba(11, 22, 44, 0.9);
+}
+
+.fleet-sidebar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-sidebar-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #e2e8f0;
+  font-family: 'Fira Code', monospace;
+}
+
+.fleet-count-pill {
+  background: #1c305c;
+  color: #93c5fd;
+  font-size: 11px;
+  font-family: 'Fira Code', monospace;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.fleet-thinking-pill {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  font-size: 10px;
+  font-family: 'Fira Code', monospace;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.fleet-critical-pill {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+  font-size: 10px;
+  font-family: 'Fira Code', monospace;
+  padding: 1px 6px;
+  border-radius: 999px;
+  animation: pulse-status 1.2s infinite;
+}
+
+.fleet-sidebar-controls {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(28, 48, 92, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fleet-search-input {
+  width: 100%;
+  background: #050a14;
+  border: 1px solid #1c305c;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-family: 'Fira Code', monospace;
+  outline: none;
+}
+
+.fleet-search-input:focus {
+  border-color: #3b82f6;
+}
+
+.fleet-filter-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.fleet-filter-pill {
+  background: rgba(28, 48, 92, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: 'Fira Code', monospace;
+  cursor: pointer;
+}
+
+.fleet-filter-pill.active {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: #3b82f6;
+  color: #e2e8f0;
+}
+
+.fleet-session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fleet-empty-state {
+  padding: 24px 12px;
+  text-align: center;
+  color: #64748b;
+  font-size: 12px;
+  font-family: 'Fira Code', monospace;
+}
+
+.fleet-session-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(28, 48, 92, 0.8);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fleet-session-card:hover {
+  background: rgba(28, 48, 92, 0.45);
+  border-color: #2a4a7f;
+}
+
+.fleet-session-card.active {
+  background: rgba(28, 48, 92, 0.65);
+  border-color: #ff5722;
+  box-shadow: 0 0 0 1px rgba(255, 87, 34, 0.25);
+}
+
+.fleet-session-card.tier-critical {
+  border-left: 3px solid #ef4444;
+}
+
+.fleet-session-card.tier-warning {
+  border-left: 3px solid #eab308;
+}
+
+.fleet-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.fleet-status-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.fleet-status-dot.idle {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+}
+
+.fleet-status-dot.thinking {
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.8);
+  animation: pulse-status 0.9s infinite;
+}
+
+.fleet-status-dot.error {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+}
+
+.fleet-session-name {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-unread-badge {
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  letter-spacing: 0.4px;
+}
+
+.fleet-vessel-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  flex-shrink: 0;
+}
+
+.fleet-vessel-badge.vessel-agy {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.fleet-vessel-badge.vessel-grok {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+}
+
+.fleet-vessel-badge.vessel-opencode {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.fleet-vessel-badge.vessel-service {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.fleet-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fleet-branch-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+  color: #94a3b8;
+  background: rgba(5, 10, 20, 0.6);
+  padding: 1px 6px;
+  border-radius: 4px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-branch-badge.worktree {
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.fleet-pane-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.fleet-context-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fleet-context-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+}
+
+.fleet-context-label {
+  color: #94a3b8;
+}
+
+.fleet-context-pct.tier-normal {
+  color: #22c55e;
+}
+
+.fleet-context-pct.tier-warning {
+  color: #eab308;
+  font-weight: 600;
+}
+
+.fleet-context-pct.tier-critical {
+  color: #f87171;
+  font-weight: 700;
+}
+
+.fleet-context-track {
+  position: relative;
+  height: 5px;
+  width: 100%;
+  background: #050a14;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.fleet-context-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.fleet-context-fill.tier-normal {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+
+.fleet-context-fill.tier-warning {
+  background: linear-gradient(90deg, #ca8a04, #eab308);
+}
+
+.fleet-context-fill.tier-critical {
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+  animation: pulse-status 1.2s infinite;
+}
+
+.fleet-context-30-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 30%;
+  width: 1px;
+  background: rgba(248, 113, 113, 0.7);
+}
+
+.fleet-card-preview {
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.fleet-action-btn {
+  flex: 1;
+  background: rgba(28, 48, 92, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fleet-action-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.fleet-action-btn.handoff.critical-pulse {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #fecaca;
+  font-weight: 600;
+}
+

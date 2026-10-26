@@ -12,6 +12,7 @@ import MacroLibraryModal from './components/MacroLibraryModal';
 import AuthScreen from './components/AuthScreen';
 import DeleteSessionModal from './components/DeleteSessionModal';
 import IntegrationsModal from './components/IntegrationsModal';
+import FleetSidebar from './components/FleetSidebar';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
 
@@ -31,6 +32,14 @@ function App() {
   
   
   const [sessions, setSessions] = useState([]);
+  const [fleet, setFleet] = useState([]);
+  const [unreadSessions, setUnreadSessions] = useState([]);
+  const [showFleetSidebar, setShowFleetSidebar] = useState(() => {
+    const saved = localStorage.getItem('aim-show-fleet');
+    if (saved !== null) return JSON.parse(saved);
+    return typeof window !== 'undefined' ? window.innerWidth >= 900 : true;
+  });
+  const prevStatusRef = useRef({});
   const [activeSession, setActiveSession] = useState('');
   const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
   const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
@@ -270,14 +279,31 @@ function App() {
     fetchServerMacros();
   }, [isAuthenticated]);
 
-  // Fetch tmux sessions
+  // Fetch tmux sessions + fleet telemetry (#209)
   useEffect(() => {
     if (!isAuthenticated) return;
     const fetchSessions = async () => {
       try {
         const res = await fetch('/api/sessions');
         const data = await res.json();
-        setSessions(prev => JSON.stringify(prev) === JSON.stringify(data.sessions) ? prev : data.sessions);
+        if (Array.isArray(data.sessions)) {
+          setSessions(prev => JSON.stringify(prev) === JSON.stringify(data.sessions) ? prev : data.sessions);
+        }
+        if (Array.isArray(data.fleet)) {
+          setFleet(data.fleet);
+          // Detect THINKING -> IDLE transitions on background sessions for unread badges
+          const newlyCompleted = [];
+          data.fleet.forEach((item) => {
+            const prevSt = prevStatusRef.current[item.session_name];
+            if (prevSt === 'THINKING' && item.status === 'IDLE' && item.session_name !== activeSession) {
+              newlyCompleted.push(item.session_name);
+            }
+            prevStatusRef.current[item.session_name] = item.status;
+          });
+          if (newlyCompleted.length > 0) {
+            setUnreadSessions((prev) => Array.from(new Set([...prev, ...newlyCompleted])));
+          }
+        }
         // Do not auto-assign activeSession to force the Welcome Screen on login
       } catch (err) {
         console.error(err);
@@ -287,6 +313,19 @@ function App() {
     const interval = setInterval(fetchSessions, 5000);
     return () => clearInterval(interval);
   }, [isAuthenticated, activeSession]);
+
+  const toggleFleetSidebar = () => {
+    setShowFleetSidebar((prev) => {
+      const next = !prev;
+      localStorage.setItem('aim-show-fleet', JSON.stringify(next));
+      setTimeout(() => {
+        if (fitAddon.current) {
+          try { fitAddon.current.fit(); } catch (e) {}
+        }
+      }, 80);
+      return next;
+    });
+  };
 
   const createSession = async () => {
     const name = window.prompt("New Session Name:");
@@ -300,7 +339,8 @@ function App() {
       // Force fetch to update dropdown
       const res = await fetch('/api/sessions');
       const data = await res.json();
-      setSessions(data.sessions);
+      setSessions(data.sessions || []);
+      if (Array.isArray(data.fleet)) setFleet(data.fleet);
       setActiveSession(name);
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify({ type: 'switch_session', session: name }));
@@ -319,7 +359,7 @@ function App() {
       // Find another session to switch to FIRST to prevent PTY crash
       const res = await fetch('/api/sessions');
       const data = await res.json();
-      const otherSessions = data.sessions.filter(s => s !== sessionToKill);
+      const otherSessions = (data.sessions || []).filter(s => s !== sessionToKill);
       
       if (otherSessions.length > 0) {
         const nextSession = otherSessions[0];
@@ -336,15 +376,17 @@ function App() {
         await fetch(`/api/sessions/${sessionToKill}?delete_workspace=false`, { method: 'DELETE' });
         const finalRes = await fetch('/api/sessions');
         const finalData = await finalRes.json();
-        setSessions(finalData.sessions);
+        setSessions(finalData.sessions || []);
+        if (Array.isArray(finalData.fleet)) setFleet(finalData.fleet);
       }, 100);
       
     } catch (e) { console.error(e); }
   };
 
-  const handleSessionSwitch = (e) => {
-    const newSession = e.target.value;
+  const switchToSession = (newSession) => {
+    if (!newSession) return;
     setActiveSession(newSession);
+    setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
       if (fitAddon.current) {
@@ -356,6 +398,22 @@ function App() {
         }, 100);
       }
     }
+  };
+
+  const handleSessionSwitch = (e) => {
+    switchToSession(e.target.value);
+  };
+
+  const sendSessionCommand = async (sessionName, command) => {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionName)}/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    });
+    if (!res.ok) {
+      throw new Error(`Command injection failed: ${res.status}`);
+    }
+    return res.json();
   };
 
   const loadFiles = async (path) => {
@@ -1106,6 +1164,19 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
+        <button
+          className={`macro-btn ${showFleetSidebar ? 'action' : ''}`}
+          onClick={toggleFleetSidebar}
+          title="Toggle Multi-Session Fleet Sidebar"
+          style={{ position: 'relative' }}
+        >
+          🧭 Fleet ({sessions.length})
+          {unreadSessions.length > 0 && (
+            <span className="fleet-header-unread-dot" title={`${unreadSessions.length} unread completed session(s)`}>
+              {unreadSessions.length}
+            </span>
+          )}
+        </button>
         <h1>aim-connect</h1>
         {sessions.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1175,6 +1246,19 @@ function App() {
         <div className={`status-indicator ${connState}`}></div>
       </header>
       
+      <div className="cockpit-body">
+        <FleetSidebar
+          isOpen={showFleetSidebar}
+          onClose={toggleFleetSidebar}
+          sessions={sessions}
+          fleet={fleet}
+          activeSession={activeSession}
+          unreadSessions={unreadSessions}
+          onSelectSession={switchToSession}
+          onCreateSession={createSession}
+          onSendSessionCommand={sendSessionCommand}
+        />
+
       <div className="file-explorer" style={{ display: showFiles ? 'flex' : 'none', flex: 1, flexDirection: 'column' }}>
         <div className="file-toolbar">
           {isEditingFile ? (
@@ -1376,6 +1460,7 @@ function App() {
              </>
           )}
         </div>
+      </div>
       </div>
 
         {showKeyboard && (

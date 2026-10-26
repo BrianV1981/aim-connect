@@ -1,5 +1,7 @@
 import subprocess
 import os
+import re
+import time
 import shutil
 import logging
 from pydantic import BaseModel
@@ -13,6 +15,280 @@ import asyncio
 
 router = APIRouter()
 logger = logging.getLogger("aim-connect")
+
+BRAILLE_SPINNER_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⢿⣻⣽⣾⣷⣯⣟]")
+THINKING_TEXT_RE = re.compile(
+    r"(?:Working\.{2,}|Thinking\.{2,}|Running command|Generating|Executing|esc to cancel|ctrl\+c to interrupt)",
+    re.IGNORECASE,
+)
+ERROR_TEXT_RE = re.compile(
+    r"(?:Traceback \(most recent call last\)|\[ERROR\]|panic:|Auth Error|Connection refused)",
+    re.IGNORECASE,
+)
+AGY_TOKENS_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*([kKmM]?)\s*in\s*\|\s*(\d+(?:\.\d+)?)\s*([kKmM]?)\s*out"
+)
+SLASH_TOKENS_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*([kKmM])\s*/\s*(\d+(?:\.\d+)?)\s*([kKmM])"
+)
+GENERIC_TOKENS_RE = re.compile(
+    r"(\d+(?:,\d{3})+|\d+(?:\.\d+)?\s*[kKmM])\s*(?:tokens|tok|ctx)",
+    re.IGNORECASE,
+)
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+
+
+def _parse_token_number(num_str: str, suffix: str = "") -> int:
+    cleaned = num_str.replace(",", "").strip()
+    if not cleaned:
+        return 0
+    if cleaned[-1].lower() in ("k", "m") and not suffix:
+        suffix = cleaned[-1].lower()
+        cleaned = cleaned[:-1].strip()
+    try:
+        val = float(cleaned)
+    except ValueError:
+        return 0
+    s = suffix.lower()
+    if s == "k":
+        return int(val * 1_000)
+    if s == "m":
+        return int(val * 1_000_000)
+    return int(val)
+
+
+def compute_30pct_rule_tier(context_pct: float) -> str:
+    """J.O.S.H.U.A. 30%-Rule Context Saturation Tiers:
+    - normal: < 20%
+    - warning: 20% to < 30% (prepare /aim-memory-wiki)
+    - critical: >= 30% (Amnesia threshold — trigger /aim-handoff)
+    """
+    if context_pct >= 30.0:
+        return "critical"
+    if context_pct >= 20.0:
+        return "warning"
+    return "normal"
+
+
+def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = "") -> dict:
+    """Parse captured tmux pane text and command into vessel, status, and 30%-Rule telemetry."""
+    clean_text = ANSI_ESCAPE_RE.sub("", pane_text or "")
+    lines = [ln.strip() for ln in clean_text.splitlines() if ln.strip()]
+    tail_text = "\n".join(lines[-12:]) if lines else ""
+    cmd_lower = (command or "").lower()
+    sess_lower = (session_name or "").lower()
+
+    # 1. Detect vessel
+    if "agy" in cmd_lower or "antigravity" in cmd_lower or "Gemini " in clean_text or "Ctrl+P commands" in clean_text or AGY_TOKENS_RE.search(clean_text):
+        vessel = "agy"
+    elif "grok" in cmd_lower or "Grok CLI" in clean_text or "xAI" in clean_text:
+        vessel = "grok"
+    elif "opencode" in cmd_lower or "OpenCode" in clean_text or "opencode" in sess_lower:
+        vessel = "opencode"
+    elif "codex" in cmd_lower:
+        vessel = "codex"
+    elif cmd_lower in ("uvicorn", "python3", "python", "cloudflared", "node", "npm") or sess_lower == "aim-connect-workspace":
+        vessel = "service"
+    else:
+        vessel = "shell"
+
+    # 2. Detect status (THINKING / ERROR / IDLE)
+    if BRAILLE_SPINNER_RE.search(tail_text) or THINKING_TEXT_RE.search(tail_text):
+        status = "THINKING"
+    elif ERROR_TEXT_RE.search(tail_text):
+        status = "ERROR"
+    else:
+        status = "IDLE"
+
+    # 3. Parse token usage & context saturation
+    tokens_used = 0
+    tokens_limit = 1_000_000 if vessel == "agy" else 200_000
+
+    agy_matches = list(AGY_TOKENS_RE.finditer(clean_text))
+    slash_matches = list(SLASH_TOKENS_RE.finditer(clean_text))
+    generic_matches = list(GENERIC_TOKENS_RE.finditer(clean_text))
+
+    if agy_matches:
+        m = agy_matches[-1]
+        tokens_used = _parse_token_number(m.group(1), m.group(2))
+        tokens_limit = 1_000_000
+    elif slash_matches:
+        m = slash_matches[-1]
+        tokens_used = _parse_token_number(m.group(1), m.group(2))
+        parsed_limit = _parse_token_number(m.group(3), m.group(4))
+        if parsed_limit > 0:
+            tokens_limit = parsed_limit
+    elif generic_matches:
+        m = generic_matches[-1]
+        tokens_used = _parse_token_number(m.group(1))
+
+    context_pct = round((tokens_used / tokens_limit) * 100.0, 1) if (tokens_used > 0 and tokens_limit > 0) else 0.0
+    tier = compute_30pct_rule_tier(context_pct)
+
+    # 4. Extract concise preview line (skip pure border lines)
+    preview = ""
+    for ln in reversed(lines):
+        stripped_borders = ln.strip("─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬> ")
+        if stripped_borders and len(stripped_borders) > 2:
+            preview = stripped_borders[:100]
+            break
+
+    return {
+        "vessel": vessel,
+        "status": status,
+        "tokens_used": tokens_used,
+        "tokens_limit": tokens_limit,
+        "context_pct": context_pct,
+        "tier": tier,
+        "preview": preview,
+    }
+
+
+def _get_git_branch(path: str) -> str:
+    """Resolve current git branch for a directory without spawning git subprocesses when possible."""
+    if not path or not os.path.isdir(path):
+        return ""
+    curr = os.path.abspath(path)
+    for _ in range(6):
+        dot_git = os.path.join(curr, ".git")
+        head_file = None
+        if os.path.isdir(dot_git):
+            head_file = os.path.join(dot_git, "HEAD")
+        elif os.path.isfile(dot_git):
+            try:
+                with open(dot_git, "r", encoding="utf-8", errors="ignore") as f:
+                    first = f.readline().strip()
+                if first.startswith("gitdir:"):
+                    gitdir = first.split(":", 1)[1].strip()
+                    if not os.path.isabs(gitdir):
+                        gitdir = os.path.abspath(os.path.join(curr, gitdir))
+                    head_file = os.path.join(gitdir, "HEAD")
+            except OSError:
+                pass
+        if head_file and os.path.isfile(head_file):
+            try:
+                with open(head_file, "r", encoding="utf-8", errors="ignore") as f:
+                    ref = f.readline().strip()
+                if ref.startswith("ref: refs/heads/"):
+                    return ref[len("ref: refs/heads/"):]
+                return ref[:8]
+            except OSError:
+                return ""
+        parent = os.path.dirname(curr)
+        if parent == curr:
+            break
+        curr = parent
+    return ""
+
+
+def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], list[dict]]:
+    """Collect pane-level and session-level telemetry for all allowed tmux sessions."""
+    allowed_set = set(allowed_sessions)
+    if not allowed_set:
+        return [], []
+
+    fmt = "#{session_name}@@@#{window_index}@@@#{window_name}@@@#{pane_index}@@@#{pane_current_command}@@@#{pane_current_path}@@@#{pane_pid}@@@#{session_attached}"
+    res = subprocess.run(["tmux", "list-panes", "-a", "-F", fmt], capture_output=True, text=True)
+    if res.returncode != 0:
+        return [], []
+
+    panes = []
+    by_session: dict[str, list[dict]] = {s: [] for s in allowed_sessions}
+
+    for raw in res.stdout.splitlines():
+        if not raw.strip():
+            continue
+        parts = raw.split("@@@")
+        if len(parts) < 8:
+            continue
+        sess_name, win_idx, win_name, pane_idx, cmd, path, pid_str, attached_str = parts[:8]
+        if sess_name not in allowed_set:
+            continue
+
+        target = f"{sess_name}:{win_idx}.{pane_idx}"
+        # Capture last 25 lines of the pane for status & token telemetry
+        cap = subprocess.run(
+            ["tmux", "capture-pane", "-t", target, "-p", "-J", "-S", "-25"],
+            capture_output=True,
+            text=True,
+        )
+        pane_text = cap.stdout if cap.returncode == 0 else ""
+        telemetry = parse_pane_telemetry(pane_text, command=cmd, session_name=sess_name)
+        branch = _get_git_branch(path)
+        is_worktree = "/workspace/issue-" in (path or "")
+        repo_name = os.path.basename(path.rstrip("/")) if path else ""
+
+        pane_obj = {
+            "session_name": sess_name,
+            "window_index": int(win_idx) if win_idx.isdigit() else 0,
+            "window_name": win_name,
+            "pane_index": int(pane_idx) if pane_idx.isdigit() else 0,
+            "target": target,
+            "command": cmd,
+            "path": path,
+            "repo_name": repo_name,
+            "branch": branch,
+            "is_worktree": is_worktree,
+            "pid": int(pid_str) if pid_str.isdigit() else None,
+            "attached": attached_str == "1",
+            **telemetry,
+        }
+        panes.append(pane_obj)
+        by_session.setdefault(sess_name, []).append(pane_obj)
+
+    fleet = []
+    for sess_name in allowed_sessions:
+        sess_panes = by_session.get(sess_name, [])
+        if not sess_panes:
+            fleet.append({
+                "session_name": sess_name,
+                "vessel": "shell",
+                "status": "IDLE",
+                "path": "",
+                "repo_name": "",
+                "branch": "",
+                "is_worktree": False,
+                "tokens_used": 0,
+                "tokens_limit": 200_000,
+                "context_pct": 0.0,
+                "tier": "normal",
+                "preview": "",
+                "pane_count": 0,
+                "panes": [],
+            })
+            continue
+
+        # Prefer an AI vessel pane or THINKING pane as the primary summary for the session
+        primary = sess_panes[0]
+        for p in sess_panes:
+            if p["vessel"] in ("agy", "grok", "opencode", "codex"):
+                primary = p
+                break
+        any_thinking = any(p["status"] == "THINKING" for p in sess_panes)
+        any_error = any(p["status"] == "ERROR" for p in sess_panes)
+        agg_status = "THINKING" if any_thinking else ("ERROR" if any_error else primary["status"])
+
+        fleet.append({
+            "session_name": sess_name,
+            "vessel": primary["vessel"],
+            "status": agg_status,
+            "command": primary["command"],
+            "path": primary["path"],
+            "repo_name": primary["repo_name"],
+            "branch": primary["branch"],
+            "is_worktree": primary["is_worktree"],
+            "tokens_used": primary["tokens_used"],
+            "tokens_limit": primary["tokens_limit"],
+            "context_pct": primary["context_pct"],
+            "tier": primary["tier"],
+            "preview": primary["preview"],
+            "attached": primary["attached"],
+            "pane_count": len(sess_panes),
+            "panes": sess_panes,
+        })
+
+    return fleet, panes
+
 
 
 async def kill_all_user_sessions(sanitized_email: str, exclude_session: str = ""):
@@ -55,7 +331,6 @@ async def kill_all_user_sessions(sanitized_email: str, exclude_session: str = ""
 
 @router.get("/api/sessions", dependencies=[Depends(verify_token)])
 def get_sessions(x_api_token: str = Header(None)) -> dict:
-
     result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
     sessions = []
     role, prefix = _get_user_from_token(x_api_token)
@@ -65,7 +340,51 @@ def get_sessions(x_api_token: str = Header(None)) -> dict:
                 # Non-admin users only see sessions with their prefix (or all if no prefix)
                 if role == "admin" or not prefix or line.startswith(prefix):
                     sessions.append(line)
-    return {"sessions": sessions}
+    try:
+        fleet, panes = collect_fleet_telemetry(sessions)
+    except Exception as e:
+        logger.warning(f"Fleet telemetry collection error: {e}")
+        fleet, panes = [], []
+    return {"sessions": sessions, "fleet": fleet, "panes": panes}
+
+
+@router.get("/api/fleet/panes", dependencies=[Depends(verify_token)])
+def get_fleet_panes(x_api_token: str = Header(None)) -> dict:
+    """Return enriched pane and session telemetry for all allowed sessions (#209)."""
+    data = get_sessions(x_api_token=x_api_token)
+    return {
+        "sessions": data.get("sessions", []),
+        "fleet": data.get("fleet", []),
+        "panes": data.get("panes", []),
+    }
+
+
+class SessionCommandRequest(BaseModel):
+    command: str
+
+
+@router.post("/api/sessions/{name}/command", dependencies=[Depends(verify_token), Depends(require_admin)])
+def send_session_command(name: str, req: SessionCommandRequest) -> dict:
+    """Safely inject a command or slash skill (e.g. /aim-memory-wiki, /aim-handoff) into a tmux session (#209).
+
+    Uses the 2-step tmux buffer + separate Enter key protocol so interactive TUIs
+    (AGY, Grok, OpenCode) do not swallow the Enter keystroke.
+    """
+    if not SESSION_NAME_RE.match(name):
+        raise HTTPException(status_code=400, detail="Invalid session name.")
+    cmd_text = (req.command or "").strip()
+    if not cmd_text:
+        raise HTTPException(status_code=400, detail="Command cannot be empty.")
+
+    try:
+        subprocess.run(["tmux", "set-buffer", "--", cmd_text], capture_output=True, text=True, check=True)
+        subprocess.run(["tmux", "paste-buffer", "-t", name], capture_output=True, text=True, check=True)
+        time.sleep(0.1)
+        subprocess.run(["tmux", "send-keys", "-t", name, "Enter"], capture_output=True, text=True, check=True)
+        return {"status": "sent", "session": name, "command": cmd_text}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Tmux command injection failed: {e.stderr or str(e)}")
+
 
 class SessionRequest(BaseModel):
     name: str
