@@ -130,6 +130,14 @@ export default function FleetSidebar({
         </div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button
+            className={`macro-btn ${!activeSession ? 'action' : ''}`}
+            style={{ padding: '3px 8px', fontSize: '11px' }}
+            onClick={() => onSelectSession('')}
+            title="Deselect session and return to A.I.M. Connect Home / Welcome Screen"
+          >
+            🏠 Home
+          </button>
+          <button
             className="macro-btn"
             style={{ padding: '3px 8px', fontSize: '11px' }}
             onClick={onCreateSession}

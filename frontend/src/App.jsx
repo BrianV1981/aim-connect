@@ -402,7 +402,16 @@ function App() {
   };
 
   const switchToSession = (newSession) => {
-    if (!newSession) return;
+    if (!newSession) {
+      setActiveSession('');
+      setShowFiles(false);
+      setFileSelectMode(false);
+      setIsNativeScrollMode(false);
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setShowFleetSidebar(false);
+      }
+      return;
+    }
     setActiveSession(newSession);
     setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -1216,7 +1225,13 @@ function App() {
             </span>
           )}
         </button>
-        <h1>aim-connect</h1>
+        <h1
+          onClick={() => switchToSession('')}
+          style={{ cursor: 'pointer' }}
+          title="Return to A.I.M. Connect Welcome Screen"
+        >
+          aim-connect
+        </h1>
         {activeSession && (
           <span
             className="fleet-branch-badge"
