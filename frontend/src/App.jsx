@@ -13,6 +13,8 @@ import AuthScreen from './components/AuthScreen';
 import DeleteSessionModal from './components/DeleteSessionModal';
 import IntegrationsModal from './components/IntegrationsModal';
 import FleetSidebar from './components/FleetSidebar';
+import CommandPalette from './components/CommandPalette';
+import TokenGrabberModal from './components/TokenGrabberModal';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
 
@@ -43,6 +45,8 @@ function App() {
   const [activeSession, setActiveSession] = useState('');
   const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
   const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showTokenGrabber, setShowTokenGrabber] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('');
@@ -840,6 +844,26 @@ function App() {
       }
     });
 
+    // Intercept Cmd+K / Ctrl+K inside xterm.js so it opens CommandPalette instead of sending ^K (#210)
+    term.current.attachCustomKeyEventHandler((ev) => {
+      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
+        if (ev.type === 'keydown') {
+          ev.preventDefault();
+          setShowCommandPalette((prev) => !prev);
+        }
+        return false;
+      }
+      return true;
+    });
+
+    const handleGlobalKeyDown = (ev) => {
+      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
+        ev.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+
     const handleResize = () => {
       // Force the body to match the visual viewport (which shrinks when native keyboard opens)
       if (window.visualViewport) {
@@ -912,6 +936,7 @@ function App() {
     window.addEventListener('scroll', handleScroll);
 
     return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('resize', handleResize);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', handleResize);
@@ -1198,6 +1223,20 @@ function App() {
         )}
         <button className="macro-btn" onClick={() => setShowFiles(!showFiles)}>
           {showFiles ? '💻 Terminal' : '📁 Files'}
+        </button>
+        <button
+          className="macro-btn action"
+          onClick={() => setShowCommandPalette(true)}
+          title="Open Command Palette (Cmd+K / Ctrl+K)"
+        >
+          ⌘K
+        </button>
+        <button
+          className="macro-btn"
+          onClick={() => setShowTokenGrabber(true)}
+          title="Extract URLs, Paths, IPs, and Git SHAs from Scrollback"
+        >
+          🔗 Grab
         </button>
             <button 
               className="macro-btn" 
@@ -1547,6 +1586,46 @@ function App() {
       <IntegrationsModal
         isOpen={isIntegrationsModalOpen}
         onClose={() => setIsIntegrationsModalOpen(false)}
+        activeSession={activeSession}
+      />
+
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        sessions={sessions}
+        fleet={fleet}
+        activeSession={activeSession}
+        macroLibrary={macroLibrary}
+        onSelectSession={switchToSession}
+        onCreateSession={createSession}
+        onKillSession={killSession}
+        onSendSessionCommand={sendSessionCommand}
+        onSendRawCommand={sendCommand}
+        onToggleFiles={() => setShowFiles((prev) => !prev)}
+        onToggleFleetSidebar={toggleFleetSidebar}
+        onOpenTokenGrabber={() => setShowTokenGrabber(true)}
+        onEnterScrollMode={enterNativeScrollMode}
+        onOpenSearch={() => setShowSearch(true)}
+        onToggleKeyboard={() => setShowKeyboard((prev) => !prev)}
+        onToggleVoice={startDictation}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenIntegrations={() => setIsIntegrationsModalOpen(true)}
+        onSetTermTheme={(newTheme) => {
+          setTermTheme(newTheme);
+          localStorage.setItem('aim-term-theme', newTheme);
+        }}
+        onChangeFontSize={(delta) => {
+          setTermFontSize((prev) => {
+            const next = Math.max(10, Math.min(24, prev + delta));
+            localStorage.setItem('aim-term-fontsize', String(next));
+            return next;
+          });
+        }}
+      />
+
+      <TokenGrabberModal
+        isOpen={showTokenGrabber}
+        onClose={() => setShowTokenGrabber(false)}
         activeSession={activeSession}
       />
 

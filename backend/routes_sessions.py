@@ -480,18 +480,109 @@ def kill_session(name: str, delete_workspace: bool = False):
         return {"status": "success"}
     return {"error": result.stderr}
 
-@router.get("/api/scrollback/{session_name}", dependencies=[Depends(verify_token), Depends(require_admin)])
-def get_scrollback(session_name: str):
+SECRET_QUERY_RE = re.compile(
+    r"([?&](?:token|api_token|access_token|key|api_key|secret|password|sig|signature|jwt)=)([^&#\s]+)",
+    re.IGNORECASE,
+)
+URL_TOKEN_RE = re.compile(r"https?://[^\s\"'<>)\]]+")
+PATH_TOKEN_RE = re.compile(r"(?:~|(?:/[a-zA-Z0-9._-]+)){2,}(?:/[a-zA-Z0-9._-]+)*")
+IPV4_TOKEN_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?::\d{1,5})?\b")
+GIT_SHA_TOKEN_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 
+
+def redact_url_secrets(url: str) -> tuple[str, bool]:
+    """Mask sensitive query parameter values in URL display strings (#210)."""
+    redacted_url, count = SECRET_QUERY_RE.subn(r"\1***REDACTED***", url)
+    return redacted_url, count > 0
+
+
+def extract_scrollback_tokens(raw_text: str) -> list[dict]:
+    """Extract deduplicated URLs, file paths, IPv4s, and git SHAs from terminal scrollback (#210)."""
+    clean = ANSI_ESCAPE_RE.sub("", raw_text or "")
+    items: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    # Walk lines in reverse so most recent tokens appear first
+    for line in reversed(clean.splitlines()):
+        for m in URL_TOKEN_RE.finditer(line):
+            val = m.group(0).rstrip(".,;:!?)")
+            key = ("url", val)
+            if key not in seen:
+                seen.add(key)
+                disp, is_redacted = redact_url_secrets(val)
+                items.append({
+                    "type": "url",
+                    "value": val,
+                    "display_value": disp,
+                    "redacted": is_redacted,
+                })
+
+        for m in IPV4_TOKEN_RE.finditer(line):
+            val = m.group(0)
+            key = ("ip", val)
+            if key not in seen:
+                seen.add(key)
+                items.append({
+                    "type": "ip",
+                    "value": val,
+                    "display_value": val,
+                    "redacted": False,
+                })
+
+        for m in PATH_TOKEN_RE.finditer(line):
+            val = m.group(0).rstrip(".,;:!?)")
+            if val.startswith("//") or len(val) < 4:
+                continue
+            key = ("path", val)
+            if key not in seen:
+                seen.add(key)
+                items.append({
+                    "type": "path",
+                    "value": val,
+                    "display_value": val,
+                    "redacted": False,
+                })
+
+        for m in GIT_SHA_TOKEN_RE.finditer(line):
+            val = m.group(0)
+            # Require both digits and hex letters to avoid plain integers or English hex words
+            if not (any(c.isdigit() for c in val) and any(c in "abcdef" for c in val)):
+                continue
+            key = ("sha", val)
+            if key not in seen:
+                seen.add(key)
+                items.append({
+                    "type": "sha",
+                    "value": val,
+                    "display_value": val,
+                    "redacted": False,
+                })
+
+    return items[:200]
+
+
+@router.get("/api/scrollback/{session_name}", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_scrollback(session_name: str, lines: int = 2000):
     try:
-        # Capture pane with ANSI colors (-e) and max 1000 lines of history (-S -1000)
-        # to prevent mobile DOM lockups from massive buffers
+        clamped_lines = max(100, min(5000, int(lines)))
         result = subprocess.run(
-            ["tmux", "capture-pane", "-t", session_name, "-S", "-1000", "-e", "-p"],
+            ["tmux", "capture-pane", "-t", session_name, "-S", f"-{clamped_lines}", "-e", "-p"],
             capture_output=True,
             text=True,
             check=True
         )
-        return {"scrollback": result.stdout}
+        return {
+            "scrollback": result.stdout,
+            "tokens": extract_scrollback_tokens(result.stdout),
+        }
     except Exception as e:
         return {"error": str(e)}
+
+
+@router.get("/api/scrollback/{session_name}/tokens", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_scrollback_tokens(session_name: str, lines: int = 2000):
+    data = get_scrollback(session_name=session_name, lines=lines)
+    if "error" in data:
+        return data
+    return {"session": session_name, "tokens": data.get("tokens", [])}
+
