@@ -52,6 +52,7 @@ function App() {
   const [showTokenGrabber, setShowTokenGrabber] = useState(false);
   const [showForensics, setShowForensics] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [fileSelectMode, setFileSelectMode] = useState(false);
   const [splitMode, setSplitMode] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
@@ -1236,9 +1237,9 @@ function App() {
               try { fitAddon.current?.fit(); } catch (e) {}
             }, 80);
           }}
-          title="Toggle Split-Pane Brain (HANDOFF.md / memory-wiki/), File Explorer, and Git DiffEditor"
+          title="Toggle File Explorer, Brain (HANDOFF.md / memory-wiki/), and Git DiffEditor"
         >
-          {showFiles ? (splitMode ? '◫ Brain/Diff' : '💻 Terminal') : '🧠 Brain/Files'}
+          {showFiles ? (splitMode ? '◫ Split' : '💻 Terminal') : '📁 Files'}
         </button>
         <button
           className="macro-btn action"
@@ -1262,8 +1263,14 @@ function App() {
           🔬 Forensics
         </button>
             <button 
-              className="macro-btn" 
-              onClick={enterNativeScrollMode}
+              className={`macro-btn ${(showFiles ? fileSelectMode : isNativeScrollMode) ? 'action' : ''}`}
+              onClick={() => {
+                if (showFiles) {
+                  setFileSelectMode((prev) => !prev);
+                } else {
+                  enterNativeScrollMode();
+                }
+              }}
             >
               🔍 Scroll/Copy
             </button>
@@ -1476,6 +1483,8 @@ function App() {
         isOpen={showFiles}
         activeSession={activeSession}
         splitMode={splitMode}
+        selectMode={fileSelectMode}
+        onToggleSelectMode={() => setFileSelectMode((prev) => !prev)}
         onToggleSplitMode={() => {
           setSplitMode((prev) => !prev);
           setTimeout(() => {
@@ -1484,6 +1493,7 @@ function App() {
         }}
         onClose={() => {
           setShowFiles(false);
+          setFileSelectMode(false);
           setTimeout(() => {
             try { fitAddon.current?.fit(); } catch (e) {}
           }, 80);

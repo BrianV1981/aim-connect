@@ -7,6 +7,8 @@ export default function FileExplorer({
   isOpen,
   activeSession,
   splitMode,
+  selectMode = false,
+  onToggleSelectMode,
   onToggleSplitMode,
   onClose,
   editorRef,
@@ -19,8 +21,45 @@ export default function FileExplorer({
   const [tabs, setTabs] = useState([]); // [{ id, type: 'file'|'diff', path, label, content, savedContent, mtime, language, original, conflict }]
   const [activeTabId, setActiveTabId] = useState('');
   const [saveBadge, setSaveBadge] = useState('');
+  const [copyBadge, setCopyBadge] = useState('');
+  const [localSelectMode, setLocalSelectMode] = useState(false);
+
+  const isSelectMode = onToggleSelectMode ? selectMode : localSelectMode;
+  const toggleSelectMode = () => {
+    if (onToggleSelectMode) {
+      onToggleSelectMode();
+    } else {
+      setLocalSelectMode((prev) => !prev);
+    }
+  };
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
+
+  const copyActiveTabContent = async () => {
+    if (!activeTab) return;
+    const textToCopy = activeTab.content || '';
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        throw new Error('Clipboard API unavailable');
+      }
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = textToCopy;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } catch (e) {}
+      document.body.removeChild(ta);
+    }
+    setCopyBadge('✓ Copied!');
+    setTimeout(() => setCopyBadge(''), 1800);
+  };
 
   const loadFiles = async (targetPath) => {
     try {
@@ -421,6 +460,24 @@ export default function FileExplorer({
             <span className="file-path" style={{ flex: 1 }} title={activeTab.path}>
               {activeTab.path}
             </span>
+            <button
+              type="button"
+              className={`macro-btn ${isSelectMode ? 'action' : ''}`}
+              onClick={toggleSelectMode}
+              style={{ padding: '4px 8px', fontSize: '11px' }}
+              title="Toggle mobile-friendly native Scroll/Select text view vs Monaco Editor"
+            >
+              {isSelectMode ? '✏️ Editor' : '📝 Select Text'}
+            </button>
+            <button
+              type="button"
+              className="macro-btn"
+              onClick={copyActiveTabContent}
+              style={{ padding: '4px 8px', fontSize: '11px' }}
+              title="Copy entire file contents to clipboard"
+            >
+              {copyBadge || '📋 Copy All'}
+            </button>
             {activeTab.type === 'file' && (
               <>
                 <button
@@ -502,7 +559,42 @@ export default function FileExplorer({
       {/* Main Content Area */}
       <div className="file-content-area">
         {activeTab ? (
-          activeTab.type === 'diff' ? (
+          isSelectMode ? (
+            <div style={{ flex: 1, height: '100%', minHeight: '420px', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+              <div
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                onKeyDown={(e) => {
+                  e.preventDefault();
+                  return false;
+                }}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  backgroundColor: '#0b1324',
+                  color: '#e2e8f0',
+                  fontFamily: 'Fira Code, monospace',
+                  fontSize: '14px',
+                  lineHeight: '1.5',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  padding: '14px 14px 60px 14px',
+                  overflowY: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  WebkitUserSelect: 'text',
+                  userSelect: 'text',
+                  cursor: 'text',
+                  outline: 'none',
+                }}
+              >
+                {activeTab.content}
+              </div>
+            </div>
+          ) : activeTab.type === 'diff' ? (
             <div style={{ flex: 1, height: '100%', minHeight: '420px', width: '100%', position: 'relative' }}>
               <DiffEditor
                 height="100%"
@@ -513,6 +605,7 @@ export default function FileExplorer({
                 options={{
                   renderSideBySide: !splitMode,
                   readOnly: true,
+                  contextmenu: false,
                   automaticLayout: true,
                   fontSize: 13,
                   wordWrap: 'on',
@@ -538,6 +631,7 @@ export default function FileExplorer({
                 }}
                 options={{
                   minimap: { enabled: !splitMode },
+                  contextmenu: false,
                   wordWrap: 'on',
                   automaticLayout: true,
                   fontSize: 13,

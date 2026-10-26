@@ -378,10 +378,11 @@ body {
 .file-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   padding: 8px 12px;
   background: rgba(28, 48, 92, 0.5);
   border-bottom: 1px solid #1c305c;
-  gap: 12px;
+  gap: 6px;
 }
 
 .file-path {
@@ -391,6 +392,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 120px;
 }
 
 .file-content-area {
