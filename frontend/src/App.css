@@ -833,6 +833,24 @@ body {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.fleet-delete-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #64748b;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fleet-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+
 .fleet-card-meta {
   display: flex;
   align-items: center;

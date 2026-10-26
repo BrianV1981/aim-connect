@@ -45,6 +45,7 @@ function App() {
   });
   const prevStatusRef = useRef({});
   const [activeSession, setActiveSession] = useState('');
+  const [sessionToDelete, setSessionToDelete] = useState('');
   const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
   const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -358,32 +359,38 @@ function App() {
     } catch (e) { console.error(e); }
   };
 
-  const killSession = async () => {
-    if (!activeSession) return;
+  const killSession = async (targetName) => {
+    const target = typeof targetName === 'string' && targetName ? targetName : activeSession;
+    if (!target) return;
+    setSessionToDelete(target);
     setIsDeleteSessionModalOpen(true);
   };
 
   const confirmKillSession = async (sessionToKill) => {
     setIsDeleteSessionModalOpen(false);
+    setSessionToDelete('');
+    if (!sessionToKill) return;
     try {
-      // Find another session to switch to FIRST to prevent PTY crash
       const res = await fetch('/api/sessions');
       const data = await res.json();
       const otherSessions = (data.sessions || []).filter(s => s !== sessionToKill);
       
-      if (otherSessions.length > 0) {
-        const nextSession = otherSessions[0];
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({ type: 'switch_session', session: nextSession }));
+      // Only switch activeSession if we are killing the currently attached session
+      if (sessionToKill === activeSession) {
+        if (otherSessions.length > 0) {
+          const nextSession = otherSessions[0];
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'switch_session', session: nextSession }));
+          }
+          setActiveSession(nextSession);
+        } else {
+          setActiveSession('');
         }
-        setActiveSession(nextSession);
-      } else {
-        setActiveSession('');
       }
       
       // Give tmux a millisecond to switch clients, then kill the original session and its workspace
       setTimeout(async () => {
-        await fetch(`/api/sessions/${sessionToKill}?delete_workspace=false`, { method: 'DELETE' });
+        await fetch(`/api/sessions/${encodeURIComponent(sessionToKill)}?delete_workspace=false`, { method: 'DELETE' });
         const finalRes = await fetch('/api/sessions');
         const finalData = await finalRes.json();
         setSessions(finalData.sessions || []);
@@ -1209,24 +1216,18 @@ function App() {
           )}
         </button>
         <h1>aim-connect</h1>
-        {sessions.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <select 
-              className="session-select" 
-              value={activeSession} 
-              onChange={handleSessionSwitch}
-            >
-              <option value="" disabled>-- Select Session --</option>
-              {sessions.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <button className="macro-btn" onClick={createSession}>+</button>
-            <button className="macro-btn" onClick={killSession}>🗑️</button>
-            <button className="macro-btn" onClick={() => setIsIntegrationsModalOpen(true)} title="Integrations Vault">🔌</button>
-          </div>
+        {activeSession && (
+          <span
+            className="fleet-branch-badge"
+            style={{ color: '#e2e8f0', border: '1px solid #2a4a7f', padding: '3px 8px', fontSize: '11px' }}
+            title="Active tmux session"
+          >
+            ⚡ {activeSession}
+          </span>
         )}
-        {sessions.length === 0 && (
-          <button className="macro-btn" onClick={createSession}>+ New Session</button>
-        )}
+        <button className="macro-btn" onClick={() => setIsIntegrationsModalOpen(true)} title="Integrations Vault">
+          🔌
+        </button>
         <button
           className={`macro-btn ${showFiles ? 'action' : ''}`}
           onClick={() => {
@@ -1317,6 +1318,7 @@ function App() {
           unreadSessions={unreadSessions}
           onSelectSession={switchToSession}
           onCreateSession={createSession}
+          onKillSession={killSession}
           onSendSessionCommand={sendSessionCommand}
         />
 
@@ -1375,12 +1377,12 @@ function App() {
               </p>
               <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '20px 24px', borderRadius: '12px', border: '1px solid #1e293b', textAlign: 'left' }}>
                 <p style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '12px', color: '#cbd5e1' }}>
-                  <span style={{ fontSize: '20px' }}>👇</span> 
-                  <span>Select an existing session from the <strong>dropdown menu</strong> above.</span>
+                  <span style={{ fontSize: '20px' }}>🧭</span> 
+                  <span>Select an existing session from the <strong>Fleet Sidebar</strong> (or press <strong>⌘K</strong>).</span>
                 </p>
                 <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px', color: '#cbd5e1' }}>
                   <span style={{ fontSize: '20px' }}>➕</span> 
-                  <span>Tap the <strong>+</strong> icon to spawn a brand new isolated workspace.</span>
+                  <span>Tap <strong>+ New</strong> in the Fleet Sidebar to spawn a brand new isolated workspace.</span>
                 </p>
               </div>
               <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: '1px solid #1e293b', width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1566,9 +1568,12 @@ function App() {
 
       <DeleteSessionModal 
         isOpen={isDeleteSessionModalOpen} 
-        onClose={() => setIsDeleteSessionModalOpen(false)} 
+        onClose={() => {
+          setIsDeleteSessionModalOpen(false);
+          setSessionToDelete('');
+        }} 
         onConfirm={confirmKillSession}
-        sessionName={activeSession}
+        sessionName={sessionToDelete || activeSession}
       />
       
       <IntegrationsModal

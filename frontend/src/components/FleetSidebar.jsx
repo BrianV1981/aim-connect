@@ -25,6 +25,7 @@ export default function FleetSidebar({
   unreadSessions = [],
   onSelectSession,
   onCreateSession,
+  onKillSession,
   onSendSessionCommand,
 }) {
   const [filterText, setFilterText] = useState('');
@@ -227,9 +228,23 @@ export default function FleetSidebar({
                       </span>
                     )}
                   </div>
-                  <span className={`fleet-vessel-badge vessel-${item.vessel || 'shell'}`}>
-                    {vesselCode}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                    <span className={`fleet-vessel-badge vessel-${item.vessel || 'shell'}`}>
+                      {vesselCode}
+                    </span>
+                    <button
+                      type="button"
+                      className="fleet-delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onKillSession?.(item.session_name);
+                      }}
+                      title={`Terminate session ${item.session_name}`}
+                      aria-label={`Terminate session ${item.session_name}`}
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
 
                 {(item.branch || item.pane_count > 1) && (
