@@ -28,6 +28,7 @@ export default function CommandPalette({
   onToggleFiles,
   onToggleFleetSidebar,
   onOpenTokenGrabber,
+  onOpenForensics,
   onEnterScrollMode,
   onOpenSearch,
   onToggleKeyboard,
@@ -130,6 +131,15 @@ export default function CommandPalette({
       keywords: 'token url path ip sha grabber copy extract scrollback',
       badge: 'Grabber',
       action: () => onOpenTokenGrabber?.(),
+    });
+
+    items.push({
+      id: 'joshua:forensics',
+      category: 'JOSHUA ACTIONS',
+      label: '🔬 Open Forensic Tool Inspector, SQLite FTS5 Search & Swarm Feed',
+      keywords: 'forensics tool call fts5 search lancedb swarm aim-communicate',
+      badge: 'Forensics',
+      action: () => onOpenForensics?.(),
     });
 
     items.push({

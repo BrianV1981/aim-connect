@@ -297,6 +297,7 @@ from routes_fleet import router as fleet_router
 from routes_webauthn import router as webauthn_router
 from ws_handler import router as ws_router
 from routes_api import router as api_router
+from routes_forensics import router as forensics_router
 
 app.include_router(auth_router)
 app.include_router(sessions_router)
@@ -306,6 +307,7 @@ app.include_router(fleet_router)
 app.include_router(webauthn_router)
 app.include_router(ws_router)
 app.include_router(api_router)
+app.include_router(forensics_router)
 
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 

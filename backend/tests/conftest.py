@@ -115,6 +115,7 @@ def _bootstrap_app():
             "routes_agents",
             "routes_fleet",
             "routes_webauthn",
+            "routes_forensics",
         ]:
             if mod_name in sys.modules:
                 importlib.reload(sys.modules[mod_name])

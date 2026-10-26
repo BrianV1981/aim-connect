@@ -16,6 +16,7 @@ import FleetSidebar from './components/FleetSidebar';
 import CommandPalette from './components/CommandPalette';
 import TokenGrabberModal from './components/TokenGrabberModal';
 import FileExplorer from './components/FileExplorer';
+import ForensicsModal from './components/ForensicsModal';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
 
@@ -48,6 +49,7 @@ function App() {
   const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showTokenGrabber, setShowTokenGrabber] = useState(false);
+  const [showForensics, setShowForensics] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [splitMode, setSplitMode] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
@@ -1251,6 +1253,13 @@ function App() {
         >
           🔗 Grab
         </button>
+        <button
+          className="macro-btn"
+          onClick={() => setShowForensics(true)}
+          title="Open On-Demand Forensic Tool Inspector, SQLite FTS5 Search & Swarm Feed"
+        >
+          🔬 Forensics
+        </button>
             <button 
               className="macro-btn" 
               onClick={enterNativeScrollMode}
@@ -1583,6 +1592,7 @@ function App() {
         onToggleFiles={() => setShowFiles((prev) => !prev)}
         onToggleFleetSidebar={toggleFleetSidebar}
         onOpenTokenGrabber={() => setShowTokenGrabber(true)}
+        onOpenForensics={() => setShowForensics(true)}
         onEnterScrollMode={enterNativeScrollMode}
         onOpenSearch={() => setShowSearch(true)}
         onToggleKeyboard={() => setShowKeyboard((prev) => !prev)}
@@ -1606,6 +1616,14 @@ function App() {
         isOpen={showTokenGrabber}
         onClose={() => setShowTokenGrabber(false)}
         activeSession={activeSession}
+      />
+
+      <ForensicsModal
+        isOpen={showForensics}
+        onClose={() => setShowForensics(false)}
+        activeSession={activeSession}
+        sessions={sessions}
+        onSendSessionCommand={sendSessionCommand}
       />
 
     </div>
