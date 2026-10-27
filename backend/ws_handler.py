@@ -324,6 +324,12 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 current_harness = remainder
         
         user_root_dir = f"{AGENT_WORKSPACES_DIR}/agent-{base_agent_name}"
+        if not os.path.exists(user_root_dir):
+            logger.error(f"User root {user_root_dir} does not exist. Rejecting connection.")
+            await websocket.send_text("**System Error:** Your Sovereign Workspace has not been provisioned by the Administrator.")
+            await websocket.close()
+            return
+
         shared_data_dir = os.path.join(user_root_dir, "shared_database")
         os.makedirs(shared_data_dir, exist_ok=True)
         
@@ -343,13 +349,6 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             # ── UNIFIED WORKSPACE (1-per-customer) ───────────────────────
             # No more harness-{harness} subdirs. workspace_dir IS user_root_dir.
             workspace_dir = user_root_dir
-            # The workspace must be pre-built by scaffold_customer_workspace.py
-            if not os.path.exists(user_root_dir):
-                logger.error(f"User root {user_root_dir} does not exist. Rejecting connection.")
-                await websocket.send_text("**System Error:** Your Sovereign Workspace has not been provisioned by the Administrator.")
-                await websocket.close()
-                return
-            
             agent_brain_dir = os.path.join(workspace_dir, "brain")
             agent_conv_dir = os.path.join(workspace_dir, "conversations")
 
