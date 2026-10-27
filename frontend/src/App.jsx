@@ -648,8 +648,15 @@ function App() {
     let pingInterval;
 
     socket.onopen = () => {
-      // Send the API token to WS, not the original PIN
-      socket.send(JSON.stringify({ type: 'auth', token: apiTokenRef.current, harness: harnessRef.current }));
+      // Send the API token to WS, not the original PIN, plus current activeSession on reconnect (#217)
+      socket.send(
+        JSON.stringify({
+          type: 'auth',
+          token: apiTokenRef.current,
+          harness: harnessRef.current,
+          session: activeSessionRef.current || undefined,
+        })
+      );
     };
 
     socket.onmessage = (event) => {
@@ -662,6 +669,14 @@ function App() {
             reconnectAttempts.current = 0;
             setConnState('connected');
             setIsAuthenticated(true);
+            if (activeSessionRef.current) {
+              socket.send(
+                JSON.stringify({
+                  type: 'switch_session',
+                  session: activeSessionRef.current,
+                })
+              );
+            }
             
             // Keep-alive ping every 10s to prevent aggressive proxy timeouts
             pingInterval = setInterval(() => {

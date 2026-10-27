@@ -198,6 +198,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     # Step 1: Enforce authentication
     authenticated = False
     target_session_override = None
+    requested_admin_session = None
     client_gemini_api_key = None
     client_gemini_model = None
     client_grok_thinking = None
@@ -235,11 +236,13 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 else:
                     authenticated = True
                     auth_attempts[client_ip] = (0, None)
+                    req_sess = (data.get("session") or "").strip()
+                    if req_sess and re.match(r"^[a-zA-Z0-9_.-]+$", req_sess):
+                        requested_admin_session = req_sess
             elif "." in token:
                 import base64
                 import hmac
                 import hashlib
-                import re
                 parts = token.split(".")
                 if len(parts) == 2:
                     payload_b64, signature_b64 = parts
@@ -807,13 +810,14 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     # ADMIN CONNECTIONS (RAW PTY & TMUX MODE)
     # =====================================================================
     # Resolve target_session BEFORE forking so both parent and child processes know the session name
-    target_session = target_session_override
+    target_session = target_session_override or requested_admin_session
     if not target_session:
-        # Find a tmux session that isn't one of our internal aim-* services
+        # Find a tmux session that isn't aim-connect-workspace or a tenant agent-* bwrap sandbox
         result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
         if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                if line and not line.startswith("aim-"):
+            sessions_found = [s.strip() for s in result.stdout.splitlines() if s.strip()]
+            for line in sessions_found:
+                if line != "aim-connect-workspace" and not line.startswith("agent-"):
                     target_session = line
                     break
         if not target_session:
@@ -874,7 +878,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 break
 
     async def write_to_pty():
-        nonlocal last_activity
+        nonlocal last_activity, target_session
         while True:
             try:
                 message = await websocket.receive_text()
@@ -897,7 +901,6 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         if text and paste_session:
                             asyncio.create_task(execute_bracketed_paste(paste_session, text))
                     elif data.get("type") == "submit":
-                        import asyncio
                         text = data.get("payload", "")
                         logger.info(f"Executing aim-communicate for {target_session} with {text}")
                         async def execute_aim_communicate(session_name, msg_text):

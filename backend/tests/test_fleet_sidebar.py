@@ -214,3 +214,25 @@ def test_execute_bracketed_paste_no_enter_sent():
         ]
         # Must NEVER send Enter
         assert not any("Enter" in c for c in spawned_cmds)
+
+
+def test_ws_handler_no_shadowed_imports_in_functions():
+    """Ensure asyncio, re, os, json, subprocess are never shadowed by inner imports in ws_handler (#217)."""
+    import ast
+    import os
+    import ws_handler
+
+    with open(ws_handler.__file__, "r", encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+
+    top_level_modules = {"asyncio", "re", "os", "json", "subprocess"}
+    shadowed = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in ast.walk(node):
+                if isinstance(child, ast.Import):
+                    for alias in child.names:
+                        bound_name = alias.asname or alias.name
+                        if bound_name in top_level_modules:
+                            shadowed.append((node.name, bound_name, child.lineno))
+    assert shadowed == [], f"Shadowed top-level imports inside functions: {shadowed}"
