@@ -7,7 +7,14 @@ import sqlite3
 import subprocess
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
-from main import AIM_CONNECT_ROOT, HOME_DIR, require_admin, verify_token
+from main import (
+    AIM_CONNECT_ROOT,
+    HOME_DIR,
+    require_admin,
+    require_admin_or_loopback,
+    verify_token,
+    verify_token_or_loopback,
+)
 from routes_files import _find_repo_roots, _resolve_session_cwd, secure_path
 from routes_sessions import ANSI_ESCAPE_RE
 
@@ -407,7 +414,7 @@ def search_brain_wiki(session: str = "", q: str = "", path: str = "", limit: int
     }
 
 
-@router.get("/api/swarm/activity", dependencies=[Depends(verify_token), Depends(require_admin)])
+@router.get("/api/swarm/activity", dependencies=[Depends(verify_token_or_loopback), Depends(require_admin_or_loopback)])
 def get_swarm_activity():
     """Return Hub-and-Spoke aim-communicate chalkboard dispatches and recent inter-agent reports (#212)."""
     candidate_files: list[str] = []

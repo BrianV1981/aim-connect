@@ -289,6 +289,37 @@ def require_admin(x_api_token: str = Header(None)):
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
+def is_direct_local_loopback(request: Request) -> bool:
+    """Return True only for direct unproxied loopback requests from local sister services (#221)."""
+    if not request or not request.client:
+        return False
+    if request.client.host not in ("127.0.0.1", "::1"):
+        return False
+    # Reject any request forwarded through Cloudflare or a reverse proxy
+    if (
+        request.headers.get("cf-connecting-ip")
+        or request.headers.get("cf-ray")
+        or request.headers.get("x-forwarded-for")
+    ):
+        return False
+    host_hdr = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    return host_hdr in ("127.0.0.1", "localhost")
+
+
+def verify_token_or_loopback(request: Request, x_api_token: str = Header(None)):
+    """Allow valid x-api-token OR direct local loopback read access (#221)."""
+    if is_direct_local_loopback(request):
+        return
+    verify_token(x_api_token)
+
+
+def require_admin_or_loopback(request: Request, x_api_token: str = Header(None)):
+    """Allow admin x-api-token OR direct local loopback read access (#221)."""
+    if is_direct_local_loopback(request):
+        return
+    require_admin(x_api_token)
+
+
 from routes_auth import router as auth_router
 from routes_sessions import router as sessions_router
 from routes_files import router as files_router
