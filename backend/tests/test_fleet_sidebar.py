@@ -367,3 +367,46 @@ def test_is_direct_local_loopback_security_guard():
     assert is_direct_local_loopback(make_req("192.168.1.50", {"host": "localhost:8000"})) is False
 
 
+def test_extract_spoken_summary_and_telemetry_integration(client, valid_token):
+    """Verify 🔊 Spoken Summary extraction from pane output, multiline wraps, template filtering, and scrollback endpoint (#222)."""
+    pane_with_summary = (
+        "Updated AGENTS.md with the Spoken Summary rule:\n"
+        "- Format: `🔊 <1-2 sentence natural spoken summary>`\n"
+        "\n"
+        "🔊 I have updated the agent rules to include a clean spoken summary line\n"
+        "at the end of every reply. Would you like me to wire the browser UI?\n"
+        "────────────────────────────────────────\n"
+        "❯ \n"
+        "────────────────────────────────────────\n"
+        "? for shortcuts                                         Gemini 4 Argon | 140.2k in | 0.8k out\n"
+    )
+    summary = routes_sessions.extract_spoken_summary(pane_with_summary)
+    assert summary == (
+        "I have updated the agent rules to include a clean spoken summary line "
+        "at the end of every reply. Would you like me to wire the browser UI?"
+    )
+
+    telemetry = routes_sessions.parse_pane_telemetry(
+        pane_with_summary, command="agy.real", session_name="aim-connect"
+    )
+    assert telemetry["spoken_summary"] == summary
+
+    # Without a 🔊 line, default extraction returns empty string, while fallback=True returns latest clean content line
+    pane_without_tag = (
+        "All 138 backend tests passed in 5.4s.\n"
+        "────────────────────────────────────────\n"
+        "❯ \n"
+        "? for shortcuts                                         Gemini 4 Argon | 140.2k in | 0.8k out\n"
+    )
+    assert routes_sessions.extract_spoken_summary(pane_without_tag, fallback=False) == ""
+    assert routes_sessions.extract_spoken_summary(pane_without_tag, fallback=True) == "All 138 backend tests passed in 5.4s."
+
+    mock_res = MagicMock(returncode=0, stdout=pane_with_summary, stderr="")
+    with patch("routes_sessions.subprocess.run", return_value=mock_res):
+        resp = client.get("/api/scrollback/aim-connect?lines=200", headers={"x-api-token": valid_token})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["spoken_summary"] == summary
+
+
+

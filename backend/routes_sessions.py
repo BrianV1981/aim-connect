@@ -77,6 +77,82 @@ def compute_30pct_rule_tier(context_pct: float) -> str:
     return "normal"
 
 
+BORDER_AND_PROMPT_CHARS = "─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬>❯ "
+SPOKEN_PREFIX_RE = re.compile(r"^🔊\s*(?:voice\s*:\s*|:\s*)?", re.IGNORECASE)
+
+
+def _is_tui_chrome_line(line: str) -> bool:
+    """Return True if a terminal line is a TUI border, prompt, or status bar footer."""
+    stripped = (line or "").strip(BORDER_AND_PROMPT_CHARS)
+    if not stripped or len(stripped) <= 2:
+        return True
+    low = stripped.lower()
+    if (
+        "? for shortcuts" in low
+        or "ctrl+p commands" in low
+        or AGY_TOKENS_RE.search(stripped)
+        or SLASH_TOKENS_RE.search(stripped)
+        or BRAILLE_SPINNER_RE.search(stripped)
+    ):
+        return True
+    return False
+
+
+def _clean_spoken_text(text: str) -> str:
+    """Strip markdown tokens and collapse whitespace for natural TTS playback."""
+    cleaned = re.sub(r"[`*_~]+", "", text or "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def extract_spoken_summary(raw_text: str, fallback: bool = False) -> str:
+    """Extract the most recent `🔊 <spoken summary>` block from terminal output (#222)."""
+    clean_text = ANSI_ESCAPE_RE.sub("", raw_text or "")
+    raw_lines = clean_text.splitlines()
+
+    for idx in range(len(raw_lines) - 1, -1, -1):
+        line_body = raw_lines[idx].strip("│┃ ")
+        if not line_body.startswith("🔊"):
+            continue
+        low_body = line_body.lower()
+        if (
+            "<1-2 sentence" in low_body
+            or "<spoken summary>" in low_body
+            or low_body.startswith("🔊 spoken summary")
+            or low_body.startswith("🔊 auto-playback")
+            or low_body in ("🔊", "🔊 speak")
+        ):
+            continue
+
+        first_part = SPOKEN_PREFIX_RE.sub("", line_body).strip()
+        parts = [first_part] if first_part else []
+
+        for cont_idx in range(idx + 1, len(raw_lines)):
+            cont_raw = raw_lines[cont_idx].strip("│┃ ")
+            if not cont_raw:
+                break
+            if _is_tui_chrome_line(cont_raw):
+                break
+            if cont_raw.startswith(("🔊", "●", "•", "- ", "* ", "#")):
+                break
+            parts.append(cont_raw)
+
+        candidate = _clean_spoken_text(" ".join(parts))
+        if candidate:
+            return candidate
+
+    if fallback:
+        for raw_ln in reversed(raw_lines):
+            if _is_tui_chrome_line(raw_ln):
+                continue
+            cleaned = _clean_spoken_text(raw_ln.strip(BORDER_AND_PROMPT_CHARS))
+            if cleaned:
+                return cleaned[:240]
+
+    return ""
+
+
+
 def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = "") -> dict:
     """Parse captured tmux pane text and command into vessel, status, and 30%-Rule telemetry."""
     clean_text = ANSI_ESCAPE_RE.sub("", pane_text or "")
@@ -143,6 +219,8 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
             preview = stripped_borders[:100]
             break
 
+    spoken_summary = extract_spoken_summary(clean_text, fallback=False)
+
     return {
         "vessel": vessel,
         "status": status,
@@ -151,6 +229,7 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
         "context_pct": context_pct,
         "tier": tier,
         "preview": preview,
+        "spoken_summary": spoken_summary,
     }
 
 
@@ -430,6 +509,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 "context_pct": 0.0,
                 "tier": "normal",
                 "preview": "",
+                "spoken_summary": "",
                 "pane_count": 0,
                 "panes": [],
             })
@@ -464,6 +544,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "context_pct": primary["context_pct"],
             "tier": primary["tier"],
             "preview": primary["preview"],
+            "spoken_summary": primary.get("spoken_summary", ""),
             "attached": primary["attached"],
             "pane_count": len(sess_panes),
             "panes": sess_panes,
@@ -770,6 +851,7 @@ def get_scrollback(session_name: str, lines: int = 2000):
         return {
             "scrollback": result.stdout,
             "tokens": extract_scrollback_tokens(result.stdout),
+            "spoken_summary": extract_spoken_summary(result.stdout, fallback=True),
         }
     except Exception as e:
         return {"error": str(e)}
