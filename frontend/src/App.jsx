@@ -38,6 +38,44 @@ function App() {
   const [sessions, setSessions] = useState([]);
   const [fleet, setFleet] = useState([]);
   const [unreadSessions, setUnreadSessions] = useState([]);
+  const [waitingSessions, setWaitingSessions] = useState([]);
+  const [alertChime, setAlertChime] = useState(() => {
+    const val = localStorage.getItem('aim-alert-chime');
+    return val !== null ? JSON.parse(val) : true;
+  });
+  const alertChimeRef = useRef(alertChime);
+  useEffect(() => {
+    alertChimeRef.current = alertChime;
+  }, [alertChime]);
+
+  const playAlertChime = (kind = 'waiting') => {
+    if (!alertChimeRef.current) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const notes = kind === 'waiting' ? [587.33, 880.0] : [523.25, 659.25];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+        gain.gain.setValueAtTime(0.0001, now + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.14, now + idx * 0.12 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.12 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.12);
+        osc.stop(now + idx * 0.12 + 0.24);
+      });
+      setTimeout(() => {
+        try { ctx.close(); } catch (e) {}
+      }, 650);
+    } catch (e) {
+      // Ignore audio context autoplay restrictions
+    }
+  };
   const [showFleetSidebar, setShowFleetSidebar] = useState(() => {
     const saved = localStorage.getItem('aim-show-fleet');
     if (saved !== null) return JSON.parse(saved);
@@ -307,15 +345,29 @@ function App() {
         }
         if (Array.isArray(data.fleet)) {
           setFleet(data.fleet);
-          // Detect THINKING -> IDLE transitions on background sessions for unread badges
+          // Detect THINKING -> IDLE transitions on background sessions & WAITING permission alerts (#220)
           const newlyCompleted = [];
+          let triggeredWaiting = false;
+          const currWaiting = [];
           data.fleet.forEach((item) => {
             const prevSt = prevStatusRef.current[item.session_name];
+            if (item.status === 'WAITING') {
+              currWaiting.push(item.session_name);
+              if (prevSt && prevSt !== 'WAITING') {
+                triggeredWaiting = true;
+              }
+            }
             if (prevSt === 'THINKING' && item.status === 'IDLE' && item.session_name !== activeSession) {
               newlyCompleted.push(item.session_name);
             }
             prevStatusRef.current[item.session_name] = item.status;
           });
+          setWaitingSessions(currWaiting);
+          if (triggeredWaiting) {
+            playAlertChime('waiting');
+          } else if (newlyCompleted.length > 0) {
+            playAlertChime('done');
+          }
           if (newlyCompleted.length > 0) {
             setUnreadSessions((prev) => Array.from(new Set([...prev, ...newlyCompleted])));
           }
@@ -1304,6 +1356,15 @@ function App() {
             ⚡ {activeSession}
           </span>
         )}
+        {waitingSessions.length > 0 && (
+          <button
+            className="macro-btn header-waiting-alert-btn"
+            onClick={() => switchToSession(waitingSessions[0])}
+            title={`Agent waiting for permission or input: ${waitingSessions.join(', ')}`}
+          >
+            ✋ {waitingSessions.length} Waiting
+          </button>
+        )}
         <button className="macro-btn" onClick={() => setIsIntegrationsModalOpen(true)} title="Integrations Vault">
           🔌
         </button>
@@ -1641,6 +1702,7 @@ function App() {
           keyboardMode={keyboardMode} setKeyboardMode={setKeyboardMode}
           theme={theme} setTheme={setTheme}
           keyboardFeedback={keyboardFeedback} setKeyboardFeedback={setKeyboardFeedback}
+          alertChime={alertChime} setAlertChime={setAlertChime}
           termFontSize={termFontSize} setTermFontSize={setTermFontSize}
           termTheme={termTheme} setTermTheme={setTermTheme}
           voiceContinuous={voiceContinuous} setVoiceContinuous={setVoiceContinuous}

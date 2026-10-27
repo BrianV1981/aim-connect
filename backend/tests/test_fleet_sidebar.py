@@ -310,3 +310,30 @@ def test_resolve_agy_brain_tokens_and_telemetry_enrichment(tmp_path):
         assert fleet[0]["tokens_limit"] == 1_000_000
         assert fleet[0]["context_pct"] == 24.4
         assert fleet[0]["tier"] == "warning"
+
+
+def test_parse_pane_telemetry_waiting_and_historical_idle_detection():
+    """Detect WAITING prompts on footer lines and avoid false THINKING on historical lines (#220)."""
+    waiting_pane = (
+        "● Run command: rm -rf tmp_build\n"
+        "Do you want to proceed? [y/N]\n"
+        "1. Allow once\n"
+        "2. Allow always\n"
+    )
+    res_wait = routes_sessions.parse_pane_telemetry(waiting_pane, command="agy.real", session_name="aim-connect")
+    assert res_wait["status"] == "WAITING"
+
+    # Historical "Running command" 6 lines up should NOT trigger THINKING when footer is idle prompt
+    idle_with_history = (
+        "● Running command pytest -q\n"
+        "136 passed in 1.12s\n"
+        "All tests succeeded.\n"
+        "Ready for next instruction.\n"
+        "────────────────────────────────────────\n"
+        "❯ \n"
+        "────────────────────────────────────────\n"
+        "? for shortcuts                                         Gemini 4 Argon | 120.0k in | 1.1k out\n"
+    )
+    res_idle = routes_sessions.parse_pane_telemetry(idle_with_history, command="agy.real", session_name="aim-connect")
+    assert res_idle["status"] == "IDLE"
+

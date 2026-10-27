@@ -23,6 +23,10 @@ THINKING_TEXT_RE = re.compile(
     r"(?:Working\.{2,}|Thinking\.{2,}|Running command|Generating|Executing|esc to cancel|ctrl\+c to interrupt)",
     re.IGNORECASE,
 )
+WAITING_TEXT_RE = re.compile(
+    r"(?:\[[yY]/[nN]\]|\(y/n\)|\(yes/no\)|Allow once|Allow always|Do you want to proceed|Select an option|Enter to select|Approve\?|Proceed\?)",
+    re.IGNORECASE,
+)
 ERROR_TEXT_RE = re.compile(
     r"(?:Traceback \(most recent call last\)|\[ERROR\]|panic:|Auth Error|Connection refused)",
     re.IGNORECASE,
@@ -94,8 +98,11 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
     else:
         vessel = "shell"
 
-    # 2. Detect status (THINKING / ERROR / IDLE)
-    if BRAILLE_SPINNER_RE.search(tail_text) or THINKING_TEXT_RE.search(tail_text):
+    # 2. Detect status (WAITING / THINKING / ERROR / IDLE) on bottom footer lines (#220)
+    footer_text = "\n".join(lines[-4:]) if lines else ""
+    if WAITING_TEXT_RE.search(footer_text):
+        status = "WAITING"
+    elif BRAILLE_SPINNER_RE.search(footer_text) or THINKING_TEXT_RE.search(footer_text):
         status = "THINKING"
     elif ERROR_TEXT_RE.search(tail_text):
         status = "ERROR"
@@ -394,8 +401,13 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 primary = p
                 break
         any_thinking = any(p["status"] == "THINKING" for p in sess_panes)
+        any_waiting = any(p["status"] == "WAITING" for p in sess_panes)
         any_error = any(p["status"] == "ERROR" for p in sess_panes)
-        agg_status = "THINKING" if any_thinking else ("ERROR" if any_error else primary["status"])
+        agg_status = (
+            "THINKING"
+            if any_thinking
+            else ("WAITING" if any_waiting else ("ERROR" if any_error else primary["status"]))
+        )
 
         fleet.append({
             "session_name": sess_name,

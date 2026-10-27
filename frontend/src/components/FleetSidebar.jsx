@@ -65,20 +65,23 @@ export default function FleetSidebar({
 
   const counts = useMemo(() => {
     let thinking = 0;
+    let waiting = 0;
     let critical = 0;
     let warning = 0;
     items.forEach((it) => {
       if (it.status === 'THINKING') thinking += 1;
+      if (it.status === 'WAITING') waiting += 1;
       if (it.tier === 'critical') critical += 1;
       else if (it.tier === 'warning') warning += 1;
     });
-    return { total: items.length, thinking, critical, warning };
+    return { total: items.length, thinking, waiting, critical, warning };
   }, [items]);
 
   const filteredItems = useMemo(() => {
     const q = filterText.trim().toLowerCase();
     return items.filter((it) => {
-      if (statusFilter === 'thinking' && it.status !== 'THINKING') return false;
+      if (statusFilter === 'thinking' && it.status !== 'THINKING' && it.status !== 'WAITING') return false;
+      if (statusFilter === 'waiting' && it.status !== 'WAITING') return false;
       if (statusFilter === 'high_ctx' && it.tier === 'normal') return false;
       if (statusFilter === 'worktree' && !it.is_worktree) return false;
       if (!q) return true;
@@ -124,6 +127,11 @@ export default function FleetSidebar({
           {counts.thinking > 0 && (
             <span className="fleet-thinking-pill" title="Sessions actively executing">
               ⚡ {counts.thinking}
+            </span>
+          )}
+          {counts.waiting > 0 && (
+            <span className="fleet-waiting-pill" title="Sessions waiting for user approval or input">
+              ✋ {counts.waiting}
             </span>
           )}
           {counts.critical > 0 && (
@@ -183,6 +191,15 @@ export default function FleetSidebar({
           >
             ⚡ Busy ({counts.thinking})
           </button>
+          {counts.waiting > 0 && (
+            <button
+              type="button"
+              className={`fleet-filter-pill ${statusFilter === 'waiting' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('waiting')}
+            >
+              ✋ Wait ({counts.waiting})
+            </button>
+          )}
           <button
             type="button"
             className={`fleet-filter-pill ${statusFilter === 'high_ctx' ? 'active' : ''}`}
@@ -234,6 +251,11 @@ export default function FleetSidebar({
                     <span className="fleet-session-name" title={item.session_name}>
                       {item.session_name}
                     </span>
+                    {item.status === 'WAITING' && (
+                      <span className="fleet-waiting-badge" title="Agent paused waiting for permission or answer">
+                        ✋ WAIT
+                      </span>
+                    )}
                     {isUnread && (
                       <span className="fleet-unread-badge" title="Completed turn while in background">
                         NEW

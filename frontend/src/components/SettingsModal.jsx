@@ -7,6 +7,7 @@ export default function SettingsModal({
   keyboardMode, setKeyboardMode,
   theme, setTheme,
   keyboardFeedback, setKeyboardFeedback,
+  alertChime, setAlertChime,
   termFontSize, setTermFontSize,
   termTheme, setTermTheme,
   voiceContinuous, setVoiceContinuous,
@@ -27,6 +28,7 @@ export default function SettingsModal({
   const [localKeyboardMode, setLocalKeyboardMode] = useState(keyboardMode);
   const [localTheme, setLocalTheme] = useState(theme);
   const [localKeyboardFeedback, setLocalKeyboardFeedback] = useState(keyboardFeedback);
+  const [localAlertChime, setLocalAlertChime] = useState(alertChime ?? true);
   const [localTermFontSize, setLocalTermFontSize] = useState(termFontSize);
   const [localTermTheme, setLocalTermTheme] = useState(termTheme);
   const [localVoiceContinuous, setLocalVoiceContinuous] = useState(voiceContinuous);
@@ -45,6 +47,10 @@ export default function SettingsModal({
     setTheme(localTheme);
     setKeyboardFeedback(localKeyboardFeedback);
     localStorage.setItem('aim-kb-feedback', localKeyboardFeedback);
+    if (setAlertChime) {
+      setAlertChime(localAlertChime);
+      localStorage.setItem('aim-alert-chime', JSON.stringify(localAlertChime));
+    }
     setTermFontSize(localTermFontSize);
     localStorage.setItem('aim-term-fontsize', localTermFontSize);
     setTermTheme(localTermTheme);
@@ -119,6 +125,15 @@ export default function SettingsModal({
             style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
           />
           <label style={{color: '#e2e8f0', margin: 0}}>Auto-Capitalization</label>
+        </div>
+        <div style={{marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+          <input 
+            type="checkbox" 
+            checked={localAlertChime} 
+            onChange={e => setLocalAlertChime(e.target.checked)}
+            style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+          />
+          <label style={{color: '#e2e8f0', margin: 0}}>🔔 Agent Alert Chime (Needs Input / Turn Complete)</label>
         </div>
         <div style={{marginBottom: '16px'}}>
           <label style={{display: 'block', marginBottom: '8px', color: '#e2e8f0'}}>Keyboard Layout</label>
