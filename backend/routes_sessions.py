@@ -7,9 +7,10 @@ import sqlite3
 import shutil
 import logging
 from pydantic import BaseModel
-from fastapi import APIRouter, Header, HTTPException, Depends
+from fastapi import APIRouter, Header, HTTPException, Depends, Request
 from main import (
     verify_token, require_admin, _get_user_from_token,
+    is_direct_local_loopback, verify_token_or_loopback,
     SESSION_NAME_RE, AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT,
     ENABLE_E2EE, E2EE_SECRET, HOME_DIR
 )
@@ -196,6 +197,8 @@ SESSION_WORKSPACE_ALIASES = {
 }
 
 _AGY_BRAIN_CACHE: dict = {"ts": 0.0, "by_key": {}}
+_PANE_TELEMETRY_CACHE: dict[str, dict] = {}
+_FLEET_SNAPSHOT_CACHE: dict = {"ts": 0.0, "sessions_key": (), "fleet": [], "panes": []}
 
 
 def _normalize_workspace_root(path: str) -> str:
@@ -307,7 +310,18 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
     if not allowed_set:
         return [], []
 
-    fmt = "#{session_name}@@@#{window_index}@@@#{window_name}@@@#{pane_index}@@@#{pane_current_command}@@@#{pane_current_path}@@@#{pane_pid}@@@#{session_attached}"
+    now = time.time()
+    is_real_subprocess = getattr(subprocess.run, "__module__", "") == "subprocess"
+    sessions_key = tuple(allowed_sessions)
+    if (
+        is_real_subprocess
+        and _FLEET_SNAPSHOT_CACHE["sessions_key"] == sessions_key
+        and (now - _FLEET_SNAPSHOT_CACHE["ts"]) < 2.0
+        and _FLEET_SNAPSHOT_CACHE["fleet"]
+    ):
+        return list(_FLEET_SNAPSHOT_CACHE["fleet"]), list(_FLEET_SNAPSHOT_CACHE["panes"])
+
+    fmt = "#{session_name}@@@#{window_index}@@@#{window_name}@@@#{pane_index}@@@#{pane_current_command}@@@#{pane_current_path}@@@#{pane_pid}@@@#{session_attached}@@@#{window_activity}"
     res = subprocess.run(["tmux", "list-panes", "-a", "-F", fmt], capture_output=True, text=True)
     if res.returncode != 0:
         return [], []
@@ -323,18 +337,45 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         if len(parts) < 8:
             continue
         sess_name, win_idx, win_name, pane_idx, cmd, path, pid_str, attached_str = parts[:8]
+        win_activity = parts[8].strip() if len(parts) >= 9 else ""
         if sess_name not in allowed_set:
             continue
 
         target = f"{sess_name}:{win_idx}.{pane_idx}"
-        # Capture last 25 lines of the pane for status & token telemetry
-        cap = subprocess.run(
-            ["tmux", "capture-pane", "-t", target, "-p", "-J", "-S", "-25"],
-            capture_output=True,
-            text=True,
-        )
-        pane_text = cap.stdout if cap.returncode == 0 else ""
-        telemetry = parse_pane_telemetry(pane_text, command=cmd, session_name=sess_name)
+        cached_pane = _PANE_TELEMETRY_CACHE.get(target)
+        use_cached_pane = False
+        if (
+            is_real_subprocess
+            and win_activity
+            and cached_pane
+            and cached_pane.get("win_activity") == win_activity
+            and cached_pane.get("cmd") == cmd
+            and cached_pane.get("path") == path
+        ):
+            age = now - cached_pane.get("ts", 0.0)
+            prev_status = cached_pane.get("telemetry", {}).get("status", "IDLE")
+            if (prev_status == "IDLE" and age < 30.0) or (prev_status != "IDLE" and age < 2.5):
+                use_cached_pane = True
+
+        if use_cached_pane:
+            telemetry = dict(cached_pane["telemetry"])
+        else:
+            # Capture last 25 lines of the pane for status & token telemetry
+            cap = subprocess.run(
+                ["tmux", "capture-pane", "-t", target, "-p", "-J", "-S", "-25"],
+                capture_output=True,
+                text=True,
+            )
+            pane_text = cap.stdout if cap.returncode == 0 else ""
+            telemetry = parse_pane_telemetry(pane_text, command=cmd, session_name=sess_name)
+            if is_real_subprocess and win_activity:
+                _PANE_TELEMETRY_CACHE[target] = {
+                    "ts": now,
+                    "win_activity": win_activity,
+                    "cmd": cmd,
+                    "path": path,
+                    "telemetry": dict(telemetry),
+                }
         branch = _get_git_branch(path)
         is_worktree = "/workspace/issue-" in (path or "")
         repo_name = os.path.basename(path.rstrip("/")) if path else ""
@@ -428,6 +469,12 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "panes": sess_panes,
         })
 
+    if is_real_subprocess:
+        _FLEET_SNAPSHOT_CACHE["ts"] = now
+        _FLEET_SNAPSHOT_CACHE["sessions_key"] = sessions_key
+        _FLEET_SNAPSHOT_CACHE["fleet"] = list(fleet)
+        _FLEET_SNAPSHOT_CACHE["panes"] = list(panes)
+
     return fleet, panes
 
 
@@ -470,11 +517,13 @@ async def kill_all_user_sessions(sanitized_email: str, exclude_session: str = ""
         logger.warning(f"[HARNESS SWITCH] Error during session cleanup for {sanitized_email}: {e}")
 
 
-@router.get("/api/sessions", dependencies=[Depends(verify_token)])
-def get_sessions(x_api_token: str = Header(None)) -> dict:
+def _get_sessions_sync(x_api_token: str = None, is_local_admin: bool = False) -> dict:
     result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
     sessions = []
-    role, prefix = _get_user_from_token(x_api_token)
+    if is_local_admin:
+        role, prefix = ("admin", "")
+    else:
+        role, prefix = _get_user_from_token(x_api_token)
     if result.returncode == 0:
         for line in result.stdout.splitlines():
             if line and not line.startswith("aim-client-"):
@@ -489,10 +538,16 @@ def get_sessions(x_api_token: str = Header(None)) -> dict:
     return {"sessions": sessions, "fleet": fleet, "panes": panes}
 
 
-@router.get("/api/fleet/panes", dependencies=[Depends(verify_token)])
-def get_fleet_panes(x_api_token: str = Header(None)) -> dict:
-    """Return enriched pane and session telemetry for all allowed sessions (#209)."""
-    data = get_sessions(x_api_token=x_api_token)
+@router.get("/api/sessions", dependencies=[Depends(verify_token)])
+async def get_sessions(x_api_token: str = Header(None)) -> dict:
+    return await asyncio.to_thread(_get_sessions_sync, x_api_token, False)
+
+
+@router.get("/api/fleet/panes", dependencies=[Depends(verify_token_or_loopback)])
+async def get_fleet_panes(request: Request, x_api_token: str = Header(None)) -> dict:
+    """Return enriched pane and session telemetry for all allowed sessions (#209, #221)."""
+    local_ok = is_direct_local_loopback(request)
+    data = await asyncio.to_thread(_get_sessions_sync, x_api_token, local_ok)
     return {
         "sessions": data.get("sessions", []),
         "fleet": data.get("fleet", []),

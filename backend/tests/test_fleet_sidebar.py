@@ -337,3 +337,33 @@ def test_parse_pane_telemetry_waiting_and_historical_idle_detection():
     res_idle = routes_sessions.parse_pane_telemetry(idle_with_history, command="agy.real", session_name="aim-connect")
     assert res_idle["status"] == "IDLE"
 
+
+def test_is_direct_local_loopback_security_guard():
+    """Verify is_direct_local_loopback only allows unproxied 127.0.0.1/::1 with localhost/127.0.0.1 Host (#221)."""
+    from types import SimpleNamespace
+    from main import is_direct_local_loopback
+
+    def make_req(client_host, headers):
+        return SimpleNamespace(client=SimpleNamespace(host=client_host), headers=headers)
+
+    # Direct local loopback allowed
+    assert is_direct_local_loopback(make_req("127.0.0.1", {"host": "127.0.0.1:8000"})) is True
+    assert is_direct_local_loopback(make_req("::1", {"host": "localhost:8000"})) is True
+
+    # Cloudflare tunnel or reverse proxy headers MUST be rejected even from 127.0.0.1
+    assert (
+        is_direct_local_loopback(
+            make_req("127.0.0.1", {"host": "127.0.0.1:8000", "cf-connecting-ip": "203.0.113.5"})
+        )
+        is False
+    )
+    assert (
+        is_direct_local_loopback(
+            make_req("127.0.0.1", {"host": "127.0.0.1:8000", "x-forwarded-for": "203.0.113.5"})
+        )
+        is False
+    )
+    assert is_direct_local_loopback(make_req("127.0.0.1", {"host": "api.leaddeeds.com"})) is False
+    assert is_direct_local_loopback(make_req("192.168.1.50", {"host": "localhost:8000"})) is False
+
+
