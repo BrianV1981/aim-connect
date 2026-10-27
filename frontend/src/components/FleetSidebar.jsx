@@ -2,8 +2,12 @@ import { useMemo, useState } from 'react';
 
 function formatTokens(n) {
   if (!n || n <= 0) return '0';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  if (n >= 1_000_000) {
+    return n % 1_000_000 === 0
+      ? `${n / 1_000_000}M`
+      : `${(n / 1_000_000).toFixed(1)}M`;
+  }
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
   return String(n);
 }
 
@@ -278,13 +282,14 @@ export default function FleetSidebar({
                   <div className="fleet-context-section">
                     <div className="fleet-context-header">
                       <span className="fleet-context-label">
-                        {item.tokens_used > 0
-                          ? `${formatTokens(item.tokens_used)} / ${formatTokens(item.tokens_limit)}`
-                          : 'Context Ready'}
+                        {item.tier === 'critical'
+                          ? '⚠️ 30% RULE'
+                          : item.tier === 'warning'
+                            ? '⚡ WIKI SOON'
+                            : 'CTX'}
                       </span>
                       <span className={`fleet-context-pct tier-${item.tier || 'normal'}`}>
-                        {item.tokens_used > 0 ? `${item.context_pct}%` : '0%'}
-                        {item.tier === 'critical' ? ' ⚠️ 30% RULE' : item.tier === 'warning' ? ' • WIKI SOON' : ''}
+                        {`${Number(item.context_pct || 0).toFixed(1)}% · ${formatTokens(item.tokens_used)}/${formatTokens(item.tokens_limit)}`}
                       </span>
                     </div>
                     <div className="fleet-context-track" title="J.O.S.H.U.A. 30%-Rule Context Saturation Meter (Red >= 30%)">

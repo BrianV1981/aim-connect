@@ -125,7 +125,9 @@ def test_get_sessions_and_fleet_panes_endpoint(client, valid_token, tmp_path):
             m.stdout = ""
         return m
 
-    with patch("routes_sessions.subprocess.run", side_effect=fake_run):
+    with patch("routes_sessions.subprocess.run", side_effect=fake_run), patch(
+        "routes_sessions._resolve_agy_brain_tokens_by_workspace", return_value={}
+    ):
         resp = client.get("/api/sessions", headers={"x-api-token": valid_token})
         assert resp.status_code == 200
         data = resp.json()
@@ -236,3 +238,75 @@ def test_ws_handler_no_shadowed_imports_in_functions():
                         if bound_name in top_level_modules:
                             shadowed.append((node.name, bound_name, child.lineno))
     assert shadowed == [], f"Shadowed top-level imports inside functions: {shadowed}"
+
+
+def test_resolve_agy_brain_tokens_and_telemetry_enrichment(tmp_path):
+    """_resolve_agy_brain_tokens_by_workspace sums input_tokens + cache_read_tokens and enriches fleet (#218)."""
+    import json
+    import sqlite3
+    from routes_sessions import (
+        _resolve_agy_brain_tokens_by_workspace,
+        collect_fleet_telemetry,
+    )
+
+    app_data = tmp_path / "agy_data"
+    app_data.mkdir(parents=True)
+    db_path = app_data / "conversation_summaries.db"
+    cid = "test-conv-218"
+    tx_dir = app_data / "brain" / cid / ".system_generated" / "logs"
+    tx_dir.mkdir(parents=True)
+    tx_file = tx_dir / "transcript.jsonl"
+    tx_file.write_text(
+        json.dumps(
+            {
+                "step_index": 1,
+                "type": "PLANNER_RESPONSE",
+                "input_tokens": 2515,
+                "cache_read_tokens": 241782,
+                "output_tokens": 410,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE conversation_summaries ("
+        "conversation_id TEXT, workspace_uris TEXT, nesting_depth INTEGER, last_modified_time TEXT)"
+    )
+    repo_root = tmp_path / "aim-tmux-dashboard"
+    repo_root.mkdir(parents=True)
+    conn.execute(
+        "INSERT INTO conversation_summaries VALUES (?, ?, 0, '2026-10-26 23:00:00')",
+        (cid, json.dumps([f"file://{repo_root}/workspace/issue-45"])),
+    )
+    conn.commit()
+    conn.close()
+
+    tokens_map = _resolve_agy_brain_tokens_by_workspace(app_data_dir=str(app_data))
+    assert tokens_map[str(repo_root)] == 244297
+    assert tokens_map["aim-tmux-dashboard"] == 244297
+
+    def fake_run(cmd, *args, **kwargs):
+        m = MagicMock()
+        m.returncode = 0
+        m.stderr = ""
+        if cmd[:2] == ["tmux", "list-panes"]:
+            m.stdout = f"aim-dash@@@0@@@main@@@0@@@agy.real@@@{repo_root}@@@1234@@@1\n"
+        elif cmd[:2] == ["tmux", "capture-pane"]:
+            # TUI footer only shows uncached 2.5k in
+            m.stdout = "Gemini 4 Argon | 2.5k in | 0.4k out\n"
+        else:
+            m.stdout = ""
+        return m
+
+    with patch("routes_sessions.subprocess.run", side_effect=fake_run), patch(
+        "routes_sessions._resolve_agy_brain_tokens_by_workspace", return_value=tokens_map
+    ):
+        fleet, _ = collect_fleet_telemetry(["aim-dash"])
+        assert len(fleet) == 1
+        assert fleet[0]["tokens_used"] == 244297
+        assert fleet[0]["tokens_limit"] == 1_000_000
+        assert fleet[0]["context_pct"] == 24.4
+        assert fleet[0]["tier"] == "warning"

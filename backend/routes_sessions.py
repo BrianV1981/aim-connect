@@ -2,6 +2,8 @@ import subprocess
 import os
 import re
 import time
+import json
+import sqlite3
 import shutil
 import logging
 from pydantic import BaseModel
@@ -9,7 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, Depends
 from main import (
     verify_token, require_admin, _get_user_from_token,
     SESSION_NAME_RE, AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT,
-    ENABLE_E2EE, E2EE_SECRET
+    ENABLE_E2EE, E2EE_SECRET, HOME_DIR
 )
 import asyncio
 
@@ -181,6 +183,117 @@ def _get_git_branch(path: str) -> str:
     return ""
 
 
+SESSION_WORKSPACE_ALIASES = {
+    "aim-dash": "aim-tmux-dashboard",
+    "aim-cron": "aim-cron-dashboard",
+}
+
+_AGY_BRAIN_CACHE: dict = {"ts": 0.0, "by_key": {}}
+
+
+def _normalize_workspace_root(path: str) -> str:
+    """Normalize a file:// URI or filesystem path, stripping /workspace/issue-* worktree suffixes (#218)."""
+    if not path:
+        return ""
+    cleaned = str(path).strip()
+    if cleaned.startswith("file://"):
+        cleaned = cleaned[len("file://"):]
+    cleaned = cleaned.rstrip("/")
+    if "/workspace/issue-" in cleaned:
+        cleaned = cleaned.split("/workspace/issue-", 1)[0].rstrip("/")
+    return cleaned
+
+
+def _read_transcript_tail_tokens(transcript_path: str, tail_bytes: int = 65536) -> int:
+    """Read last 64KB of AGY transcript.jsonl and return input_tokens + cache_read_tokens (#218)."""
+    if not transcript_path or not os.path.isfile(transcript_path):
+        return 0
+    try:
+        size = os.path.getsize(transcript_path)
+        with open(transcript_path, "rb") as fh:
+            if size > tail_bytes:
+                fh.seek(size - tail_bytes)
+            raw = fh.read().decode("utf-8", errors="replace")
+        for line in reversed(raw.splitlines()):
+            line = line.strip()
+            if not line or "PLANNER_RESPONSE" not in line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if obj.get("type") == "PLANNER_RESPONSE":
+                inp = int(obj.get("input_tokens") or 0)
+                cached = int(obj.get("cache_read_tokens") or 0)
+                total_in = inp + cached
+                if total_in > 0:
+                    return total_in
+    except OSError:
+        pass
+    return 0
+
+
+def _resolve_agy_brain_tokens_by_workspace(
+    app_data_dir: str = "",
+    ttl_sec: float = 3.0,
+) -> dict[str, int]:
+    """Query conversation_summaries.db + transcript.jsonl tail for ground-truth AGY token usage (#218)."""
+    now = time.time()
+    if not app_data_dir and (now - _AGY_BRAIN_CACHE["ts"]) < ttl_sec and _AGY_BRAIN_CACHE["by_key"]:
+        return dict(_AGY_BRAIN_CACHE["by_key"])
+
+    base_dir = app_data_dir or os.environ.get(
+        "AIM_AGY_APP_DATA_DIR",
+        os.path.join(HOME_DIR, ".gemini", "antigravity-cli"),
+    )
+    db_path = os.path.join(base_dir, "conversation_summaries.db")
+    if not os.path.isfile(db_path):
+        return {}
+
+    result: dict[str, int] = {}
+    seen_roots: set[str] = set()
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=1.5)
+        try:
+            rows = conn.execute(
+                "SELECT conversation_id, workspace_uris FROM conversation_summaries "
+                "WHERE nesting_depth = 0 ORDER BY last_modified_time DESC LIMIT 40"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        for cid, raw_uris in rows:
+            if not cid or not raw_uris:
+                continue
+            try:
+                uris = json.loads(raw_uris) if isinstance(raw_uris, str) else []
+            except Exception:
+                uris = []
+            if not isinstance(uris, list):
+                continue
+            for u in uris:
+                norm_root = _normalize_workspace_root(str(u))
+                if not norm_root or norm_root in seen_roots:
+                    continue
+                seen_roots.add(norm_root)
+                transcript_path = os.path.join(
+                    base_dir, "brain", str(cid), ".system_generated", "logs", "transcript.jsonl"
+                )
+                total_in = _read_transcript_tail_tokens(transcript_path)
+                if total_in > 0:
+                    result[norm_root] = total_in
+                    repo_base = os.path.basename(norm_root)
+                    if repo_base and repo_base not in result:
+                        result[repo_base] = total_in
+    except Exception as e:
+        logger.debug(f"AGY brain token resolution skipped: {e}")
+
+    if not app_data_dir:
+        _AGY_BRAIN_CACHE["ts"] = now
+        _AGY_BRAIN_CACHE["by_key"] = dict(result)
+    return result
+
+
 def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], list[dict]]:
     """Collect pane-level and session-level telemetry for all allowed tmux sessions."""
     allowed_set = set(allowed_sessions)
@@ -192,6 +305,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
     if res.returncode != 0:
         return [], []
 
+    agy_brain_tokens = _resolve_agy_brain_tokens_by_workspace()
     panes = []
     by_session: dict[str, list[dict]] = {s: [] for s in allowed_sessions}
 
@@ -217,6 +331,21 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         branch = _get_git_branch(path)
         is_worktree = "/workspace/issue-" in (path or "")
         repo_name = os.path.basename(path.rstrip("/")) if path else ""
+
+        norm_root = _normalize_workspace_root(path)
+        main_repo_name = os.path.basename(norm_root) if norm_root else repo_name
+        alias_repo = SESSION_WORKSPACE_ALIASES.get(sess_name, sess_name)
+        brain_total_in = (
+            agy_brain_tokens.get(norm_root)
+            or agy_brain_tokens.get(main_repo_name)
+            or agy_brain_tokens.get(alias_repo)
+            or 0
+        )
+        if telemetry["vessel"] == "agy" and brain_total_in > telemetry["tokens_used"]:
+            telemetry["tokens_used"] = brain_total_in
+            telemetry["tokens_limit"] = 1_000_000
+            telemetry["context_pct"] = round((brain_total_in / 1_000_000) * 100.0, 1)
+            telemetry["tier"] = compute_30pct_rule_tier(telemetry["context_pct"])
 
         pane_obj = {
             "session_name": sess_name,
