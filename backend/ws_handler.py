@@ -128,6 +128,34 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
+async def execute_bracketed_paste(session_name: str, paste_text: str) -> bool:
+    """Load text into tmux buffer via stdin and paste with bracketed paste (-p)
+    and LF separator (-r) without sending Enter (#216).
+    """
+    normalized = (paste_text or "").replace("\r\n", "\n").replace("\r", "\n").rstrip("\n")
+    if not normalized or not session_name:
+        return False
+    proc1 = await asyncio.create_subprocess_exec(
+        "tmux",
+        "load-buffer",
+        "-",
+        stdin=asyncio.subprocess.PIPE,
+    )
+    await proc1.communicate(input=normalized.encode("utf-8"))
+    if proc1.returncode != 0:
+        return False
+    proc2 = await asyncio.create_subprocess_exec(
+        "tmux",
+        "paste-buffer",
+        "-p",
+        "-r",
+        "-t",
+        session_name,
+    )
+    await proc2.wait()
+    return proc2.returncode == 0
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
@@ -863,6 +891,11 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     data = json.loads(message)
                     if data.get("type") == "input":
                         os.write(fd, data["payload"].encode("utf-8"))
+                    elif data.get("type") == "paste":
+                        text = data.get("payload", "")
+                        paste_session = data.get("session") or target_session
+                        if text and paste_session:
+                            asyncio.create_task(execute_bracketed_paste(paste_session, text))
                     elif data.get("type") == "submit":
                         import asyncio
                         text = data.get("payload", "")
@@ -893,6 +926,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     elif data.get("type") == "resize":
                         set_pty_size(fd, data["rows"], data["cols"])
                     elif data.get("type") == "switch_session":
+                        if data.get("session"):
+                            target_session = data["session"]
                         # We must find the client tty attached to this specific pid
 
                         result = subprocess.run(["tmux", "list-clients", "-F", "#{client_tty} #{client_pid}"], capture_output=True, text=True)

@@ -177,3 +177,40 @@ def test_send_session_command_two_step_tmux_protocol(client, valid_token):
         json={"command": "/aim-handoff"},
     )
     assert bad_resp.status_code == 400
+
+
+def test_execute_bracketed_paste_no_enter_sent():
+    """execute_bracketed_paste loads buffer via stdin and pastes with -p -r without Enter (#216)."""
+    import asyncio
+    import ws_handler
+
+    spawned_cmds = []
+    communicated_inputs = []
+
+    class FakeProc:
+        def __init__(self):
+            self.returncode = 0
+
+        async def communicate(self, input=None):
+            communicated_inputs.append(input)
+            return (b"", b"")
+
+        async def wait(self):
+            return 0
+
+    async def fake_create_subprocess_exec(*cmd, **kwargs):
+        spawned_cmds.append(list(cmd))
+        return FakeProc()
+
+    with patch("ws_handler.asyncio.create_subprocess_exec", side_effect=fake_create_subprocess_exec):
+        ok = asyncio.run(
+            ws_handler.execute_bracketed_paste("aim-connect", "# HANDOFF\r\nLine 1\nLine 2\n\n")
+        )
+        assert ok is True
+        assert communicated_inputs == [b"# HANDOFF\nLine 1\nLine 2"]
+        assert spawned_cmds == [
+            ["tmux", "load-buffer", "-"],
+            ["tmux", "paste-buffer", "-p", "-r", "-t", "aim-connect"],
+        ]
+        # Must NEVER send Enter
+        assert not any("Enter" in c for c in spawned_cmds)

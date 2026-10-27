@@ -45,6 +45,10 @@ function App() {
   });
   const prevStatusRef = useRef({});
   const [activeSession, setActiveSession] = useState('');
+  const activeSessionRef = useRef('');
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
   const [sessionToDelete, setSessionToDelete] = useState('');
   const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
   const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
@@ -863,6 +867,34 @@ function App() {
     term.current.writeln('');
     term.current.onData((data) => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        // Intercept multi-line pastes (either raw or xterm bracketed \x1b[200~...\x1b[201~)
+        // so tmux load-buffer + paste-buffer -p -r handles them without firing Enter on newlines (#216)
+        if (data.startsWith('\x1b[200~') && data.endsWith('\x1b[201~')) {
+          const inner = data.slice(6, -6).replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '');
+          if (inner) {
+            ws.current.send(
+              JSON.stringify({
+                type: 'paste',
+                payload: inner,
+                session: activeSessionRef.current,
+              })
+            );
+          }
+          return;
+        }
+        if (data.length > 1 && (data.includes('\n') || data.includes('\r')) && !data.startsWith('\x1b')) {
+          const cleaned = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '');
+          if (cleaned) {
+            ws.current.send(
+              JSON.stringify({
+                type: 'paste',
+                payload: cleaned,
+                session: activeSessionRef.current,
+              })
+            );
+          }
+          return;
+        }
         ws.current.send(JSON.stringify({ type: 'input', payload: data }));
       }
     });
@@ -1193,6 +1225,22 @@ function App() {
     }
   };
 
+  const pasteToTerminal = (rawText) => {
+    if (!rawText) return;
+    const cleaned = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '');
+    if (!cleaned) return;
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(
+        JSON.stringify({
+          type: 'paste',
+          payload: cleaned,
+          session: activeSessionRef.current || activeSession,
+        })
+      );
+      lastVoiceEndedWithSpace.current = false;
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <AuthScreen
@@ -1294,7 +1342,7 @@ function App() {
               onClick={async () => {
                 try {
                   const text = await navigator.clipboard.readText();
-                  if (text) sendCommand(text);
+                  if (text) pasteToTerminal(text);
                 } catch (e) {
                   console.error("Paste failed", e);
                 }
