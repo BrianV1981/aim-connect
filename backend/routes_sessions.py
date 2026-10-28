@@ -1,13 +1,15 @@
 import subprocess
 import os
+import io
 import re
 import time
 import json
+import wave
 import sqlite3
 import shutil
 import logging
 from pydantic import BaseModel
-from fastapi import APIRouter, Header, HTTPException, Depends, Request
+from fastapi import APIRouter, Header, HTTPException, Depends, Request, Response
 from main import (
     verify_token, require_admin, _get_user_from_token,
     is_direct_local_loopback, verify_token_or_loopback,
@@ -863,4 +865,185 @@ def get_scrollback_tokens(session_name: str, lines: int = 2000):
     if "error" in data:
         return data
     return {"session": session_name, "tokens": data.get("tokens", [])}
+
+
+SAFE_VOICE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{2,80}$")
+_PIPER_VOICE_CACHE: dict[tuple[str, str], object] = {}
+
+TTS_VOICE_CATALOG = [
+    {
+        "id": "piper:en_GB-alan-medium",
+        "engine": "piper",
+        "voice": "en_GB-alan-medium",
+        "label": "⚡ Offline Piper — Alan (UK J.O.S.H.U.A. / JARVIS)",
+        "offline": True,
+    },
+    {
+        "id": "piper:en_US-ryan-medium",
+        "engine": "piper",
+        "voice": "en_US-ryan-medium",
+        "label": "⚡ Offline Piper — Ryan (US Male)",
+        "offline": True,
+    },
+    {
+        "id": "piper:en_US-lessac-medium",
+        "engine": "piper",
+        "voice": "en_US-lessac-medium",
+        "label": "⚡ Offline Piper — Lessac (US Female)",
+        "offline": True,
+    },
+    {
+        "id": "edge:en-GB-RyanNeural",
+        "engine": "edge",
+        "voice": "en-GB-RyanNeural",
+        "label": "☁️ Edge Neural — Ryan (UK J.O.S.H.U.A. / JARVIS)",
+        "offline": False,
+    },
+    {
+        "id": "edge:en-US-BrianNeural",
+        "engine": "edge",
+        "voice": "en-US-BrianNeural",
+        "label": "☁️ Edge Neural — Brian (US Male)",
+        "offline": False,
+    },
+    {
+        "id": "edge:en-US-AndrewNeural",
+        "engine": "edge",
+        "voice": "en-US-AndrewNeural",
+        "label": "☁️ Edge Neural — Andrew (US Warm Male)",
+        "offline": False,
+    },
+    {
+        "id": "edge:en-US-AvaNeural",
+        "engine": "edge",
+        "voice": "en-US-AvaNeural",
+        "label": "☁️ Edge Neural — Ava (US Female)",
+        "offline": False,
+    },
+    {
+        "id": "browser:default",
+        "engine": "browser",
+        "voice": "default",
+        "label": "🌐 Browser Native Speech API",
+        "offline": True,
+    },
+]
+
+
+def _get_piper_voices_dir() -> str:
+    return os.environ.get(
+        "AIM_PIPER_VOICES_DIR",
+        os.path.join(HOME_DIR, ".local", "share", "aim-voices", "piper"),
+    )
+
+
+def _synthesize_piper_wav(text: str, voice_name: str, voices_dir: str = "") -> bytes:
+    """Synthesize WAV audio bytes locally using offline Piper ONNX (#223)."""
+    if not SAFE_VOICE_NAME_RE.match(voice_name or ""):
+        raise ValueError("Invalid Piper voice identifier")
+    v_dir = voices_dir or _get_piper_voices_dir()
+    onnx_path = os.path.join(v_dir, f"{voice_name}.onnx")
+    if not os.path.isfile(onnx_path):
+        raise FileNotFoundError(f"Piper voice model not found: {voice_name}")
+
+    cache_key = (v_dir, voice_name)
+    voice_obj = _PIPER_VOICE_CACHE.get(cache_key)
+    if voice_obj is None:
+        from piper.voice import PiperVoice
+
+        voice_obj = PiperVoice.load(onnx_path)
+        _PIPER_VOICE_CACHE[cache_key] = voice_obj
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        voice_obj.synthesize_wav(text, wf)
+    return buf.getvalue()
+
+
+async def _synthesize_edge_mp3(text: str, voice_name: str) -> bytes:
+    """Synthesize MP3 audio bytes using Microsoft Edge Neural TTS (#223)."""
+    if not SAFE_VOICE_NAME_RE.match(voice_name or ""):
+        raise ValueError("Invalid Edge TTS voice identifier")
+    import edge_tts
+
+    comm = edge_tts.Communicate(text, voice_name)
+    mp3_bytes = bytearray()
+    async for chunk in comm.stream():
+        if chunk.get("type") == "audio":
+            mp3_bytes.extend(chunk.get("data") or b"")
+    if not mp3_bytes:
+        raise RuntimeError("Edge TTS returned empty audio stream")
+    return bytes(mp3_bytes)
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "piper:en_GB-alan-medium"
+
+
+@router.get("/api/tts/voices", dependencies=[Depends(verify_token)])
+def list_tts_voices() -> dict:
+    """Return available Piper (offline), Edge (cloud neural), and Browser TTS voices (#223)."""
+    v_dir = _get_piper_voices_dir()
+    enriched = []
+    for item in TTS_VOICE_CATALOG:
+        entry = dict(item)
+        if item["engine"] == "piper":
+            entry["installed"] = os.path.isfile(os.path.join(v_dir, f"{item['voice']}.onnx"))
+        else:
+            entry["installed"] = True
+        enriched.append(entry)
+    return {"voices": enriched}
+
+
+@router.post("/api/tts", dependencies=[Depends(verify_token)])
+async def synthesize_tts(req: TTSRequest) -> Response:
+    """Synthesize spoken summary audio via offline Piper ONNX or Edge Neural TTS with automatic offline fallback (#223)."""
+    raw_text = SPOKEN_PREFIX_RE.sub("", (req.text or "").strip()).strip()
+    cleaned_text = _clean_spoken_text(raw_text)[:1200]
+    if not cleaned_text:
+        raise HTTPException(status_code=400, detail="Text is required for TTS synthesis.")
+
+    spec = (req.voice or "piper:en_GB-alan-medium").strip()
+    if ":" in spec:
+        engine, voice_name = spec.split(":", 1)
+    else:
+        engine, voice_name = ("piper", spec)
+    engine = engine.lower().strip()
+    voice_name = voice_name.strip()
+
+    if engine == "edge":
+        try:
+            mp3_bytes = await _synthesize_edge_mp3(cleaned_text, voice_name)
+            return Response(
+                content=mp3_bytes,
+                media_type="audio/mpeg",
+                headers={"X-TTS-Engine": f"edge:{voice_name}"},
+            )
+        except Exception as e:
+            logger.warning(f"Edge TTS failed ({e}); attempting offline Piper fallback.")
+            fallback_voice = "en_GB-alan-medium"
+            try:
+                wav_bytes = await asyncio.to_thread(_synthesize_piper_wav, cleaned_text, fallback_voice)
+                return Response(
+                    content=wav_bytes,
+                    media_type="audio/wav",
+                    headers={"X-TTS-Engine": f"piper:{fallback_voice}"},
+                )
+            except Exception as fb_err:
+                raise HTTPException(status_code=502, detail=f"TTS synthesis failed: {fb_err}")
+
+    if engine == "piper":
+        try:
+            wav_bytes = await asyncio.to_thread(_synthesize_piper_wav, cleaned_text, voice_name)
+            return Response(
+                content=wav_bytes,
+                media_type="audio/wav",
+                headers={"X-TTS-Engine": f"piper:{voice_name}"},
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Piper synthesis failed: {e}")
+
+    raise HTTPException(status_code=400, detail=f"Unsupported backend TTS engine: {engine}")
+
 

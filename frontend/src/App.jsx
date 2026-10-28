@@ -109,7 +109,14 @@ function App() {
   useEffect(() => {
     voiceAutoReadRef.current = voiceAutoRead;
   }, [voiceAutoRead]);
+  const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('aim-voice-tts-voice') || 'piper:en_GB-alan-medium');
+  const ttsVoiceRef = useRef(ttsVoice);
+  useEffect(() => {
+    ttsVoiceRef.current = ttsVoice;
+  }, [ttsVoice]);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const ttsAudioRef = useRef(null);
+  const ttsAbortRef = useRef(null);
   const lastSpokenSummaryRef = useRef({});
   const [voiceContinuous, setVoiceContinuous] = useState(() => JSON.parse(localStorage.getItem('aim-voice-continuous') ?? 'true'));
   const [voiceAutoEnter, setVoiceAutoEnter] = useState(() => JSON.parse(localStorage.getItem('aim-voice-enter') ?? 'true'));
@@ -118,9 +125,29 @@ function App() {
   const [voiceSlashes, setVoiceSlashes] = useState(() => JSON.parse(localStorage.getItem('aim-voice-slashes') ?? 'false'));
   const [voiceAutoSend, setVoiceAutoSend] = useState(() => JSON.parse(localStorage.getItem('aim-voice-send') ?? 'true'));
 
-  const speakSummaryText = (text) => {
-    const cleaned = (text || '').trim();
-    if (!cleaned || typeof window === 'undefined' || !window.speechSynthesis) {
+  const stopSpeaking = () => {
+    if (ttsAbortRef.current) {
+      try { ttsAbortRef.current.abort(); } catch (e) {}
+      ttsAbortRef.current = null;
+    }
+    if (ttsAudioRef.current) {
+      try {
+        ttsAudioRef.current.pause();
+        if (ttsAudioRef.current.dataset?.blobUrl) {
+          URL.revokeObjectURL(ttsAudioRef.current.dataset.blobUrl);
+        }
+      } catch (e) {}
+      ttsAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+    setIsSpeaking(false);
+  };
+
+  const speakBrowserFallback = (cleaned) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      setIsSpeaking(false);
       return false;
     }
     try {
@@ -128,6 +155,9 @@ function App() {
       const utterance = new window.SpeechSynthesisUtterance(cleaned);
       utterance.lang = 'en-US';
       utterance.rate = 1.04;
+      const voices = window.speechSynthesis.getVoices?.() || [];
+      const preferred = voices.find((v) => /natural|google us english|siri|samantha/i.test(v.name) && /^en/i.test(v.lang));
+      if (preferred) utterance.voice = preferred;
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
@@ -140,14 +170,59 @@ function App() {
     }
   };
 
-  const handleSpeakSummary = async () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      alert('Speech synthesis is not supported by your browser.');
-      return;
+  const speakSummaryText = async (text, overrideVoice = '') => {
+    const cleaned = (text || '').trim();
+    if (!cleaned || typeof window === 'undefined') {
+      return false;
     }
-    if (isSpeaking || window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
+    stopSpeaking();
+    const chosenVoice = overrideVoice || ttsVoiceRef.current || 'piper:en_GB-alan-medium';
+    if (chosenVoice.startsWith('browser:')) {
+      return speakBrowserFallback(cleaned);
+    }
+
+    const controller = new AbortController();
+    ttsAbortRef.current = controller;
+    setIsSpeaking(true);
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleaned, voice: chosenVoice }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new Error(`TTS HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      if (controller.signal.aborted) return false;
+      const blobUrl = URL.createObjectURL(blob);
+      const audio = new Audio(blobUrl);
+      audio.dataset.blobUrl = blobUrl;
+      ttsAudioRef.current = audio;
+      const cleanup = () => {
+        if (ttsAudioRef.current === audio) {
+          ttsAudioRef.current = null;
+          setIsSpeaking(false);
+        }
+        try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+      };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
+      await audio.play();
+      return true;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        setIsSpeaking(false);
+        return false;
+      }
+      return speakBrowserFallback(cleaned);
+    }
+  };
+
+  const handleSpeakSummary = async () => {
+    if (isSpeaking || ttsAudioRef.current || (typeof window !== 'undefined' && window.speechSynthesis?.speaking)) {
+      stopSpeaking();
       return;
     }
     const targetSession = activeSessionRef.current || activeSession;
@@ -169,7 +244,7 @@ function App() {
     }
     if (summaryText) {
       lastSpokenSummaryRef.current[targetSession] = summaryText;
-      speakSummaryText(summaryText);
+      await speakSummaryText(summaryText);
     }
   };
   const [scrollbackContent, setScrollbackContent] = useState('');
@@ -1797,6 +1872,8 @@ function App() {
           termFontSize={termFontSize} setTermFontSize={setTermFontSize}
           termTheme={termTheme} setTermTheme={setTermTheme}
           voiceAutoRead={voiceAutoRead} setVoiceAutoRead={setVoiceAutoRead}
+          ttsVoice={ttsVoice} setTtsVoice={setTtsVoice}
+          onPreviewVoice={(v) => speakSummaryText('All systems online. Neural voice synthesis verified.', v)}
           voiceContinuous={voiceContinuous} setVoiceContinuous={setVoiceContinuous}
           voiceAutoEnter={voiceAutoEnter} setVoiceAutoEnter={setVoiceAutoEnter}
           voiceAutoSend={voiceAutoSend} setVoiceAutoSend={setVoiceAutoSend}

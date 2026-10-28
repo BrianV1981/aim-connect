@@ -9,3 +9,5 @@ python-dotenv
 python-multipart
 webauthn
 watchfiles>=0.21.0
+edge-tts
+piper-tts
