@@ -408,6 +408,27 @@ def test_extract_spoken_summary_and_telemetry_integration(client, valid_token):
         data = resp.json()
         assert data["spoken_summary"] == summary
 
+    # Multi-paragraph 🔊 spoken summary separated by blank lines up to the prompt border (#224)
+    multi_para_pane = (
+        "### Detailed Analysis\n"
+        "- Item 1\n"
+        "\n"
+        "🔊 Here is the first paragraph of the spoken briefing explaining the architecture.\n"
+        "It wraps across multiple terminal lines cleanly.\n"
+        "\n"
+        "Here is the second paragraph elaborating on trade-offs and offline Piper latency.\n"
+        "Would you like me to proceed with this plan?\n"
+        "────────────────────────────────────────\n"
+        "❯ \n"
+        "────────────────────────────────────────\n"
+        "? for shortcuts                                         Gemini 4 Argon | 142.0k in | 1.2k out\n"
+    )
+    multi_summary = routes_sessions.extract_spoken_summary(multi_para_pane)
+    assert "first paragraph of the spoken briefing" in multi_summary
+    assert "second paragraph elaborating on trade-offs" in multi_summary
+    assert "Would you like me to proceed with this plan?" in multi_summary
+
+
 
 def test_tts_voices_and_synthesis_piper_and_edge(client, valid_token, monkeypatch):
     """Verify /api/tts/voices and /api/tts for Piper offline WAV, Edge MP3, and Edge-to-Piper offline fallback (#223)."""
