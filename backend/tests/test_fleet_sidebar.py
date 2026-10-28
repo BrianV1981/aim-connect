@@ -487,5 +487,171 @@ def test_tts_voices_and_synthesis_piper_and_edge(client, valid_token, monkeypatc
         assert r_fb.content == b"RIFF-FALLBACK-WAV"
 
 
+def test_agy_brain_tokens_override_inflated_tui_sum_and_beyond_40_rows(tmp_path):
+    """Brain transcript tokens must override inflated multi-step TUI turn sums and resolve beyond row 40 (#225)."""
+    import json
+    import sqlite3
+    from routes_sessions import (
+        _resolve_agy_brain_tokens_by_workspace,
+        collect_fleet_telemetry,
+    )
+
+    app_data = tmp_path / "agy_data_225"
+    app_data.mkdir(parents=True)
+    db_path = app_data / "conversation_summaries.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE conversation_summaries ("
+        "conversation_id TEXT, workspace_uris TEXT, nesting_depth INTEGER, last_modified_time TEXT)"
+    )
+
+    # Insert 50 newer rows for a busy repo (aim-ld) so older workspaces sit past row 40
+    busy_repo = tmp_path / "aim-ld"
+    busy_repo.mkdir(parents=True)
+    for i in range(50):
+        cid = f"busy-conv-{i:03d}"
+        if i == 0:
+            tx_dir = app_data / "brain" / cid / ".system_generated" / "logs"
+            tx_dir.mkdir(parents=True)
+            (tx_dir / "transcript.jsonl").write_text(
+                json.dumps(
+                    {
+                        "step_index": 1,
+                        "type": "PLANNER_RESPONSE",
+                        "input_tokens": 4500,
+                        "cache_read_tokens": 62000,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        conn.execute(
+            "INSERT INTO conversation_summaries VALUES (?, ?, 0, ?)",
+            (cid, json.dumps([f"file://{busy_repo}"]), f"2026-10-28 08:{i:02d}:00"),
+        )
+
+    # Row #51: An aborted 0-token conversation for aim-ayrianna (should NOT mask Row #52)
+    ayrianna_repo = tmp_path / "aim-ayrianna"
+    ayrianna_repo.mkdir(parents=True)
+    conn.execute(
+        "INSERT INTO conversation_summaries VALUES (?, ?, 0, '2026-10-22 01:00:00')",
+        ("ayrianna-empty", json.dumps([f"file://{ayrianna_repo}"])),
+    )
+
+    # Row #52: Active conversation for aim-ayrianna (140,397 tokens)
+    tx_ayr = app_data / "brain" / "ayrianna-active" / ".system_generated" / "logs"
+    tx_ayr.mkdir(parents=True)
+    (tx_ayr / "transcript.jsonl").write_text(
+        json.dumps(
+            {
+                "step_index": 42,
+                "type": "PLANNER_RESPONSE",
+                "input_tokens": 2397,
+                "cache_read_tokens": 138000,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    conn.execute(
+        "INSERT INTO conversation_summaries VALUES (?, ?, 0, '2026-10-21 02:30:08')",
+        ("ayrianna-active", json.dumps([f"file://{ayrianna_repo}"])),
+    )
+
+    # Row #53: aim-dash with 150,580 ground-truth tokens (while TUI shows 279.2k multi-step turn sum)
+    dash_repo = tmp_path / "aim-tmux-dashboard"
+    dash_repo.mkdir(parents=True)
+    tx_dash = app_data / "brain" / "dash-active" / ".system_generated" / "logs"
+    tx_dash.mkdir(parents=True)
+    (tx_dash / "transcript.jsonl").write_text(
+        json.dumps(
+            {
+                "step_index": 159,
+                "type": "PLANNER_RESPONSE",
+                "input_tokens": 3289,
+                "cache_read_tokens": 147291,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    conn.execute(
+        "INSERT INTO conversation_summaries VALUES (?, ?, 0, '2026-10-20 12:00:00')",
+        ("dash-active", json.dumps([f"file://{dash_repo}"])),
+    )
+    conn.commit()
+    conn.close()
+
+    # Isolated bwrap tenant workspace brain directory (agent-op_tenant1/brain/<cid>/.../transcript.jsonl)
+    aw_root = tmp_path / "agent_workspaces"
+    tenant_tx = aw_root / "agent-op_tenant1" / "brain" / "tenant-conv-1" / ".system_generated" / "logs"
+    tenant_tx.mkdir(parents=True)
+    (tenant_tx / "transcript.jsonl").write_text(
+        json.dumps(
+            {
+                "step_index": 12,
+                "type": "PLANNER_RESPONSE",
+                "input_tokens": 4557,
+                "cache_read_tokens": 215000,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    tokens_map = _resolve_agy_brain_tokens_by_workspace(
+        app_data_dir=str(app_data),
+        agent_workspaces_dir=str(aw_root),
+    )
+    assert tokens_map[str(ayrianna_repo)] == 140397
+    assert tokens_map["aim-ayrianna"] == 140397
+    assert tokens_map[str(dash_repo)] == 150580
+    assert tokens_map["agent-op_tenant1"] == 219557
+
+    def fake_run(cmd, *args, **kwargs):
+        m = MagicMock()
+        m.returncode = 0
+        m.stderr = ""
+        if cmd[:2] == ["tmux", "list-panes"]:
+            m.stdout = (
+                f"aim-dash@@@0@@@main@@@0@@@agy.real@@@{dash_repo}@@@1234@@@1\n"
+                f"aim-ayrianna@@@0@@@main@@@0@@@agy.real@@@{ayrianna_repo}@@@1235@@@0\n"
+                f"agent-op_tenant1-admin-cli@@@0@@@main@@@0@@@bwrap@@@{tmp_path}/backend@@@1236@@@0\n"
+            )
+        elif cmd[:2] == ["tmux", "capture-pane"]:
+            target = cmd[cmd.index("-t") + 1]
+            if target.startswith("aim-dash"):
+                # Multi-step turn sum in TUI (279.2k in) is higher than ground-truth context (150.6k)
+                m.stdout = "279.2k in | 20.4k out | 3.7k thinking\n? for shortcuts   Gemini 4 Argon\n"
+            elif target.startswith("agent-op_tenant1"):
+                # bwrap tenant TUI shows 36.7k in while isolated brain transcript has 219,557
+                m.stdout = "36.7k in | 1.8k out | 400 thinking\n? for shortcuts   Gemini 4 Argon\n"
+            else:
+                # 1-step cache-hit turn in TUI (2.5k in) is much lower than ground-truth context (140.4k)
+                m.stdout = "2.5k in | 1.2k out | 256 thinking\n? for shortcuts   Gemini 4 Argon\n"
+        else:
+            m.stdout = ""
+        return m
+
+    with patch("routes_sessions.subprocess.run", side_effect=fake_run), patch(
+        "routes_sessions._resolve_agy_brain_tokens_by_workspace", return_value=tokens_map
+    ):
+        fleet, _ = collect_fleet_telemetry(["aim-dash", "aim-ayrianna", "agent-op_tenant1-admin-cli"])
+        by_name = {f["session_name"]: f for f in fleet}
+        # aim-dash must use ground-truth 150,580 (15.1% normal), NOT inflated 279,200 (27.9% warning)
+        assert by_name["aim-dash"]["tokens_used"] == 150580
+        assert by_name["aim-dash"]["context_pct"] == 15.1
+        assert by_name["aim-dash"]["tier"] == "normal"
+        # aim-ayrianna must use ground-truth 140,397 (14.0%), NOT 2,500 (0.2%)
+        assert by_name["aim-ayrianna"]["tokens_used"] == 140397
+        assert by_name["aim-ayrianna"]["context_pct"] == 14.0
+        assert by_name["aim-ayrianna"]["tier"] == "normal"
+        # bwrap tenant session must use isolated brain transcript 219,557 (22.0% warning), NOT 36,700 (3.7%)
+        assert by_name["agent-op_tenant1-admin-cli"]["tokens_used"] == 219557
+        assert by_name["agent-op_tenant1-admin-cli"]["context_pct"] == 22.0
+        assert by_name["agent-op_tenant1-admin-cli"]["tier"] == "warning"
+
+
+
 
 

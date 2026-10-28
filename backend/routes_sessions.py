@@ -295,8 +295,8 @@ def _normalize_workspace_root(path: str) -> str:
     return cleaned
 
 
-def _read_transcript_tail_tokens(transcript_path: str, tail_bytes: int = 65536) -> int:
-    """Read last 64KB of AGY transcript.jsonl and return input_tokens + cache_read_tokens (#218)."""
+def _read_transcript_tail_tokens(transcript_path: str, tail_bytes: int = 131072) -> int:
+    """Read last 128KB of AGY transcript.jsonl and return input_tokens + cache_read_tokens (#218, #225)."""
     if not transcript_path or not os.path.isfile(transcript_path):
         return 0
     try:
@@ -327,10 +327,16 @@ def _read_transcript_tail_tokens(transcript_path: str, tail_bytes: int = 65536) 
 def _resolve_agy_brain_tokens_by_workspace(
     app_data_dir: str = "",
     ttl_sec: float = 3.0,
+    agent_workspaces_dir: str = "",
 ) -> dict[str, int]:
-    """Query conversation_summaries.db + transcript.jsonl tail for ground-truth AGY token usage (#218)."""
+    """Query conversation_summaries.db + transcript.jsonl tail for ground-truth AGY token usage (#218, #225)."""
     now = time.time()
-    if not app_data_dir and (now - _AGY_BRAIN_CACHE["ts"]) < ttl_sec and _AGY_BRAIN_CACHE["by_key"]:
+    if (
+        not app_data_dir
+        and not agent_workspaces_dir
+        and (now - _AGY_BRAIN_CACHE["ts"]) < ttl_sec
+        and _AGY_BRAIN_CACHE["by_key"]
+    ):
         return dict(_AGY_BRAIN_CACHE["by_key"])
 
     base_dir = app_data_dir or os.environ.get(
@@ -338,48 +344,77 @@ def _resolve_agy_brain_tokens_by_workspace(
         os.path.join(HOME_DIR, ".gemini", "antigravity-cli"),
     )
     db_path = os.path.join(base_dir, "conversation_summaries.db")
-    if not os.path.isfile(db_path):
-        return {}
-
     result: dict[str, int] = {}
     seen_roots: set[str] = set()
-    try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=1.5)
+    if os.path.isfile(db_path):
         try:
-            rows = conn.execute(
-                "SELECT conversation_id, workspace_uris FROM conversation_summaries "
-                "WHERE nesting_depth = 0 ORDER BY last_modified_time DESC LIMIT 40"
-            ).fetchall()
-        finally:
-            conn.close()
-
-        for cid, raw_uris in rows:
-            if not cid or not raw_uris:
-                continue
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=1.5)
             try:
-                uris = json.loads(raw_uris) if isinstance(raw_uris, str) else []
-            except Exception:
-                uris = []
-            if not isinstance(uris, list):
-                continue
-            for u in uris:
-                norm_root = _normalize_workspace_root(str(u))
-                if not norm_root or norm_root in seen_roots:
-                    continue
-                seen_roots.add(norm_root)
-                transcript_path = os.path.join(
-                    base_dir, "brain", str(cid), ".system_generated", "logs", "transcript.jsonl"
-                )
-                total_in = _read_transcript_tail_tokens(transcript_path)
-                if total_in > 0:
-                    result[norm_root] = total_in
-                    repo_base = os.path.basename(norm_root)
-                    if repo_base and repo_base not in result:
-                        result[repo_base] = total_in
-    except Exception as e:
-        logger.debug(f"AGY brain token resolution skipped: {e}")
+                rows = conn.execute(
+                    "SELECT conversation_id, workspace_uris FROM conversation_summaries "
+                    "WHERE nesting_depth = 0 ORDER BY last_modified_time DESC"
+                ).fetchall()
+            finally:
+                conn.close()
 
-    if not app_data_dir:
+            for cid, raw_uris in rows:
+                if not cid or not raw_uris:
+                    continue
+                try:
+                    uris = json.loads(raw_uris) if isinstance(raw_uris, str) else []
+                except Exception:
+                    uris = []
+                if not isinstance(uris, list):
+                    continue
+                for u in uris:
+                    norm_root = _normalize_workspace_root(str(u))
+                    if not norm_root or norm_root in seen_roots:
+                        continue
+                    transcript_path = os.path.join(
+                        base_dir, "brain", str(cid), ".system_generated", "logs", "transcript.jsonl"
+                    )
+                    total_in = _read_transcript_tail_tokens(transcript_path)
+                    if total_in > 0:
+                        seen_roots.add(norm_root)
+                        result[norm_root] = total_in
+                        repo_base = os.path.basename(norm_root)
+                        if repo_base and repo_base not in result:
+                            result[repo_base] = total_in
+        except Exception as e:
+            logger.debug(f"AGY brain token resolution skipped: {e}")
+
+    # Resolve bwrap-isolated tenant brain directories under AGENT_WORKSPACES_DIR/agent-*/brain (#225)
+    aw_root = agent_workspaces_dir or (AGENT_WORKSPACES_DIR if not app_data_dir else "")
+    if aw_root and os.path.isdir(aw_root):
+        try:
+            for entry in os.scandir(aw_root):
+                if not entry.is_dir() or not entry.name.startswith("agent-"):
+                    continue
+                brain_dir = os.path.join(entry.path, "brain")
+                if not os.path.isdir(brain_dir):
+                    continue
+                candidates: list[tuple[float, str]] = []
+                for conv_entry in os.scandir(brain_dir):
+                    if not conv_entry.is_dir() or conv_entry.name.startswith("."):
+                        continue
+                    tpath = os.path.join(
+                        conv_entry.path, ".system_generated", "logs", "transcript.jsonl"
+                    )
+                    if os.path.isfile(tpath):
+                        try:
+                            candidates.append((os.path.getmtime(tpath), tpath))
+                        except OSError:
+                            pass
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                for _, tpath in candidates:
+                    tok = _read_transcript_tail_tokens(tpath)
+                    if tok > 0:
+                        result[entry.name] = tok
+                        break
+        except OSError:
+            pass
+
+    if not app_data_dir and not agent_workspaces_dir:
         _AGY_BRAIN_CACHE["ts"] = now
         _AGY_BRAIN_CACHE["by_key"] = dict(result)
     return result
@@ -464,13 +499,15 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         norm_root = _normalize_workspace_root(path)
         main_repo_name = os.path.basename(norm_root) if norm_root else repo_name
         alias_repo = SESSION_WORKSPACE_ALIASES.get(sess_name, sess_name)
+        base_agent_key = "-".join(sess_name.split("-")[:2]) if sess_name.startswith("agent-") else ""
         brain_total_in = (
-            agy_brain_tokens.get(norm_root)
+            (agy_brain_tokens.get(base_agent_key) if base_agent_key else None)
+            or agy_brain_tokens.get(norm_root)
             or agy_brain_tokens.get(main_repo_name)
             or agy_brain_tokens.get(alias_repo)
             or 0
         )
-        if telemetry["vessel"] == "agy" and brain_total_in > telemetry["tokens_used"]:
+        if telemetry["vessel"] == "agy" and brain_total_in > 0:
             telemetry["tokens_used"] = brain_total_in
             telemetry["tokens_limit"] = 1_000_000
             telemetry["context_pct"] = round((brain_total_in / 1_000_000) * 100.0, 1)
