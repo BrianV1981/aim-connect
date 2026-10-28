@@ -409,4 +409,61 @@ def test_extract_spoken_summary_and_telemetry_integration(client, valid_token):
         assert data["spoken_summary"] == summary
 
 
+def test_tts_voices_and_synthesis_piper_and_edge(client, valid_token, monkeypatch):
+    """Verify /api/tts/voices and /api/tts for Piper offline WAV, Edge MP3, and Edge-to-Piper offline fallback (#223)."""
+    resp_v = client.get("/api/tts/voices", headers={"x-api-token": valid_token})
+    assert resp_v.status_code == 200
+    voices = resp_v.json().get("voices", [])
+    voice_ids = {v["id"] for v in voices}
+    assert "piper:en_GB-alan-medium" in voice_ids
+    assert "edge:en-US-BrianNeural" in voice_ids
+    assert "browser:default" in voice_ids
+
+    # 1. Piper synthesis returns audio/wav
+    with patch("routes_sessions._synthesize_piper_wav", return_value=b"RIFF1234WAVEfmt ") as mock_piper:
+        r_piper = client.post(
+            "/api/tts",
+            headers={"x-api-token": valid_token},
+            json={"text": "🔊 Offline neural synthesis ready.", "voice": "piper:en_GB-alan-medium"},
+        )
+        assert r_piper.status_code == 200
+        assert r_piper.headers["content-type"].startswith("audio/wav")
+        assert r_piper.headers.get("x-tts-engine") == "piper:en_GB-alan-medium"
+        assert r_piper.content == b"RIFF1234WAVEfmt "
+        assert mock_piper.call_args[0][0] == "Offline neural synthesis ready."
+
+    # 2. Edge synthesis returns audio/mpeg
+    async def fake_edge_ok(text, voice):
+        return b"ID3-FAKE-MP3-BYTES"
+
+    with patch("routes_sessions._synthesize_edge_mp3", side_effect=fake_edge_ok):
+        r_edge = client.post(
+            "/api/tts",
+            headers={"x-api-token": valid_token},
+            json={"text": "Cloud neural synthesis ready.", "voice": "edge:en-US-BrianNeural"},
+        )
+        assert r_edge.status_code == 200
+        assert r_edge.headers["content-type"].startswith("audio/mpeg")
+        assert r_edge.headers.get("x-tts-engine") == "edge:en-US-BrianNeural"
+        assert r_edge.content == b"ID3-FAKE-MP3-BYTES"
+
+    # 3. When Edge fails (e.g. offline), /api/tts automatically falls back to offline Piper WAV
+    async def fake_edge_offline(text, voice):
+        raise RuntimeError("Network unreachable")
+
+    with patch("routes_sessions._synthesize_edge_mp3", side_effect=fake_edge_offline), patch(
+        "routes_sessions._synthesize_piper_wav", return_value=b"RIFF-FALLBACK-WAV"
+    ):
+        r_fb = client.post(
+            "/api/tts",
+            headers={"x-api-token": valid_token},
+            json={"text": "Fallback test.", "voice": "edge:en-US-BrianNeural"},
+        )
+        assert r_fb.status_code == 200
+        assert r_fb.headers["content-type"].startswith("audio/wav")
+        assert r_fb.headers.get("x-tts-engine") == "piper:en_GB-alan-medium"
+        assert r_fb.content == b"RIFF-FALLBACK-WAV"
+
+
+
 

@@ -11,6 +11,8 @@ export default function SettingsModal({
   termFontSize, setTermFontSize,
   termTheme, setTermTheme,
   voiceAutoRead, setVoiceAutoRead,
+  ttsVoice, setTtsVoice,
+  onPreviewVoice,
   voiceContinuous, setVoiceContinuous,
   voiceAutoEnter, setVoiceAutoEnter,
   voiceAutoSend, setVoiceAutoSend,
@@ -33,6 +35,7 @@ export default function SettingsModal({
   const [localTermFontSize, setLocalTermFontSize] = useState(termFontSize);
   const [localTermTheme, setLocalTermTheme] = useState(termTheme);
   const [localVoiceAutoRead, setLocalVoiceAutoRead] = useState(voiceAutoRead ?? false);
+  const [localTtsVoice, setLocalTtsVoice] = useState(ttsVoice || 'piper:en_GB-alan-medium');
   const [localVoiceContinuous, setLocalVoiceContinuous] = useState(voiceContinuous);
   const [localVoiceAutoEnter, setLocalVoiceAutoEnter] = useState(voiceAutoEnter);
   const [localVoiceAutoSend, setLocalVoiceAutoSend] = useState(voiceAutoSend);
@@ -60,6 +63,10 @@ export default function SettingsModal({
     if (setVoiceAutoRead) {
       setVoiceAutoRead(localVoiceAutoRead);
       localStorage.setItem('aim-voice-autoread', JSON.stringify(localVoiceAutoRead));
+    }
+    if (setTtsVoice) {
+      setTtsVoice(localTtsVoice);
+      localStorage.setItem('aim-voice-tts-voice', localTtsVoice);
     }
     setVoiceContinuous(localVoiceContinuous);
     localStorage.setItem('aim-voice-continuous', JSON.stringify(localVoiceContinuous));
@@ -207,7 +214,7 @@ export default function SettingsModal({
           <label style={{display: 'block', marginBottom: '4px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice & Speech Settings</label>
           <div style={{fontSize: '12px', color: '#94a3b8', marginBottom: '12px'}}>Voice uses the browser Speech API (Chrome/Edge recommended; Brave often unsupported).</div>
 
-          <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+          <div style={{marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '12px'}}>
             <input 
               type="checkbox" 
               checked={localVoiceAutoRead} 
@@ -215,6 +222,36 @@ export default function SettingsModal({
               style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
             />
             <label style={{color: '#e2e8f0', margin: 0}}>🔊 Auto-Playback Agent Spoken Summary (🔊 Line)</label>
+          </div>
+
+          <div style={{marginBottom: '12px'}}>
+            <label style={{display: 'block', marginBottom: '6px', color: '#e2e8f0'}}>TTS Voice & Engine (Offline Piper / Cloud Edge)</label>
+            <div style={{display: 'flex', gap: '8px'}}>
+              <select
+                className="modal-input"
+                style={{ flex: 1, marginBottom: 0 }}
+                value={localTtsVoice}
+                onChange={e => setLocalTtsVoice(e.target.value)}
+              >
+                <option value="piper:en_GB-alan-medium">⚡ Offline Piper — Alan (UK J.O.S.H.U.A. / JARVIS)</option>
+                <option value="piper:en_US-ryan-medium">⚡ Offline Piper — Ryan (US Male)</option>
+                <option value="piper:en_US-lessac-medium">⚡ Offline Piper — Lessac (US Female)</option>
+                <option value="edge:en-GB-RyanNeural">☁️ Edge Neural — Ryan (UK J.O.S.H.U.A. / JARVIS)</option>
+                <option value="edge:en-US-BrianNeural">☁️ Edge Neural — Brian (US Male)</option>
+                <option value="edge:en-US-AndrewNeural">☁️ Edge Neural — Andrew (US Warm Male)</option>
+                <option value="edge:en-US-AvaNeural">☁️ Edge Neural — Ava (US Female)</option>
+                <option value="browser:default">🌐 Browser Native Speech API</option>
+              </select>
+              <button
+                type="button"
+                className="macro-btn action"
+                onClick={() => onPreviewVoice?.(localTtsVoice)}
+                title="Preview selected TTS voice"
+                style={{ whiteSpace: 'nowrap', padding: '0 12px' }}
+              >
+                ▶️ Test
+              </button>
+            </div>
           </div>
           
           <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
