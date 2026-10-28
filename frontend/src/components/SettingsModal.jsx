@@ -10,6 +10,7 @@ export default function SettingsModal({
   alertChime, setAlertChime,
   termFontSize, setTermFontSize,
   termTheme, setTermTheme,
+  voiceAutoRead, setVoiceAutoRead,
   voiceContinuous, setVoiceContinuous,
   voiceAutoEnter, setVoiceAutoEnter,
   voiceAutoSend, setVoiceAutoSend,
@@ -31,6 +32,7 @@ export default function SettingsModal({
   const [localAlertChime, setLocalAlertChime] = useState(alertChime ?? true);
   const [localTermFontSize, setLocalTermFontSize] = useState(termFontSize);
   const [localTermTheme, setLocalTermTheme] = useState(termTheme);
+  const [localVoiceAutoRead, setLocalVoiceAutoRead] = useState(voiceAutoRead ?? false);
   const [localVoiceContinuous, setLocalVoiceContinuous] = useState(voiceContinuous);
   const [localVoiceAutoEnter, setLocalVoiceAutoEnter] = useState(voiceAutoEnter);
   const [localVoiceAutoSend, setLocalVoiceAutoSend] = useState(voiceAutoSend);
@@ -55,6 +57,10 @@ export default function SettingsModal({
     localStorage.setItem('aim-term-fontsize', localTermFontSize);
     setTermTheme(localTermTheme);
     localStorage.setItem('aim-term-theme', localTermTheme);
+    if (setVoiceAutoRead) {
+      setVoiceAutoRead(localVoiceAutoRead);
+      localStorage.setItem('aim-voice-autoread', JSON.stringify(localVoiceAutoRead));
+    }
     setVoiceContinuous(localVoiceContinuous);
     localStorage.setItem('aim-voice-continuous', JSON.stringify(localVoiceContinuous));
     setVoiceAutoEnter(localVoiceAutoEnter);
@@ -198,8 +204,18 @@ export default function SettingsModal({
           </div>
         </div>
         <div style={{marginBottom: '16px', borderTop: '1px solid #1c305c', paddingTop: '16px'}}>
-          <label style={{display: 'block', marginBottom: '4px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice Dictation Settings</label>
+          <label style={{display: 'block', marginBottom: '4px', color: '#e2e8f0', fontWeight: 'bold'}}>Voice & Speech Settings</label>
           <div style={{fontSize: '12px', color: '#94a3b8', marginBottom: '12px'}}>Voice uses the browser Speech API (Chrome/Edge recommended; Brave often unsupported).</div>
+
+          <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
+            <input 
+              type="checkbox" 
+              checked={localVoiceAutoRead} 
+              onChange={e => setLocalVoiceAutoRead(e.target.checked)}
+              style={{ cursor: 'pointer', width: '18px', height: '18px', margin: 0 }}
+            />
+            <label style={{color: '#e2e8f0', margin: 0}}>🔊 Auto-Playback Agent Spoken Summary (🔊 Line)</label>
+          </div>
           
           <div style={{marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px'}}>
             <input 

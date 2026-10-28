@@ -104,12 +104,74 @@ function App() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
+  const [voiceAutoRead, setVoiceAutoRead] = useState(() => JSON.parse(localStorage.getItem('aim-voice-autoread') ?? 'false'));
+  const voiceAutoReadRef = useRef(voiceAutoRead);
+  useEffect(() => {
+    voiceAutoReadRef.current = voiceAutoRead;
+  }, [voiceAutoRead]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const lastSpokenSummaryRef = useRef({});
   const [voiceContinuous, setVoiceContinuous] = useState(() => JSON.parse(localStorage.getItem('aim-voice-continuous') ?? 'true'));
   const [voiceAutoEnter, setVoiceAutoEnter] = useState(() => JSON.parse(localStorage.getItem('aim-voice-enter') ?? 'true'));
   const [voiceAutoExecute, setVoiceAutoExecute] = useState(() => JSON.parse(localStorage.getItem('aim-voice-execute') ?? 'true'));
   const [voiceAutoCapitalize, setVoiceAutoCapitalize] = useState(() => JSON.parse(localStorage.getItem('aim-voice-autocap') ?? 'true'));
   const [voiceSlashes, setVoiceSlashes] = useState(() => JSON.parse(localStorage.getItem('aim-voice-slashes') ?? 'false'));
   const [voiceAutoSend, setVoiceAutoSend] = useState(() => JSON.parse(localStorage.getItem('aim-voice-send') ?? 'true'));
+
+  const speakSummaryText = (text) => {
+    const cleaned = (text || '').trim();
+    if (!cleaned || typeof window === 'undefined' || !window.speechSynthesis) {
+      return false;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new window.SpeechSynthesisUtterance(cleaned);
+      utterance.lang = 'en-US';
+      utterance.rate = 1.04;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      setIsSpeaking(true);
+      window.speechSynthesis.speak(utterance);
+      return true;
+    } catch (e) {
+      setIsSpeaking(false);
+      return false;
+    }
+  };
+
+  const handleSpeakSummary = async () => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      alert('Speech synthesis is not supported by your browser.');
+      return;
+    }
+    if (isSpeaking || window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+    const targetSession = activeSessionRef.current || activeSession;
+    if (!targetSession) return;
+
+    let summaryText = '';
+    try {
+      const res = await fetch(`/api/scrollback/${encodeURIComponent(targetSession)}?lines=200`);
+      const data = await res.json();
+      if (data && data.spoken_summary) {
+        summaryText = data.spoken_summary;
+      }
+    } catch (e) {
+      // Fallback to cached fleet telemetry
+    }
+    if (!summaryText) {
+      const fleetItem = fleet.find((f) => f.session_name === targetSession);
+      summaryText = fleetItem?.spoken_summary || fleetItem?.preview || '';
+    }
+    if (summaryText) {
+      lastSpokenSummaryRef.current[targetSession] = summaryText;
+      speakSummaryText(summaryText);
+    }
+  };
   const [scrollbackContent, setScrollbackContent] = useState('');
   const [rawScrollback, setRawScrollback] = useState('');
   const isNativeScrollModeRef = useRef(false);
@@ -359,6 +421,19 @@ function App() {
             }
             if (prevSt === 'THINKING' && item.status === 'IDLE' && item.session_name !== activeSession) {
               newlyCompleted.push(item.session_name);
+            }
+            const currSummary = item.spoken_summary || '';
+            const prevSummary = lastSpokenSummaryRef.current[item.session_name];
+            if (prevSummary === undefined) {
+              lastSpokenSummaryRef.current[item.session_name] = currSummary;
+            } else if (item.status !== 'THINKING' && currSummary) {
+              const turnFinished = prevSt === 'THINKING' && (item.status === 'IDLE' || item.status === 'WAITING');
+              if (currSummary !== prevSummary || turnFinished) {
+                lastSpokenSummaryRef.current[item.session_name] = currSummary;
+                if (item.session_name === activeSession && voiceAutoReadRef.current) {
+                  speakSummaryText(currSummary);
+                }
+              }
             }
             prevStatusRef.current[item.session_name] = item.status;
           });
@@ -1445,6 +1520,22 @@ function App() {
         >
           {isListening ? '🛑' : '🎤 Voice'}
         </button>
+        <button
+          className={`macro-btn action ${isSpeaking ? 'listening' : ''}`}
+          onClick={handleSpeakSummary}
+          disabled={!activeSession}
+          title={
+            isSpeaking
+              ? 'Stop speaking summary'
+              : `Speak latest 🔊 agent summary${voiceAutoRead ? ' (Auto-Playback ON)' : ' (Manual Mode)'}`
+          }
+          style={{
+            background: isSpeaking ? '#ef4444' : undefined,
+            opacity: activeSession ? 1 : 0.5,
+          }}
+        >
+          {isSpeaking ? '🔇 Stop' : (voiceAutoRead ? '🔊 Auto' : '🔊 Speak')}
+        </button>
         <button className="macro-btn" onClick={() => setShowSettings(true)}>
           ⚙️ Settings
         </button>
@@ -1705,6 +1796,7 @@ function App() {
           alertChime={alertChime} setAlertChime={setAlertChime}
           termFontSize={termFontSize} setTermFontSize={setTermFontSize}
           termTheme={termTheme} setTermTheme={setTermTheme}
+          voiceAutoRead={voiceAutoRead} setVoiceAutoRead={setVoiceAutoRead}
           voiceContinuous={voiceContinuous} setVoiceContinuous={setVoiceContinuous}
           voiceAutoEnter={voiceAutoEnter} setVoiceAutoEnter={setVoiceAutoEnter}
           voiceAutoSend={voiceAutoSend} setVoiceAutoSend={setVoiceAutoSend}
@@ -1752,6 +1844,14 @@ function App() {
         onOpenSearch={() => setShowSearch(true)}
         onToggleKeyboard={() => setShowKeyboard((prev) => !prev)}
         onToggleVoice={startDictation}
+        onSpeakSummary={handleSpeakSummary}
+        onToggleVoiceAutoRead={() => {
+          setVoiceAutoRead((prev) => {
+            const next = !prev;
+            localStorage.setItem('aim-voice-autoread', JSON.stringify(next));
+            return next;
+          });
+        }}
         onOpenSettings={() => setShowSettings(true)}
         onOpenIntegrations={() => setIsIntegrationsModalOpen(true)}
         onSetTermTheme={(newTheme) => {
