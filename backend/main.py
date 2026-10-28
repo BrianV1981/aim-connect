@@ -106,6 +106,7 @@ async def add_security_headers(request: Request, call_next):
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "connect-src 'self' wss: ws:; "
         "img-src 'self' data:; "
+        "media-src 'self' blob: data:; "
         "font-src 'self' https://cdn.jsdelivr.net data:; "
         "worker-src 'self' blob:; "
         "object-src 'none'; "
