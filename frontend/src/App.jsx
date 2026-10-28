@@ -116,6 +116,8 @@ function App() {
   }, [ttsVoice]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const ttsAudioRef = useRef(null);
+  const ttsAudioCtxRef = useRef(null);
+  const ttsBufferSourceRef = useRef(null);
   const ttsAbortRef = useRef(null);
   const lastSpokenSummaryRef = useRef({});
   const [voiceContinuous, setVoiceContinuous] = useState(() => JSON.parse(localStorage.getItem('aim-voice-continuous') ?? 'true'));
@@ -129,6 +131,10 @@ function App() {
     if (ttsAbortRef.current) {
       try { ttsAbortRef.current.abort(); } catch (e) {}
       ttsAbortRef.current = null;
+    }
+    if (ttsBufferSourceRef.current) {
+      try { ttsBufferSourceRef.current.stop(0); } catch (e) {}
+      ttsBufferSourceRef.current = null;
     }
     if (ttsAudioRef.current) {
       try {
@@ -181,6 +187,17 @@ function App() {
       return speakBrowserFallback(cleaned);
     }
 
+    // Unlock Web Audio Context synchronously during user gesture before awaiting fetch
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      if (!ttsAudioCtxRef.current || ttsAudioCtxRef.current.state === 'closed') {
+        ttsAudioCtxRef.current = new AudioCtx();
+      }
+      if (ttsAudioCtxRef.current.state === 'suspended') {
+        try { ttsAudioCtxRef.current.resume(); } catch (e) {}
+      }
+    }
+
     const controller = new AbortController();
     ttsAbortRef.current = controller;
     setIsSpeaking(true);
@@ -194,8 +211,31 @@ function App() {
       if (!res.ok) {
         throw new Error(`TTS HTTP ${res.status}`);
       }
-      const blob = await res.blob();
+      const arrayBuf = await res.arrayBuffer();
       if (controller.signal.aborted) return false;
+
+      if (ttsAudioCtxRef.current) {
+        if (ttsAudioCtxRef.current.state === 'suspended') {
+          await ttsAudioCtxRef.current.resume();
+        }
+        const decoded = await ttsAudioCtxRef.current.decodeAudioData(arrayBuf.slice(0));
+        if (controller.signal.aborted) return false;
+        const source = ttsAudioCtxRef.current.createBufferSource();
+        source.buffer = decoded;
+        source.connect(ttsAudioCtxRef.current.destination);
+        ttsBufferSourceRef.current = source;
+        source.onended = () => {
+          if (ttsBufferSourceRef.current === source) {
+            ttsBufferSourceRef.current = null;
+            setIsSpeaking(false);
+          }
+        };
+        source.start(0);
+        return true;
+      }
+
+      const contentType = res.headers.get('content-type') || 'audio/wav';
+      const blob = new Blob([arrayBuf], { type: contentType });
       const blobUrl = URL.createObjectURL(blob);
       const audio = new Audio(blobUrl);
       audio.dataset.blobUrl = blobUrl;
@@ -216,12 +256,13 @@ function App() {
         setIsSpeaking(false);
         return false;
       }
+      console.error('Neural TTS playback error:', err);
       return speakBrowserFallback(cleaned);
     }
   };
 
   const handleSpeakSummary = async () => {
-    if (isSpeaking || ttsAudioRef.current || (typeof window !== 'undefined' && window.speechSynthesis?.speaking)) {
+    if (isSpeaking || ttsBufferSourceRef.current || ttsAudioRef.current || (typeof window !== 'undefined' && window.speechSynthesis?.speaking)) {
       stopSpeaking();
       return;
     }

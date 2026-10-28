@@ -413,6 +413,7 @@ def test_tts_voices_and_synthesis_piper_and_edge(client, valid_token, monkeypatc
     """Verify /api/tts/voices and /api/tts for Piper offline WAV, Edge MP3, and Edge-to-Piper offline fallback (#223)."""
     resp_v = client.get("/api/tts/voices", headers={"x-api-token": valid_token})
     assert resp_v.status_code == 200
+    assert "media-src 'self' blob: data:" in resp_v.headers.get("content-security-policy", "")
     voices = resp_v.json().get("voices", [])
     voice_ids = {v["id"] for v in voices}
     assert "piper:en_GB-alan-medium" in voice_ids
