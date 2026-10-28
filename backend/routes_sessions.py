@@ -132,10 +132,10 @@ def extract_spoken_summary(raw_text: str, fallback: bool = False) -> str:
         for cont_idx in range(idx + 1, len(raw_lines)):
             cont_raw = raw_lines[cont_idx].strip("│┃ ")
             if not cont_raw:
-                break
+                continue
             if _is_tui_chrome_line(cont_raw):
                 break
-            if cont_raw.startswith(("🔊", "●", "•", "- ", "* ", "#")):
+            if cont_raw.startswith(("🔊", "●", "•", "- ", "* ", "#", "> ", "❯ ")):
                 break
             parts.append(cont_raw)
 
@@ -441,9 +441,9 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         if use_cached_pane:
             telemetry = dict(cached_pane["telemetry"])
         else:
-            # Capture last 25 lines of the pane for status & token telemetry
+            # Capture last 120 lines of the pane for status, token, & multi-paragraph 🔊 telemetry (#224)
             cap = subprocess.run(
-                ["tmux", "capture-pane", "-t", target, "-p", "-J", "-S", "-25"],
+                ["tmux", "capture-pane", "-t", target, "-p", "-J", "-S", "-120"],
                 capture_output=True,
                 text=True,
             )
@@ -998,9 +998,9 @@ def list_tts_voices() -> dict:
 
 @router.post("/api/tts", dependencies=[Depends(verify_token)])
 async def synthesize_tts(req: TTSRequest) -> Response:
-    """Synthesize spoken summary audio via offline Piper ONNX or Edge Neural TTS with automatic offline fallback (#223)."""
+    """Synthesize spoken summary audio via offline Piper ONNX or Edge Neural TTS with automatic offline fallback (#223, #224)."""
     raw_text = SPOKEN_PREFIX_RE.sub("", (req.text or "").strip()).strip()
-    cleaned_text = _clean_spoken_text(raw_text)[:1200]
+    cleaned_text = _clean_spoken_text(raw_text)[:4000]
     if not cleaned_text:
         raise HTTPException(status_code=400, detail="Text is required for TTS synthesis.")
 
