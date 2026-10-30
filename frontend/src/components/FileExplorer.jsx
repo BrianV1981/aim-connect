@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Editor, { DiffEditor } from '@monaco-editor/react';
+import {
+  copyTextToClipboard,
+  getSelectionWithinNode,
+  shouldPreserveSelectionOnMouseDown,
+} from '../scrollbackSelection';
 
 const MAX_TABS = 20;
 
@@ -22,7 +27,10 @@ export default function FileExplorer({
   const [activeTabId, setActiveTabId] = useState('');
   const [saveBadge, setSaveBadge] = useState('');
   const [copyBadge, setCopyBadge] = useState('');
+  const [copySelectionBadge, setCopySelectionBadge] = useState('');
+  const [selectedFileText, setSelectedFileText] = useState('');
   const [localSelectMode, setLocalSelectMode] = useState(false);
+  const selectSurfaceRef = useRef(null);
 
   const isSelectMode = onToggleSelectMode ? selectMode : localSelectMode;
   const toggleSelectMode = () => {
@@ -35,30 +43,36 @@ export default function FileExplorer({
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
+  useEffect(() => {
+    if (!isSelectMode) {
+      setSelectedFileText('');
+      return;
+    }
+    const syncSelection = () => {
+      setSelectedFileText(getSelectionWithinNode(selectSurfaceRef.current));
+    };
+    document.addEventListener('selectionchange', syncSelection);
+    return () => document.removeEventListener('selectionchange', syncSelection);
+  }, [isSelectMode, activeTabId]);
+
+  const copySelectedTabText = async () => {
+    const current = getSelectionWithinNode(selectSurfaceRef.current) || selectedFileText;
+    if (!current) return;
+    const ok = await copyTextToClipboard(current);
+    if (ok) {
+      setCopySelectionBadge('✓ Copied Selection!');
+      setTimeout(() => setCopySelectionBadge(''), 1800);
+    }
+  };
+
   const copyActiveTabContent = async () => {
     if (!activeTab) return;
     const textToCopy = activeTab.content || '';
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(textToCopy);
-      } else {
-        throw new Error('Clipboard API unavailable');
-      }
-    } catch (err) {
-      const ta = document.createElement('textarea');
-      ta.value = textToCopy;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      try {
-        document.execCommand('copy');
-      } catch (e) {}
-      document.body.removeChild(ta);
+    const ok = await copyTextToClipboard(textToCopy);
+    if (ok) {
+      setCopyBadge('✓ Copied!');
+      setTimeout(() => setCopyBadge(''), 1800);
     }
-    setCopyBadge('✓ Copied!');
-    setTimeout(() => setCopyBadge(''), 1800);
   };
 
   const loadFiles = async (targetPath) => {
@@ -463,15 +477,35 @@ export default function FileExplorer({
             <button
               type="button"
               className={`macro-btn ${isSelectMode ? 'action' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={toggleSelectMode}
               style={{ padding: '4px 8px', fontSize: '11px' }}
-              title="Toggle mobile-friendly native Scroll/Select text view vs Monaco Editor"
+              title="Toggle isolated native Scroll/Select text view vs Monaco Editor"
             >
               {isSelectMode ? '✏️ Editor' : '📝 Select Text'}
             </button>
+            {isSelectMode && (
+              <button
+                type="button"
+                className={`macro-btn ${selectedFileText ? 'action scrollback-copy-active' : ''}`}
+                disabled={!selectedFileText}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={copySelectedTabText}
+                style={{ padding: '4px 8px', fontSize: '11px' }}
+                title={
+                  selectedFileText
+                    ? `Copy highlighted selection (${selectedFileText.length} chars)`
+                    : 'Highlight text below to copy selection'
+                }
+              >
+                {copySelectionBadge ||
+                  `📋 Copy Selection${selectedFileText ? ` (${selectedFileText.length})` : ''}`}
+              </button>
+            )}
             <button
               type="button"
               className="macro-btn"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={copyActiveTabContent}
               style={{ padding: '4px 8px', fontSize: '11px' }}
               title="Copy entire file contents to clipboard"
@@ -561,38 +595,22 @@ export default function FileExplorer({
         {activeTab ? (
           isSelectMode ? (
             <div style={{ flex: 1, height: '100%', minHeight: '420px', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-              <div
-                contentEditable={true}
-                suppressContentEditableWarning={true}
-                onKeyDown={(e) => {
-                  e.preventDefault();
-                  return false;
+              <pre
+                ref={selectSurfaceRef}
+                className="file-select-surface"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  const sel = typeof window !== 'undefined' ? window.getSelection?.() : null;
+                  if (shouldPreserveSelectionOnMouseDown(e, sel)) {
+                    e.preventDefault();
+                  }
                 }}
                 onTouchStart={(e) => e.stopPropagation()}
                 onTouchMove={(e) => e.stopPropagation()}
                 onTouchEnd={(e) => e.stopPropagation()}
-                style={{
-                  flex: 1,
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  backgroundColor: '#0b1324',
-                  color: '#e2e8f0',
-                  fontFamily: 'Fira Code, monospace',
-                  fontSize: '14px',
-                  lineHeight: '1.5',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  padding: '14px 14px 60px 14px',
-                  overflowY: 'auto',
-                  WebkitOverflowScrolling: 'touch',
-                  WebkitUserSelect: 'text',
-                  userSelect: 'text',
-                  cursor: 'text',
-                  outline: 'none',
-                }}
               >
                 {activeTab.content}
-              </div>
+              </pre>
             </div>
           ) : activeTab.type === 'diff' ? (
             <div style={{ flex: 1, height: '100%', minHeight: '420px', width: '100%', position: 'relative' }}>

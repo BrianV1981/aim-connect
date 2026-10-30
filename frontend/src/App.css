@@ -50,6 +50,8 @@ body {
   white-space: nowrap;
   -ms-overflow-style: none;
   scrollbar-width: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .app-header::-webkit-scrollbar {
@@ -144,24 +146,131 @@ body {
   color: #f87171;
 }
 
-.native-scrollback-overlay {
+.native-scrollback-shell {
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1002;
+  display: flex;
+  flex-direction: column;
+  background-color: #0f172a;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.scrollback-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(11, 22, 44, 0.96);
+  border-bottom: 1px solid #1c305c;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.scrollback-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.scrollback-toolbar-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+@media (max-width: 760px) {
+  .scrollback-toolbar-hint {
+    display: none;
+  }
+}
+
+.scrollback-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.macro-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.scrollback-copy-active {
+  background: rgba(16, 185, 129, 0.22) !important;
+  border-color: #10b981 !important;
+  color: #a7f3d0 !important;
+  font-weight: 600;
+}
+
+.scrollback-close-btn {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  color: #fecaca !important;
+}
+
+.native-scrollback-overlay {
+  position: relative;
+  flex: 1;
+  min-height: 0;
   background-color: #0f172a;
   color: #e2e8f0;
   overflow-y: auto !important;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch !important;
-  padding: 10px;
-  font-family: monospace;
+  padding: 14px 16px 56px 16px;
+  overscroll-behavior: contain;
+  touch-action: pan-y !important;
+}
+
+.scrollback-selectable-content,
+.file-select-surface {
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: 'Fira Code', monospace;
   font-size: 14px;
+  line-height: 1.55;
   white-space: pre-wrap;
-  z-index: 999;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: anywhere;
   user-select: text !important;
   -webkit-user-select: text !important;
   -webkit-touch-callout: default !important;
-  touch-action: auto !important;
-  -webkit-transform: translateZ(0);
+  cursor: text;
+  outline: none;
+}
+
+.file-select-surface {
+  flex: 1;
+  background-color: #0b1324;
+  color: #e2e8f0;
+  padding: 14px 16px 60px 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.scrollback-selectable-content::selection,
+.scrollback-selectable-content *::selection,
+.file-select-surface::selection,
+.file-select-surface *::selection {
+  background: rgba(59, 130, 246, 0.5);
+  color: #ffffff;
 }
 
 /* xterm overrides for a cleaner look */
@@ -317,6 +426,8 @@ body {
   overflow-x: auto;
   white-space: nowrap;
   gap: 16px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Hide scrollbar for a cleaner look */
@@ -383,6 +494,8 @@ body {
   background: rgba(28, 48, 92, 0.5);
   border-bottom: 1px solid #1c305c;
   gap: 6px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .file-path {
@@ -587,6 +700,8 @@ body {
   height: 100%;
   overflow: hidden;
   z-index: 60;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 @media (max-width: 767px) {
@@ -1226,6 +1341,8 @@ body {
   padding: 6px 10px;
   background: rgba(8, 15, 30, 0.95);
   border-bottom: 1px solid #1c305c;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .brain-bar-label {
@@ -1263,6 +1380,8 @@ body {
   border-bottom: 1px solid #1c305c;
   overflow-x: auto;
   white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .workspace-tab-chip {

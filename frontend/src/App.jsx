@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { Terminal } from '@xterm/xterm';
 import { AnsiUp } from 'ansi_up';
@@ -17,6 +17,8 @@ import CommandPalette from './components/CommandPalette';
 import TokenGrabberModal from './components/TokenGrabberModal';
 import FileExplorer from './components/FileExplorer';
 import ForensicsModal from './components/ForensicsModal';
+import ScrollbackOverlay from './components/ScrollbackOverlay';
+import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelection';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
 
@@ -291,27 +293,48 @@ function App() {
   const [scrollbackContent, setScrollbackContent] = useState('');
   const [rawScrollback, setRawScrollback] = useState('');
   const isNativeScrollModeRef = useRef(false);
-  const hasScrolledUpInOverlay = useRef(false);
 
   useEffect(() => {
     isNativeScrollModeRef.current = isNativeScrollMode;
   }, [isNativeScrollMode]);
 
-  const enterNativeScrollMode = async () => {
-    if (!activeSession) return;
+  const closeNativeScrollMode = useCallback(() => {
+    setIsNativeScrollMode(false);
+    setScrollbackContent('');
+    setRawScrollback('');
+  }, []);
+
+  const toggleScrollbackSelectMode = useCallback(() => {
+    setIsSelectMode((prev) => !prev);
+  }, []);
+
+  const enterNativeScrollMode = useCallback(async () => {
+    const targetSession = activeSessionRef.current || activeSession;
+    if (!targetSession) return;
+
+    // Blur xterm and clear stale selection so hidden textarea never hijacks Ctrl+C or selection (#227)
+    if (term.current) {
+      try { term.current.clearSelection?.(); } catch (e) {}
+      try { term.current.blur(); } catch (e) {}
+      try { term.current.textarea?.blur(); } catch (e) {}
+    }
+    const hiddenTextarea = terminalRef.current?.querySelector('textarea');
+    if (hiddenTextarea) {
+      try { hiddenTextarea.blur(); } catch (e) {}
+    }
+    try { window.getSelection?.()?.removeAllRanges?.(); } catch (e) {}
+
     setIsNativeScrollMode(true);
-    hasScrolledUpInOverlay.current = false;
     setScrollbackContent('Loading scrollback...');
     try {
-      const res = await fetch(`/api/scrollback/${encodeURIComponent(activeSession)}`);
+      const res = await fetch(`/api/scrollback/${encodeURIComponent(targetSession)}`);
       const data = await res.json();
-      if (data.scrollback) {
+      if (data.scrollback !== undefined) {
+        const cleanedAnsi = sanitizeAnsiScrollback(data.scrollback);
         const ansi_up = new AnsiUp();
-        const html = ansi_up.ansi_to_html(data.scrollback);
+        const html = ansi_up.ansi_to_html(cleanedAnsi);
         setScrollbackContent(html);
-        // Strip ANSI codes for the raw textarea
-        setRawScrollback(data.scrollback.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ''));
-        setIsSelectMode(false);
+        setRawScrollback(stripAnsiAndTrimLines(data.scrollback));
       } else {
         setScrollbackContent('Error loading scrollback.');
         setRawScrollback('Error loading scrollback.');
@@ -321,7 +344,7 @@ function App() {
       setScrollbackContent('Error loading scrollback.');
       setRawScrollback('Error loading scrollback.');
     }
-  };
+  }, [activeSession]);
   const [fileItems, setFileItems] = useState([]);
   const [openFileContent, setOpenFileContent] = useState('');
   const [isEditingFile, setIsEditingFile] = useState(false);
@@ -653,11 +676,14 @@ function App() {
       setActiveSession('');
       setShowFiles(false);
       setFileSelectMode(false);
-      setIsNativeScrollMode(false);
+      closeNativeScrollMode();
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
         setShowFleetSidebar(false);
       }
       return;
+    }
+    if (newSession !== activeSessionRef.current) {
+      closeNativeScrollMode();
     }
     setActiveSession(newSession);
     setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
@@ -1158,6 +1184,7 @@ function App() {
     });
 
     // Intercept Cmd+K / Ctrl+K inside xterm.js so it opens CommandPalette instead of sending ^K (#210)
+    // Also mute xterm key capture while Scroll/Copy is open so Ctrl/Cmd+C copies DOM selection (#227)
     term.current.attachCustomKeyEventHandler((ev) => {
       if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
         if (ev.type === 'keydown') {
@@ -1166,6 +1193,7 @@ function App() {
         }
         return false;
       }
+      if (isNativeScrollModeRef.current) return false;
       return true;
     });
 
@@ -1593,14 +1621,17 @@ function App() {
           🔬 Forensics
         </button>
             <button 
-              className={`macro-btn ${(showFiles ? fileSelectMode : isNativeScrollMode) ? 'action' : ''}`}
+              className={`macro-btn ${((showFiles && !splitMode) ? fileSelectMode : isNativeScrollMode) ? 'action' : ''}`}
               onClick={() => {
-                if (showFiles) {
+                if (showFiles && !splitMode) {
                   setFileSelectMode((prev) => !prev);
+                } else if (isNativeScrollMode) {
+                  closeNativeScrollMode();
                 } else {
                   enterNativeScrollMode();
                 }
               }}
+              title="Toggle isolated Scroll/Copy text selection view"
             >
               🔍 Scroll/Copy
             </button>
@@ -1753,74 +1784,14 @@ function App() {
           
           <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
           {isNativeScrollMode && (
-             <>
-                <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 1001, display: 'flex', gap: '8px' }}>
-                  <button 
-                    onClick={() => setIsSelectMode(!isSelectMode)}
-                    style={{ background: '#3b82f6', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    {isSelectMode ? '🎨 Color View' : '📝 Select Text'}
-                  </button>
-                  <button 
-                    onClick={() => { setIsNativeScrollMode(false); setScrollbackContent(''); }}
-                    style={{ background: '#ef4444', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    ✖ Close
-                  </button>
-                </div>
-                <div 
-                  className="native-scrollback-overlay"
-                  onTouchStart={e => e.stopPropagation()}
-                  onTouchMove={e => e.stopPropagation()}
-                  onTouchEnd={e => e.stopPropagation()}
-                  onScroll={(e) => {
-                     if (isSelectMode) return; // Disable auto-exit while user is trying to select text!
-                     
-                     const { scrollTop, scrollHeight, clientHeight } = e.target;
-                     // Only exit if they've actually scrolled up first to avoid instant-exit on mount
-                     if (scrollTop + clientHeight < scrollHeight - 50) {
-                         hasScrolledUpInOverlay.current = true;
-                     }
-                     if (hasScrolledUpInOverlay.current && scrollTop + clientHeight >= scrollHeight - 10) {
-                         setIsNativeScrollMode(false);
-                         setScrollbackContent('');
-                     }
-                  }}
-                  ref={(el) => {
-                    if (el && scrollbackContent && scrollbackContent !== 'Loading scrollback...' && !el.dataset.scrolled) {
-                       // Pre-scroll slightly above the bottom so the initial swipe down feels natural 
-                       // and doesn't instantly snap to the absolute bottom edge
-                       el.scrollTop = el.scrollHeight - el.clientHeight - 30;
-                       el.dataset.scrolled = "true";
-                    }
-                  }}
-                >
-                   {isSelectMode ? (
-                     <div 
-                       contentEditable={true}
-                       suppressContentEditableWarning={true}
-                       onKeyDown={e => { e.preventDefault(); return false; }}
-                       style={{ 
-                         width: '100%', 
-                         backgroundColor: 'transparent', 
-                         color: '#e2e8f0', 
-                         fontFamily: 'monospace', 
-                         fontSize: '14px', 
-                         whiteSpace: 'pre-wrap', 
-                         paddingBottom: '50px',
-                         WebkitUserSelect: 'text',
-                         userSelect: 'text',
-                         cursor: 'text',
-                         outline: 'none'
-                       }}
-                     >
-                       {rawScrollback}
-                     </div>
-                   ) : (
-                     <div dangerouslySetInnerHTML={{ __html: scrollbackContent }} style={{ paddingBottom: '50px' }} />
-                   )}
-                </div>
-             </>
+            <ScrollbackOverlay
+              scrollbackContent={scrollbackContent}
+              rawScrollback={rawScrollback}
+              isSelectMode={isSelectMode}
+              onToggleSelectMode={toggleScrollbackSelectMode}
+              onRefresh={enterNativeScrollMode}
+              onClose={closeNativeScrollMode}
+            />
           )}
         </div>
       </div>
