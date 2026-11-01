@@ -55,6 +55,7 @@ export default function FleetSidebar({
           tokens_used: 0,
           tokens_limit: 200_000,
           context_pct: 0,
+          compaction_count: 0,
           tier: 'normal',
           preview: '',
           pane_count: 1,
@@ -71,7 +72,7 @@ export default function FleetSidebar({
     items.forEach((it) => {
       if (it.status === 'THINKING') thinking += 1;
       if (it.status === 'WAITING') waiting += 1;
-      if (it.tier === 'critical') critical += 1;
+      if (it.tier === 'critical' || Number(it.compaction_count || 0) > 0) critical += 1;
       else if (it.tier === 'warning') warning += 1;
     });
     return { total: items.length, thinking, waiting, critical, warning };
@@ -82,7 +83,7 @@ export default function FleetSidebar({
     return items.filter((it) => {
       if (statusFilter === 'thinking' && it.status !== 'THINKING' && it.status !== 'WAITING') return false;
       if (statusFilter === 'waiting' && it.status !== 'WAITING') return false;
-      if (statusFilter === 'high_ctx' && it.tier === 'normal') return false;
+      if (statusFilter === 'high_ctx' && it.tier === 'normal' && Number(it.compaction_count || 0) === 0) return false;
       if (statusFilter === 'worktree' && !it.is_worktree) return false;
       if (!q) return true;
       return (
@@ -225,16 +226,20 @@ export default function FleetSidebar({
             const isActive = item.session_name === activeSession;
             const isUnread = unreadSessions.includes(item.session_name);
             const vesselCode = VESSEL_LABELS[item.vessel] || 'SH';
+            const compactionCount = Number(item.compaction_count || 0);
+            const isCompacted = compactionCount > 0;
             const showContextBar =
-              item.tokens_used > 0 || ['agy', 'grok', 'opencode', 'codex'].includes(item.vessel);
-            const barWidth = Math.min(100, Math.max(0, item.context_pct || 0));
+              isCompacted || item.tokens_used > 0 || ['agy', 'grok', 'opencode', 'codex'].includes(item.vessel);
+            const rawPct = Math.min(100, Math.max(0, Number(item.context_pct || 0)));
+            const barWidth = isCompacted ? Math.max(6, rawPct) : rawPct;
+            const effectiveTier = isCompacted ? 'critical' : item.tier || 'normal';
             const wikiKey = `${item.session_name}:wiki`;
             const handoffKey = `${item.session_name}:handoff`;
 
             return (
               <div
                 key={item.session_name}
-                className={`fleet-session-card ${isActive ? 'active' : ''} tier-${item.tier || 'normal'}`}
+                className={`fleet-session-card ${isActive ? 'active' : ''} tier-${effectiveTier}`}
                 onClick={() => {
                   onSelectSession(item.session_name);
                   if (window.innerWidth < 768 && onClose) {
@@ -303,23 +308,60 @@ export default function FleetSidebar({
                 {showContextBar && (
                   <div className="fleet-context-section">
                     <div className="fleet-context-header">
-                      <span className="fleet-context-label">
-                        {item.tier === 'critical'
-                          ? '⚠️ 30% RULE'
-                          : item.tier === 'warning'
-                            ? '⚡ WIKI SOON'
-                            : 'CTX'}
+                      <span
+                        className={`fleet-context-label tier-${effectiveTier}`}
+                        title={
+                          isCompacted
+                            ? `Auto-compacted ${compactionCount}x by AGY (~25% cliff) — stays RED until /handoff to a fresh session`
+                            : undefined
+                        }
+                      >
+                        {isCompacted
+                          ? `⚠️ COMPACTED ${compactionCount}x`
+                          : effectiveTier === 'critical'
+                            ? item.vessel === 'agy'
+                              ? '⚠️ 25% CLIFF'
+                              : '⚠️ 30% RULE'
+                            : effectiveTier === 'warning'
+                              ? '⚡ WIKI SOON'
+                              : 'CTX'}
                       </span>
-                      <span className={`fleet-context-pct tier-${item.tier || 'normal'}`}>
+                      <span
+                        className={`fleet-context-pct tier-${effectiveTier}`}
+                        title={
+                          isCompacted
+                            ? `Compacted ${compactionCount}x (currently ${Number(item.context_pct || 0).toFixed(1)}% post-compaction)`
+                            : item.vessel === 'agy'
+                              ? 'AGY Context (18% warning · 22% critical · ~25% backend auto-compact)'
+                              : 'J.O.S.H.U.A. 30%-Rule Context Saturation'
+                        }
+                      >
                         {`${Number(item.context_pct || 0).toFixed(1)}% · ${formatTokens(item.tokens_used)}/${formatTokens(item.tokens_limit)}`}
                       </span>
                     </div>
-                    <div className="fleet-context-track" title="J.O.S.H.U.A. 30%-Rule Context Saturation Meter (Red >= 30%)">
+                    <div
+                      className={`fleet-context-track ${isCompacted ? 'is-compacted' : ''}`}
+                      title={
+                        isCompacted
+                          ? `Session auto-compacted ${compactionCount}x — run /wiki & /handoff before multi-generation drift`
+                          : item.vessel === 'agy'
+                            ? 'AGY Pre-Cliff Context Meter (Amber >= 18% · Red >= 22% · Backend auto-compacts ~25%)'
+                            : 'J.O.S.H.U.A. 30%-Rule Context Saturation Meter (Red >= 30%)'
+                      }
+                    >
                       <div
-                        className={`fleet-context-fill tier-${item.tier || 'normal'}`}
+                        className={`fleet-context-fill tier-${effectiveTier}`}
                         style={{ width: `${barWidth}%` }}
                       />
-                      <div className="fleet-context-30-marker" title="30% Amnesia Threshold" />
+                      <div
+                        className="fleet-context-30-marker"
+                        style={{ left: item.vessel === 'agy' ? '22%' : '30%' }}
+                        title={
+                          item.vessel === 'agy'
+                            ? '22% Pre-Cliff Handoff Threshold (~25% AGY auto-compact)'
+                            : '30% Amnesia Threshold'
+                        }
+                      />
                     </div>
                   </div>
                 )}
@@ -330,7 +372,7 @@ export default function FleetSidebar({
                   </div>
                 )}
 
-                {(isActive || item.tier === 'warning' || item.tier === 'critical') && (
+                {(isActive || effectiveTier === 'warning' || effectiveTier === 'critical') && (
                   <div className="fleet-card-actions" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
@@ -342,9 +384,9 @@ export default function FleetSidebar({
                     </button>
                     <button
                       type="button"
-                      className={`fleet-action-btn handoff ${item.tier === 'critical' ? 'critical-pulse' : ''}`}
+                      className={`fleet-action-btn handoff ${effectiveTier === 'critical' ? 'critical-pulse' : ''}`}
                       onClick={(e) => handleTriggerSkill(e, item.session_name, '/aim-handoff', 'handoff')}
-                      title="Inject /aim-handoff into session (30%-Rule Baton Pass)"
+                      title="Inject /aim-handoff into session (Baton Pass)"
                     >
                       {commandFeedback[handoffKey] || '🤝 /handoff'}
                     </button>

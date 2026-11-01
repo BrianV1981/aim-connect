@@ -63,10 +63,11 @@ export default function CommandPalette({
     // 1. SESSIONS
     sessions.forEach((s) => {
       const meta = fleetByName.get(s);
+      const compCnt = Number(meta?.compaction_count || 0);
       const badge = meta
         ? `${(meta.vessel || 'sh').toUpperCase()}${meta.branch ? ` • ${meta.branch}` : ''}${
             meta.tokens_used > 0 ? ` • ${meta.context_pct}% ctx` : ''
-          }`
+          }${compCnt > 0 ? ` • ♻️ ${compCnt}x` : ''}`
         : 'Session';
       items.push({
         id: `session:${s}`,

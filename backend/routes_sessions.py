@@ -66,12 +66,24 @@ def _parse_token_number(num_str: str, suffix: str = "") -> int:
     return int(val)
 
 
-def compute_30pct_rule_tier(context_pct: float) -> str:
-    """J.O.S.H.U.A. 30%-Rule Context Saturation Tiers:
-    - normal: < 20%
-    - warning: 20% to < 30% (prepare /aim-memory-wiki)
-    - critical: >= 30% (Amnesia threshold — trigger /aim-handoff)
+def compute_30pct_rule_tier(
+    context_pct: float,
+    vessel: str = "",
+    compaction_count: int = 0,
+) -> str:
+    """Context Saturation & Sticky-Red Compaction Tiers (#209, #228):
+    - Sticky-red rule: if compaction_count > 0, ALWAYS return 'critical' (never green/yellow once compacted).
+    - AGY ('agy'): backend auto-compacts around ~25% (~255k/1M), so fire warning >= 18.0% and critical >= 22.0%.
+    - Other vessels: standard 30%-Rule (warning >= 20.0%, critical >= 30.0%).
     """
+    if compaction_count and compaction_count > 0:
+        return "critical"
+    if (vessel or "").lower() == "agy":
+        if context_pct >= 22.0:
+            return "critical"
+        if context_pct >= 18.0:
+            return "warning"
+        return "normal"
     if context_pct >= 30.0:
         return "critical"
     if context_pct >= 20.0:
@@ -211,7 +223,7 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
         tokens_used = _parse_token_number(m.group(1))
 
     context_pct = round((tokens_used / tokens_limit) * 100.0, 1) if (tokens_used > 0 and tokens_limit > 0) else 0.0
-    tier = compute_30pct_rule_tier(context_pct)
+    tier = compute_30pct_rule_tier(context_pct, vessel=vessel, compaction_count=0)
 
     # 4. Extract concise preview line (skip pure border lines)
     preview = ""
@@ -229,6 +241,7 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
         "tokens_used": tokens_used,
         "tokens_limit": tokens_limit,
         "context_pct": context_pct,
+        "compaction_count": 0,
         "tier": tier,
         "preview": preview,
         "spoken_summary": spoken_summary,
@@ -277,7 +290,8 @@ SESSION_WORKSPACE_ALIASES = {
     "aim-cron": "aim-cron-dashboard",
 }
 
-_AGY_BRAIN_CACHE: dict = {"ts": 0.0, "by_key": {}}
+_AGY_BRAIN_CACHE: dict = {"ts": 0.0, "by_key": {}, "compactions_by_key": {}}
+_TRANSCRIPT_STAT_CACHE: dict[str, tuple[int, int, int, int]] = {}
 _PANE_TELEMETRY_CACHE: dict[str, dict] = {}
 _FLEET_SNAPSHOT_CACHE: dict = {"ts": 0.0, "sessions_key": (), "fleet": [], "panes": []}
 
@@ -295,17 +309,37 @@ def _normalize_workspace_root(path: str) -> str:
     return cleaned
 
 
-def _read_transcript_tail_tokens(transcript_path: str, tail_bytes: int = 131072) -> int:
-    """Read last 128KB of AGY transcript.jsonl and return input_tokens + cache_read_tokens (#218, #225)."""
+def _read_transcript_telemetry(transcript_path: str, tail_bytes: int = 131072) -> tuple[int, int]:
+    """Return (latest_total_input_tokens, compaction_count) from AGY transcript.jsonl (#218, #225, #228).
+
+    Counts all SYSTEM 'CHECKPOINT' compaction steps across the full file and extracts the latest
+    PLANNER_RESPONSE (input_tokens + cache_read_tokens) from the tail, stat-cached by (mtime_ns, size).
+    """
     if not transcript_path or not os.path.isfile(transcript_path):
-        return 0
+        return 0, 0
     try:
-        size = os.path.getsize(transcript_path)
+        st = os.stat(transcript_path)
+        cached_entry = _TRANSCRIPT_STAT_CACHE.get(transcript_path)
+        if cached_entry and cached_entry[0] == st.st_mtime_ns and cached_entry[1] == st.st_size:
+            return cached_entry[2], cached_entry[3]
+
+        compaction_count = 0
         with open(transcript_path, "rb") as fh:
-            if size > tail_bytes:
-                fh.seek(size - tail_bytes)
-            raw = fh.read().decode("utf-8", errors="replace")
-        for line in reversed(raw.splitlines()):
+            for raw_ln in fh:
+                if b"CHECKPOINT" in raw_ln:
+                    try:
+                        obj = json.loads(raw_ln.decode("utf-8", errors="replace"))
+                        if obj.get("type") == "CHECKPOINT":
+                            compaction_count += 1
+                    except Exception:
+                        pass
+
+        total_in = 0
+        with open(transcript_path, "rb") as fh:
+            if st.st_size > tail_bytes:
+                fh.seek(st.st_size - tail_bytes)
+            raw_tail = fh.read().decode("utf-8", errors="replace")
+        for line in reversed(raw_tail.splitlines()):
             line = line.strip()
             if not line or "PLANNER_RESPONSE" not in line:
                 continue
@@ -316,20 +350,32 @@ def _read_transcript_tail_tokens(transcript_path: str, tail_bytes: int = 131072)
             if obj.get("type") == "PLANNER_RESPONSE":
                 inp = int(obj.get("input_tokens") or 0)
                 cached = int(obj.get("cache_read_tokens") or 0)
-                total_in = inp + cached
-                if total_in > 0:
-                    return total_in
+                candidate = inp + cached
+                if candidate > 0:
+                    total_in = candidate
+                    break
+
+        if len(_TRANSCRIPT_STAT_CACHE) > 256:
+            _TRANSCRIPT_STAT_CACHE.clear()
+        _TRANSCRIPT_STAT_CACHE[transcript_path] = (st.st_mtime_ns, st.st_size, total_in, compaction_count)
+        return total_in, compaction_count
     except OSError:
-        pass
-    return 0
+        return 0, 0
 
 
-def _resolve_agy_brain_tokens_by_workspace(
+def _read_transcript_tail_tokens(transcript_path: str, tail_bytes: int = 131072) -> int:
+    """Read last 128KB of AGY transcript.jsonl and return input_tokens + cache_read_tokens (#218, #225)."""
+    total_in, _ = _read_transcript_telemetry(transcript_path, tail_bytes=tail_bytes)
+    return total_in
+
+
+def _resolve_agy_brain_telemetry_pair(
     app_data_dir: str = "",
     ttl_sec: float = 3.0,
     agent_workspaces_dir: str = "",
-) -> dict[str, int]:
-    """Query conversation_summaries.db + transcript.jsonl tail for ground-truth AGY token usage (#218, #225)."""
+    include_compactions: bool = False,
+):
+    """Query conversation_summaries.db + transcript.jsonl for ground-truth AGY tokens & compactions (#218, #225, #228)."""
     now = time.time()
     if (
         not app_data_dir
@@ -337,6 +383,8 @@ def _resolve_agy_brain_tokens_by_workspace(
         and (now - _AGY_BRAIN_CACHE["ts"]) < ttl_sec
         and _AGY_BRAIN_CACHE["by_key"]
     ):
+        if include_compactions:
+            return dict(_AGY_BRAIN_CACHE["by_key"]), dict(_AGY_BRAIN_CACHE.get("compactions_by_key", {}))
         return dict(_AGY_BRAIN_CACHE["by_key"])
 
     base_dir = app_data_dir or os.environ.get(
@@ -345,6 +393,7 @@ def _resolve_agy_brain_tokens_by_workspace(
     )
     db_path = os.path.join(base_dir, "conversation_summaries.db")
     result: dict[str, int] = {}
+    compactions: dict[str, int] = {}
     seen_roots: set[str] = set()
     if os.path.isfile(db_path):
         try:
@@ -373,17 +422,19 @@ def _resolve_agy_brain_tokens_by_workspace(
                     transcript_path = os.path.join(
                         base_dir, "brain", str(cid), ".system_generated", "logs", "transcript.jsonl"
                     )
-                    total_in = _read_transcript_tail_tokens(transcript_path)
-                    if total_in > 0:
+                    total_in, comp_cnt = _read_transcript_telemetry(transcript_path)
+                    if total_in > 0 or comp_cnt > 0:
                         seen_roots.add(norm_root)
                         result[norm_root] = total_in
+                        compactions[norm_root] = comp_cnt
                         repo_base = os.path.basename(norm_root)
                         if repo_base and repo_base not in result:
                             result[repo_base] = total_in
+                            compactions[repo_base] = comp_cnt
         except Exception as e:
             logger.debug(f"AGY brain token resolution skipped: {e}")
 
-    # Resolve bwrap-isolated tenant brain directories under AGENT_WORKSPACES_DIR/agent-*/brain (#225)
+    # Resolve bwrap-isolated tenant brain directories under AGENT_WORKSPACES_DIR/agent-*/brain (#225, #228)
     aw_root = agent_workspaces_dir or (AGENT_WORKSPACES_DIR if not app_data_dir else "")
     if aw_root and os.path.isdir(aw_root):
         try:
@@ -407,9 +458,10 @@ def _resolve_agy_brain_tokens_by_workspace(
                             pass
                 candidates.sort(key=lambda x: x[0], reverse=True)
                 for _, tpath in candidates:
-                    tok = _read_transcript_tail_tokens(tpath)
-                    if tok > 0:
+                    tok, comp_cnt = _read_transcript_telemetry(tpath)
+                    if tok > 0 or comp_cnt > 0:
                         result[entry.name] = tok
+                        compactions[entry.name] = comp_cnt
                         break
         except OSError:
             pass
@@ -417,7 +469,25 @@ def _resolve_agy_brain_tokens_by_workspace(
     if not app_data_dir and not agent_workspaces_dir:
         _AGY_BRAIN_CACHE["ts"] = now
         _AGY_BRAIN_CACHE["by_key"] = dict(result)
+        _AGY_BRAIN_CACHE["compactions_by_key"] = dict(compactions)
+    if include_compactions:
+        return result, compactions
     return result
+
+
+def _resolve_agy_brain_tokens_by_workspace(
+    app_data_dir: str = "",
+    ttl_sec: float = 3.0,
+    agent_workspaces_dir: str = "",
+    include_compactions: bool = False,
+):
+    """Query conversation_summaries.db + transcript.jsonl for AGY tokens (and optional compactions) (#218, #225, #228)."""
+    return _resolve_agy_brain_telemetry_pair(
+        app_data_dir=app_data_dir,
+        ttl_sec=ttl_sec,
+        agent_workspaces_dir=agent_workspaces_dir,
+        include_compactions=include_compactions,
+    )
 
 
 def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], list[dict]]:
@@ -442,7 +512,16 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
     if res.returncode != 0:
         return [], []
 
-    agy_brain_tokens = _resolve_agy_brain_tokens_by_workspace()
+    try:
+        resolved_brain = _resolve_agy_brain_tokens_by_workspace(include_compactions=True)
+    except TypeError:
+        resolved_brain = _resolve_agy_brain_tokens_by_workspace()
+    if isinstance(resolved_brain, tuple) and len(resolved_brain) == 2:
+        agy_brain_tokens, agy_brain_compactions = resolved_brain
+    else:
+        agy_brain_tokens = resolved_brain or {}
+        agy_brain_compactions = {}
+
     panes = []
     by_session: dict[str, list[dict]] = {s: [] for s in allowed_sessions}
 
@@ -500,18 +579,32 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         main_repo_name = os.path.basename(norm_root) if norm_root else repo_name
         alias_repo = SESSION_WORKSPACE_ALIASES.get(sess_name, sess_name)
         base_agent_key = "-".join(sess_name.split("-")[:2]) if sess_name.startswith("agent-") else ""
-        brain_total_in = (
-            (agy_brain_tokens.get(base_agent_key) if base_agent_key else None)
-            or agy_brain_tokens.get(norm_root)
-            or agy_brain_tokens.get(main_repo_name)
-            or agy_brain_tokens.get(alias_repo)
-            or 0
-        )
-        if telemetry["vessel"] == "agy" and brain_total_in > 0:
-            telemetry["tokens_used"] = brain_total_in
-            telemetry["tokens_limit"] = 1_000_000
-            telemetry["context_pct"] = round((brain_total_in / 1_000_000) * 100.0, 1)
-            telemetry["tier"] = compute_30pct_rule_tier(telemetry["context_pct"])
+
+        matched_key = ""
+        for candidate_key in (base_agent_key, norm_root, main_repo_name, alias_repo):
+            if candidate_key and (
+                agy_brain_tokens.get(candidate_key, 0) > 0
+                or agy_brain_compactions.get(candidate_key, 0) > 0
+            ):
+                matched_key = candidate_key
+                break
+
+        brain_total_in = int(agy_brain_tokens.get(matched_key, 0)) if matched_key else 0
+        compaction_count = int(agy_brain_compactions.get(matched_key, 0)) if matched_key else 0
+
+        if telemetry["vessel"] == "agy":
+            telemetry["compaction_count"] = compaction_count
+            if brain_total_in > 0:
+                telemetry["tokens_used"] = brain_total_in
+                telemetry["tokens_limit"] = 1_000_000
+                telemetry["context_pct"] = round((brain_total_in / 1_000_000) * 100.0, 1)
+            telemetry["tier"] = compute_30pct_rule_tier(
+                telemetry["context_pct"],
+                vessel="agy",
+                compaction_count=compaction_count,
+            )
+        else:
+            telemetry["compaction_count"] = 0
 
         pane_obj = {
             "session_name": sess_name,
@@ -546,6 +639,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 "tokens_used": 0,
                 "tokens_limit": 200_000,
                 "context_pct": 0.0,
+                "compaction_count": 0,
                 "tier": "normal",
                 "preview": "",
                 "spoken_summary": "",
@@ -581,6 +675,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "tokens_used": primary["tokens_used"],
             "tokens_limit": primary["tokens_limit"],
             "context_pct": primary["context_pct"],
+            "compaction_count": primary.get("compaction_count", 0),
             "tier": primary["tier"],
             "preview": primary["preview"],
             "spoken_summary": primary.get("spoken_summary", ""),
