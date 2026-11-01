@@ -1568,9 +1568,8 @@ function App() {
         </h1>
         {activeSession && (
           <span
-            className="fleet-branch-badge"
-            style={{ color: '#e2e8f0', border: '1px solid #2a4a7f', padding: '3px 8px', fontSize: '11px' }}
-            title="Active tmux session"
+            className="active-session-badge"
+            title={`Active tmux session: ${activeSession}`}
           >
             ⚡ {activeSession}
           </span>

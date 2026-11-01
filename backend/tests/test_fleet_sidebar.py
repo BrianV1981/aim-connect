@@ -845,6 +845,47 @@ def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tm
     assert "compaction_count" in palette_jsx
 
 
+def test_mobile_header_active_session_badge_and_no_redundant_fleet_home_button():
+    """
+    Issue #229:
+    1. Header active-session pill must use a dedicated non-shrinking `.active-session-badge`
+       (never `.fleet-branch-badge` with `overflow: hidden`, which Flexbox crushes to 0px on Android),
+       and `.app-header > *` must enforce `flex-shrink: 0`.
+    2. Redundant `🏠 Home` button must be removed from `FleetSidebar.jsx` since the `aim-connect`
+       header logo already returns to the Welcome Screen.
+    """
+    import re
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    app_jsx = (repo_root / "frontend" / "src" / "App.jsx").read_text(encoding="utf-8")
+    sidebar_jsx = (repo_root / "frontend" / "src" / "components" / "FleetSidebar.jsx").read_text(encoding="utf-8")
+    app_css = (repo_root / "frontend" / "src" / "App.css").read_text(encoding="utf-8")
+
+    # 1. Redundant Home button removed from FleetSidebar, preserved on main header logo
+    assert "🏠 Home" not in sidebar_jsx
+    assert "Deselect session and return to A.I.M. Connect Home" not in sidebar_jsx
+    assert "Return to A.I.M. Connect Welcome Screen" in app_jsx
+    assert "switchToSession('')" in app_jsx
+
+    # 2. Header active session uses dedicated `.active-session-badge`, not `.fleet-branch-badge`
+    assert 'className="active-session-badge"' in app_jsx
+    assert "fleet-branch-badge" not in app_jsx
+
+    # 3. CSS guarantees header items and active-session-badge never flex-shrink on mobile
+    header_child_match = re.search(r"\.app-header\s*>\s*\*\s*\{([^}]+)\}", app_css)
+    assert header_child_match is not None, ".app-header > * rule missing in App.css"
+    assert "flex-shrink: 0" in header_child_match.group(1)
+
+    badge_match = re.search(r"\.active-session-badge\s*\{([^}]+)\}", app_css)
+    assert badge_match is not None, ".active-session-badge rule missing in App.css"
+    badge_rules = badge_match.group(1)
+    assert "flex-shrink: 0" in badge_rules
+    assert "white-space: nowrap" in badge_rules
+    assert "overflow: hidden" not in badge_rules
+
+
+
 
 
 

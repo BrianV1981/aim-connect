@@ -58,11 +58,55 @@ body {
   display: none;
 }
 
+.app-header > * {
+  flex-shrink: 0;
+}
+
 .app-header h1 {
   font-size: 16px;
   font-weight: 600;
   color: #c83803;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.active-session-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  min-width: max-content;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid #2a4a7f;
+  border-radius: 6px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .app-header {
+    gap: 8px;
+    padding: 0 10px;
+    height: 46px;
+  }
+
+  .app-header h1 {
+    font-size: 14px;
+  }
+
+  .app-header .macro-btn {
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  .active-session-badge {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
 }
 
 .status-indicator {
