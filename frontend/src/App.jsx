@@ -84,6 +84,7 @@ function App() {
     return typeof window !== 'undefined' ? window.innerWidth >= 900 : true;
   });
   const prevStatusRef = useRef({});
+  const lastChimedDigestRef = useRef({});
   const [activeSession, setActiveSession] = useState('');
   const activeSessionRef = useRef('');
   useEffect(() => {
@@ -551,30 +552,38 @@ function App() {
           let triggeredWaiting = false;
           const currWaiting = [];
           data.fleet.forEach((item) => {
-            const prevSt = prevStatusRef.current[item.session_name];
+            const sName = item.session_name;
+            const prevSt = prevStatusRef.current[sName];
+            const currDigest = item.turn_digest || item.spoken_summary || '';
+            if (prevSt === undefined || sName === activeSession) {
+              lastChimedDigestRef.current[sName] = currDigest;
+            }
             if (item.status === 'WAITING') {
-              currWaiting.push(item.session_name);
+              currWaiting.push(sName);
               if (prevSt && prevSt !== 'WAITING') {
                 triggeredWaiting = true;
               }
             }
-            if (prevSt === 'THINKING' && item.status === 'IDLE' && item.session_name !== activeSession) {
-              newlyCompleted.push(item.session_name);
+            if (prevSt === 'THINKING' && item.status === 'IDLE' && sName !== activeSession) {
+              if (!currDigest || lastChimedDigestRef.current[sName] !== currDigest) {
+                newlyCompleted.push(sName);
+                lastChimedDigestRef.current[sName] = currDigest;
+              }
             }
             const currSummary = item.spoken_summary || '';
-            const prevSummary = lastSpokenSummaryRef.current[item.session_name];
+            const prevSummary = lastSpokenSummaryRef.current[sName];
             if (prevSummary === undefined) {
-              lastSpokenSummaryRef.current[item.session_name] = currSummary;
+              lastSpokenSummaryRef.current[sName] = currSummary;
             } else if (item.status !== 'THINKING' && currSummary) {
               const turnFinished = prevSt === 'THINKING' && (item.status === 'IDLE' || item.status === 'WAITING');
               if (currSummary !== prevSummary || turnFinished) {
-                lastSpokenSummaryRef.current[item.session_name] = currSummary;
-                if (item.session_name === activeSession && voiceAutoReadRef.current) {
+                lastSpokenSummaryRef.current[sName] = currSummary;
+                if (sName === activeSession && voiceAutoReadRef.current) {
                   speakSummaryText(currSummary);
                 }
               }
             }
-            prevStatusRef.current[item.session_name] = item.status;
+            prevStatusRef.current[sName] = item.status;
           });
           setWaitingSessions(currWaiting);
           if (triggeredWaiting) {
@@ -687,6 +696,10 @@ function App() {
     }
     setActiveSession(newSession);
     setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
+    const matchedFleet = fleet.find((f) => f.session_name === newSession);
+    if (matchedFleet) {
+      lastChimedDigestRef.current[newSession] = matchedFleet.turn_digest || matchedFleet.spoken_summary || '';
+    }
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
       if (fitAddon.current) {

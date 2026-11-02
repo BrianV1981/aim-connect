@@ -885,6 +885,151 @@ def test_mobile_header_active_session_badge_and_no_redundant_fleet_home_button()
     assert "overflow: hidden" not in badge_rules
 
 
+def test_background_subagent_and_task_tray_keep_thinking_without_chime_oscillation():
+    """
+    Issue #231:
+    1. Active background subagents (`1 subagent(s)` / `● Agent(...)` in tray) and active non-cron
+       background tasks (`● [HH:MM:SS] ... running`) must keep `status == 'THINKING'` continuously
+       even when the subagent step text is `Searching web` or plain reasoning (no foreground keyword).
+    2. Standing idle `cron (...)` schedules alone at `? for shortcuts` must stay `status == 'IDLE'`.
+    3. Foreground Braille spinners immediately above the prompt box must trigger `status == 'THINKING'`
+       even when a multi-line tray pushes them past the bottom 4 raw lines, while unsubmitted drafts
+       inside `> ...` or historical completed `● Agent(...) (ctrl+o to expand)` lines stay `IDLE`.
+    4. `turn_digest` must remain stable across tray timer updates and change only when scrollback
+       conversation content advances, with `App.jsx` guarding completion chimes via `lastChimedDigestRef`.
+    """
+    from pathlib import Path
+
+    border = "─" * 60
+    base_scrollback = (
+        "  Certified Facility #255 and launched Facility #256 Verifier.\n"
+        "  🔊 Our checkpoint is deployed and verifier two fifty-six is running now.\n"
+    )
+
+    # 1a. Subagent tray showing "Searching web · 1m30s" + standing cron -> THINKING
+    subagent_search_pane = (
+        f"{base_scrollback}"
+        f"{border}\n"
+        ">\n"
+        f"{border}\n"
+        "  ● Agent(water-single-facility-verifier: Facility #256 Verifier)  Searching web · 1m30s\n"
+        "  ● [12:12:59] cron (daily at 06:00) running\n"
+        f"{border}\n"
+        "? for shortcuts                                         Gemini 4 Argon · high · 1 subagent(s) · 1 task(s) · /tasks\n"
+    )
+    res_sub_a = routes_sessions.parse_pane_telemetry(
+        subagent_search_pane, command="agy.real", session_name="aim-ld"
+    )
+    assert res_sub_a["status"] == "THINKING"
+    assert res_sub_a.get("turn_digest")
+
+    # 1b. Subagent tray streaming plain reasoning text 4 minutes later -> STILL THINKING & identical turn_digest
+    subagent_reasoning_pane = (
+        f"{base_scrollback}"
+        f"{border}\n"
+        ">\n"
+        f"{border}\n"
+        "  ● Agent(water-single-facility-verifier: Facility #256 Verifier)  Initial hypothesis: inspecting permit contacts... · 5m23s\n"
+        "  ● [12:12:59] cron (daily at 06:00) running\n"
+        f"{border}\n"
+        "? for shortcuts                                         Gemini 4 Argon · high · 1 subagent(s) · 1 task(s) · /tasks\n"
+    )
+    res_sub_b = routes_sessions.parse_pane_telemetry(
+        subagent_reasoning_pane, command="agy.real", session_name="aim-ld"
+    )
+    assert res_sub_b["status"] == "THINKING"
+    assert res_sub_b["turn_digest"] == res_sub_a["turn_digest"]
+
+    # 2. Active non-cron background command in tray -> THINKING
+    bg_task_pane = (
+        f"{base_scrollback}"
+        f"{border}\n"
+        ">\n"
+        f"{border}\n"
+        "  ● [13:07:12] Next.js production build running\n"
+        "  ● [12:12:59] cron (daily at 06:00) running\n"
+        f"{border}\n"
+        "? for shortcuts                                         Gemini 4 Argon · high · 2 task(s) · /tasks\n"
+    )
+    res_bg = routes_sessions.parse_pane_telemetry(
+        bg_task_pane, command="agy.real", session_name="aim-ld"
+    )
+    assert res_bg["status"] == "THINKING"
+
+    # 3. Foreground Braille spinner above prompt box with tray pushing it past lines[-4:] -> THINKING & stable digest
+    spinner_above_tray_pane = (
+        f"{base_scrollback}"
+        "  ⣾   Inspecting database schema...\n"
+        f"{border}\n"
+        ">\n"
+        f"{border}\n"
+        "  ● [12:12:59] cron (daily at 06:00) running\n"
+        f"{border}\n"
+        "? for shortcuts                                         Gemini 4 Argon · high · 1 task(s) · /tasks\n"
+    )
+    res_spin = routes_sessions.parse_pane_telemetry(
+        spinner_above_tray_pane, command="agy.real", session_name="aim-ld"
+    )
+    assert res_spin["status"] == "THINKING"
+    assert res_spin["turn_digest"] == res_sub_a["turn_digest"]
+
+    # 4. Standing idle cron schedule ONLY (even with historical "Generating"/"Running command" above prompt) -> IDLE
+    idle_cron_only_pane = (
+        "  ● Agent(research: Schema Audit)(Check tables) (ctrl+o to expand)\n"
+        "  Fixed Generating and Running command parsing cleanly.\n"
+        f"{base_scrollback}"
+        f"{border}\n"
+        ">\n"
+        f"{border}\n"
+        "  ● [12:12:59] cron (daily at 06:00) running\n"
+        f"{border}\n"
+        "? for shortcuts                                         Gemini 4 Argon · high · 1 task(s) · /tasks\n"
+    )
+    res_idle_cron = routes_sessions.parse_pane_telemetry(
+        idle_cron_only_pane, command="agy.real", session_name="aim-ld"
+    )
+    assert res_idle_cron["status"] == "IDLE"
+
+    # 5. Multi-line unsubmitted draft inside `> ...` prompt box mentioning "Generating" -> IDLE
+    draft_in_prompt_pane = (
+        f"{base_scrollback}"
+        f"{border}\n"
+        "> Please check why Generating and Running command\n"
+        "triggered an extra chime earlier today.\n"
+        f"{border}\n"
+        "? for shortcuts                                         Gemini 4 Argon · high\n"
+    )
+    res_draft = routes_sessions.parse_pane_telemetry(
+        draft_in_prompt_pane, command="agy.real", session_name="aim-connect"
+    )
+    assert res_draft["status"] == "IDLE"
+
+    # 6. Advancing the conversation scrollback produces a distinct turn_digest
+    advanced_pane = (
+        f"{base_scrollback}"
+        "  All 295 facilities certified and deployed cleanly.\n"
+        "  🔊 All two hundred ninety-five facilities are now certified and live.\n"
+        f"{border}\n"
+        ">\n"
+        f"{border}\n"
+        "  ● [12:12:59] cron (daily at 06:00) running\n"
+        f"{border}\n"
+        "? for shortcuts                                         Gemini 4 Argon · high · 1 task(s) · /tasks\n"
+    )
+    res_advanced = routes_sessions.parse_pane_telemetry(
+        advanced_pane, command="agy.real", session_name="aim-ld"
+    )
+    assert res_advanced["status"] == "IDLE"
+    assert res_advanced["turn_digest"] != res_sub_a["turn_digest"]
+
+    # 7. Frontend App.jsx wires lastChimedDigestRef & turn_digest deduplication
+    repo_root = Path(__file__).resolve().parents[2]
+    app_jsx = (repo_root / "frontend" / "src" / "App.jsx").read_text(encoding="utf-8")
+    assert "lastChimedDigestRef" in app_jsx
+    assert "turn_digest" in app_jsx
+
+
+
 
 
 

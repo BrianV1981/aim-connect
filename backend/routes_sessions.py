@@ -5,6 +5,7 @@ import re
 import time
 import json
 import wave
+import hashlib
 import sqlite3
 import shutil
 import logging
@@ -45,6 +46,10 @@ GENERIC_TOKENS_RE = re.compile(
     re.IGNORECASE,
 )
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+HORIZONTAL_BORDER_RE = re.compile(r"^[─━═]{20,}$")
+ACTIVE_SUBAGENT_STATUS_RE = re.compile(r"\b[1-9]\d*\s+subagent\(s\)", re.IGNORECASE)
+ACTIVE_SUBAGENT_TRAY_RE = re.compile(r"^●\s*Agent\((?!.*\(ctrl\+o to expand\))", re.IGNORECASE)
+TRAY_TIMESTAMP_PREFIX_RE = re.compile(r"^●\s*(?:\[\d{2}:\d{2}(?::\d{2})?\]\s*)?")
 
 
 def _parse_token_number(num_str: str, suffix: str = "") -> int:
@@ -167,6 +172,51 @@ def extract_spoken_summary(raw_text: str, fallback: bool = False) -> str:
 
 
 
+def _split_pane_prompt_regions(lines: list[str]) -> tuple[list[str], str, list[str], bool]:
+    """Locate a bottom TUI prompt box (`───` / `>` / `───`) and separate scrollback, spinner, and tray/footer."""
+    if not lines:
+        return [], "", [], False
+    scan_floor = max(0, len(lines) - 16)
+    for idx in range(len(lines) - 2, scan_floor - 1, -1):
+        if not HORIZONTAL_BORDER_RE.match(lines[idx]):
+            continue
+        if not lines[idx + 1].startswith((">", "❯")):
+            continue
+        bottom_border_idx = None
+        for j in range(idx + 2, len(lines)):
+            if HORIZONTAL_BORDER_RE.match(lines[j]):
+                bottom_border_idx = j
+                break
+        if bottom_border_idx is not None:
+            above_prompt = lines[idx - 1] if idx > 0 else ""
+            scrollback_end = (
+                idx - 1
+                if (idx > 0 and BRAILLE_SPINNER_RE.search(above_prompt))
+                else idx
+            )
+            below_prompt = [
+                ln for ln in lines[bottom_border_idx + 1 :]
+                if not HORIZONTAL_BORDER_RE.match(ln)
+            ]
+            return lines[:scrollback_end], above_prompt, below_prompt, True
+    return lines, "", lines[-4:], False
+
+
+def _is_active_tray_task(line: str) -> bool:
+    """Return True for active subagent or non-cron/non-daemon tray tasks (`● [HH:MM:SS] <task> running`)."""
+    stripped = (line or "").strip()
+    if not stripped.startswith("●"):
+        return False
+    if ACTIVE_SUBAGENT_TRAY_RE.search(stripped):
+        return True
+    if not stripped.lower().endswith(" running"):
+        return False
+    body = TRAY_TIMESTAMP_PREFIX_RE.sub("", stripped).strip().lower()
+    if body.startswith(("cron ", "cron(", "daemon ", "daemon(")):
+        return False
+    return True
+
+
 def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = "") -> dict:
     """Parse captured tmux pane text and command into vessel, status, and 30%-Rule telemetry."""
     clean_text = ANSI_ESCAPE_RE.sub("", pane_text or "")
@@ -189,11 +239,19 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
     else:
         vessel = "shell"
 
-    # 2. Detect status (WAITING / THINKING / ERROR / IDLE) on bottom footer lines (#220)
-    footer_text = "\n".join(lines[-4:]) if lines else ""
+    # 2. Detect status (WAITING / THINKING / ERROR / IDLE) across footer, subagents, & active tray tasks (#220, #231)
+    scrollback_lines, above_prompt_line, footer_lines, has_prompt_box = _split_pane_prompt_regions(lines)
+    footer_text = "\n".join(footer_lines) if footer_lines else ""
+    has_active_tray_work = any(_is_active_tray_task(ln) for ln in footer_lines)
     if WAITING_TEXT_RE.search(footer_text):
         status = "WAITING"
-    elif BRAILLE_SPINNER_RE.search(footer_text) or THINKING_TEXT_RE.search(footer_text):
+    elif (
+        BRAILLE_SPINNER_RE.search(footer_text)
+        or (has_prompt_box and BRAILLE_SPINNER_RE.search(above_prompt_line))
+        or THINKING_TEXT_RE.search(footer_text)
+        or ACTIVE_SUBAGENT_STATUS_RE.search(footer_text)
+        or has_active_tray_work
+    ):
         status = "THINKING"
     elif ERROR_TEXT_RE.search(tail_text):
         status = "ERROR"
@@ -234,6 +292,15 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
             break
 
     spoken_summary = extract_spoken_summary(clean_text, fallback=False)
+    digest_lines = [
+        ln for ln in scrollback_lines
+        if not _is_tui_chrome_line(ln) and not HORIZONTAL_BORDER_RE.match(ln)
+    ]
+    turn_digest = (
+        hashlib.sha1("\n".join(digest_lines[-12:]).encode("utf-8")).hexdigest()[:12]
+        if digest_lines
+        else ""
+    )
 
     return {
         "vessel": vessel,
@@ -245,6 +312,7 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
         "tier": tier,
         "preview": preview,
         "spoken_summary": spoken_summary,
+        "turn_digest": turn_digest,
     }
 
 
@@ -643,6 +711,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 "tier": "normal",
                 "preview": "",
                 "spoken_summary": "",
+                "turn_digest": "",
                 "pane_count": 0,
                 "panes": [],
             })
@@ -679,6 +748,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "tier": primary["tier"],
             "preview": primary["preview"],
             "spoken_summary": primary.get("spoken_summary", ""),
+            "turn_digest": primary.get("turn_digest", ""),
             "attached": primary["attached"],
             "pane_count": len(sess_panes),
             "panes": sess_panes,
