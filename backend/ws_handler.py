@@ -4,6 +4,9 @@ import sys
 import re
 import time
 import asyncio
+import base64
+import hashlib
+import hmac
 import struct
 import fcntl
 import termios
@@ -15,7 +18,7 @@ from main import (
     auth_attempts, LOCKOUT_TIME, MAX_AUTH_ATTEMPTS, VALID_API_TOKENS,
     AGENT_WORKSPACES_DIR, HOME_DIR
 )
-from e2ee import encrypt_bytes, decrypt_message
+from e2ee import encrypt_bytes, decrypt_message, derive_session_transport_key
 from harness_transcript import (
     extract_live_agent_text,
     iter_new_opencode_assistant_texts,
@@ -85,11 +88,14 @@ def legacy_sanitize_email(email: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]", "_", (email or "").strip().lower())
 
 
-async def ws_send_app_text(websocket: WebSocket, text: str) -> bool:
+async def ws_send_app_text(
+    websocket: WebSocket, text: str, e2ee_secret: str | None = None
+) -> bool:
     """Send application text (optionally E2EE). Returns False if the socket is dead."""
+    active_secret = E2EE_SECRET if e2ee_secret is None else e2ee_secret
     try:
-        if ENABLE_E2EE and E2EE_SECRET:
-            await websocket.send_bytes(encrypt_bytes(text.encode("utf-8"), E2EE_SECRET))
+        if ENABLE_E2EE and active_secret:
+            await websocket.send_bytes(encrypt_bytes(text.encode("utf-8"), active_secret))
         else:
             await websocket.send_text(text)
         return True
@@ -97,7 +103,9 @@ async def ws_send_app_text(websocket: WebSocket, text: str) -> bool:
         logger.warning(f"ws_send_app_text failed: {e}")
         return False
 
-async def ws_drain_client_or_sleep(websocket: WebSocket, timeout: float = 2.0):
+async def ws_drain_client_or_sleep(
+    websocket: WebSocket, timeout: float = 2.0, e2ee_secret: str | None = None
+):
     """Await inbound client frame up to timeout so pings are drained during long waits.
 
     Returns:
@@ -105,13 +113,14 @@ async def ws_drain_client_or_sleep(websocket: WebSocket, timeout: float = 2.0):
       dict — parsed JSON message (caller may ignore mid-wait submits)
     Raises WebSocketDisconnect if the client closed.
     """
+    active_secret = E2EE_SECRET if e2ee_secret is None else e2ee_secret
     try:
         message = await asyncio.wait_for(websocket.receive_text(), timeout=timeout)
     except asyncio.TimeoutError:
         return None
     try:
-        if ENABLE_E2EE and E2EE_SECRET and not str(message).strip().startswith("{"):
-            message = decrypt_message(message, E2EE_SECRET)
+        if ENABLE_E2EE and active_secret and not str(message).strip().startswith("{"):
+            message = decrypt_message(message, active_secret)
         data = json.loads(message)
         if isinstance(data, dict) and data.get("type") == "ping":
             return None
@@ -207,6 +216,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     client_opencode_cli_model = None
     client_opencode_provider = "google"
     client_opencode_variant = None
+    public_session_e2ee_secret = ""
+    jwt_operator_email = ""
     try:
         auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(auth_message)
@@ -240,9 +251,6 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     if req_sess and re.match(r"^[a-zA-Z0-9_.-]+$", req_sess):
                         requested_admin_session = req_sess
             elif "." in token:
-                import base64
-                import hmac
-                import hashlib
                 parts = token.split(".")
                 if len(parts) == 2:
                     payload_b64, signature_b64 = parts
@@ -254,7 +262,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         try:
                             expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
                             expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-                            if signature_b64.rstrip("=") == expected_b64:
+                            if hmac.compare_digest(signature_b64.rstrip("="), expected_b64):
                                 payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
                                 email = payload.get("e")
                                 exp = payload.get("exp")
@@ -262,6 +270,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                                 if email and exp is not None and time.time() <= float(exp):
                                     authenticated = True
                                     auth_attempts[client_ip] = (0, None)
+                                    jwt_operator_email = str(email).strip().lower()
+                                    public_session_e2ee_secret = derive_session_transport_key(token, secret)
                                     sanitized_email = resolve_workspace_id_for_email(email)
                                     if sub_session_id and re.match(r'^[a-zA-Z0-9_-]+$', sub_session_id):
                                         target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
@@ -643,8 +653,18 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             while True:
                 try:
                     message = await websocket.receive_text()
-                    if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
-                        message = decrypt_message(message, E2EE_SECRET)
+                    if ENABLE_E2EE and public_session_e2ee_secret and not message.strip().startswith("{"):
+                        try:
+                            message = decrypt_message(message, public_session_e2ee_secret)
+                        except Exception as dec_err:
+                            logger.warning(
+                                f"Public E2EE session key mismatch for {target_session_override}: {dec_err}"
+                            )
+                            await websocket.send_text(json.dumps({
+                                "type": "ingest_error",
+                                "message": "E2EE session key mismatch — please refresh.",
+                            }))
+                            continue
 
                     data = json.loads(message)
                     if data.get("type") in ("input", "submit"):
@@ -726,8 +746,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         return
                     for ts, clean_output in new_bits:
                         opencode_last_ts = max(opencode_last_ts, ts)
-                        if ENABLE_E2EE and E2EE_SECRET:
-                            encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                        if ENABLE_E2EE and public_session_e2ee_secret:
+                            encrypted = encrypt_bytes(clean_output.encode("utf-8"), public_session_e2ee_secret)
                             logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
                             await websocket.send_bytes(encrypted)
                         else:
@@ -738,7 +758,11 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     now = time.time()
                     if now - last_keepalive >= 15.0:
                         last_keepalive = now
-                        if not await ws_send_app_text(websocket, "keepalive_ping"):
+                        if not await ws_send_app_text(
+                            websocket,
+                            "keepalive_ping",
+                            e2ee_secret=public_session_e2ee_secret,
+                        ):
                             break
 
                     db_touched = False
@@ -775,8 +799,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                                     log_data = json.loads(line)
                                     clean_output = extract_live_agent_text(log_data)
                                     if clean_output:
-                                        if ENABLE_E2EE and E2EE_SECRET:
-                                            encrypted = encrypt_bytes(clean_output.encode(), E2EE_SECRET)
+                                        if ENABLE_E2EE and public_session_e2ee_secret:
+                                            encrypted = encrypt_bytes(clean_output.encode("utf-8"), public_session_e2ee_secret)
                                             logger.info(f"Sending E2EE bytes back to frontend: {clean_output[:100]}...")
                                             await websocket.send_bytes(encrypted)
                                         else:
