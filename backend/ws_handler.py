@@ -14,7 +14,7 @@ import subprocess
 import pty
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from main import (
-    AIM_CONNECT_ROOT, ENABLE_E2EE, E2EE_SECRET, ALLOWED_IPS, 
+    AIM_CONNECT_ROOT, BACKEND_DIR, ENABLE_E2EE, E2EE_SECRET, ALLOWED_IPS, 
     auth_attempts, LOCKOUT_TIME, MAX_AUTH_ATTEMPTS, VALID_API_TOKENS,
     AGENT_WORKSPACES_DIR, HOME_DIR
 )
@@ -435,9 +435,11 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 
         if proc.returncode != 0 or needs_reboot:
             logger.info(f"Starting TMUX session for {target_session_override}...")
-            smtp_flags = bwrap_smtp_setenv()
+            smtp_flags = bwrap_smtp_setenv(operator_email=jwt_operator_email)
             if smtp_configured():
-                logger.info("Injecting LEADDEED_SMTP_* into sandbox (values redacted).")
+                logger.info(
+                    "Injecting loopback sandbox email relay token into bwrap (SMTP credentials kept on host)."
+                )
             else:
                 logger.warning("LEADDEED_SMTP_* missing on host — customer agents cannot send mail.")
             
@@ -618,8 +620,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     f"--chdir {workspace_dir} {cli_args}"
                 )
 
-            with open("/tmp/bwrap_cmd.log", "w") as f:
+            bwrap_log_path = os.path.join(BACKEND_DIR, "bwrap_cmd.log")
+            os.makedirs(BACKEND_DIR, exist_ok=True)
+            log_fd = os.open(bwrap_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(log_fd, "w", encoding="utf-8") as f:
                 f.write(redact_bwrap_cmd(bwrap_cmd, secrets=[client_gemini_api_key or ""]))
+            try:
+                os.chmod(bwrap_log_path, 0o600)
+            except OSError:
+                pass
 
             start_proc = await asyncio.create_subprocess_exec(
                 "tmux", "new-session", "-d", "-s", target_session_override, bwrap_cmd,

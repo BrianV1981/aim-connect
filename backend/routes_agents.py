@@ -8,20 +8,31 @@ import glob
 import base64
 import hmac
 import hashlib
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid, parseaddr
+from typing import Mapping
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, UploadFile, File, Request, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from main import (
     verify_token, require_admin, AGENT_WORKSPACES_DIR, HOME_DIR
 )
 from ws_handler import resolve_workspace_id_for_email, legacy_sanitize_email
 from grok_auth import grok_auth_path, grok_auth_ready, grok_auth_state
+from sandbox_smtp import smtp_configured, smtp_values, verify_sandbox_relay_token
 import logging
 
 router = APIRouter()
 logger = logging.getLogger("aim-connect")
 
 grok_oauth_processes = {}
+_sandbox_relay_timestamps: dict[str, list[float]] = {}
+SANDBOX_RELAY_MAX_PER_HOUR = 15
+SANDBOX_RELAY_WINDOW_S = 3600
+SANDBOX_RELAY_MAX_BODY_BYTES = 512 * 1024
 
 def _verify_dashboard_jwt(token: str) -> dict:
     """Verify a LeadDeed dashboard magic-link JWT.
@@ -525,3 +536,141 @@ async def download_file(agent_id: str, filepath: str = Query(...), token: str = 
         
     filename = os.path.basename(target_path)
     return FileResponse(target_path, filename=filename)
+
+
+class SandboxEmailRelayRequest(BaseModel):
+    to: str
+    subject: str
+    plain_text: str = ""
+    html_text: str = ""
+
+
+def _is_unproxied_sandbox_loopback(request: Request) -> bool:
+    """Allow ONLY direct unproxied loopback calls; reject any tunnel/proxy headers (#233 / LD-038)."""
+    if not request or not request.client:
+        return False
+    if request.client.host not in ("127.0.0.1", "::1", "testclient"):
+        return False
+    for hdr in ("cf-connecting-ip", "cf-ray", "x-forwarded-for", "x-real-ip", "cdn-loop"):
+        if request.headers.get(hdr):
+            return False
+    host_hdr = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    return host_hdr in ("127.0.0.1", "localhost", "testserver", "::1", "[::1]")
+
+
+def _send_sandbox_relay_mime(
+    msg: MIMEMultipart, recipient: str, smtp_cfg: Mapping[str, str]
+) -> None:
+    host = smtp_cfg["LEADDEED_SMTP_HOST"]
+    port = int(smtp_cfg["LEADDEED_SMTP_PORT"])
+    user = smtp_cfg["LEADDEED_SMTP_USER"]
+    password = smtp_cfg["LEADDEED_SMTP_PASS"]
+    use_ssl = (
+        smtp_cfg.get("LEADDEED_SMTP_SECURE", "").strip().lower() in ("1", "true", "yes")
+        or port == 465
+    )
+    raw_from = smtp_cfg.get("LEADDEED_MAIL_FROM") or user
+    envelope_from = parseaddr(raw_from)[1] or user
+    ctx = ssl.create_default_context()
+    if use_ssl:
+        with smtplib.SMTP_SSL(host, port, context=ctx, timeout=20) as client:
+            client.login(user, password)
+            client.sendmail(envelope_from, [recipient], msg.as_string())
+    else:
+        with smtplib.SMTP(host, port, timeout=20) as client:
+            client.ehlo()
+            client.starttls(context=ctx)
+            client.ehlo()
+            client.login(user, password)
+            client.sendmail(envelope_from, [recipient], msg.as_string())
+
+
+@router.post("/api/sandbox/email-relay")
+async def sandbox_email_relay(
+    req: SandboxEmailRelayRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    """Loopback-only HMAC-authenticated SMTP relay for customer bwrap sandboxes (#233)."""
+    if not _is_unproxied_sandbox_loopback(request):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: sandbox email relay is restricted to direct local loopback.",
+        )
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Bearer relay token")
+
+    raw_token = authorization[7:].strip()
+    signing_secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "").strip()
+    bound_operator_email = verify_sandbox_relay_token(raw_token, signing_secret)
+    if not bound_operator_email:
+        raise HTTPException(status_code=401, detail="Invalid sandbox relay token")
+
+    raw_to = req.to or ""
+    raw_subject = req.subject or ""
+    if "\r" in raw_to or "\n" in raw_to or "\r" in raw_subject or "\n" in raw_subject:
+        raise HTTPException(status_code=400, detail="Header newline characters are forbidden")
+
+    requested_to = raw_to.strip().lower()
+    if not requested_to or requested_to != bound_operator_email.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Recipient override blocked: delivery locked to bound operator email",
+        )
+
+    subject = raw_subject.strip()
+    if not subject or len(subject) > 500:
+        raise HTTPException(status_code=400, detail="Subject is required and must be <= 500 chars")
+
+    plain_text = req.plain_text or ""
+    html_text = req.html_text or ""
+    if not plain_text.strip() and not html_text.strip():
+        raise HTTPException(status_code=400, detail="Email body cannot be empty")
+
+    total_bytes = len(plain_text.encode("utf-8")) + len(html_text.encode("utf-8"))
+    if total_bytes > SANDBOX_RELAY_MAX_BODY_BYTES:
+        raise HTTPException(status_code=400, detail="Email body exceeds 512 KB limit")
+
+    now = time.time()
+    cutoff = now - SANDBOX_RELAY_WINDOW_S
+    recent = [ts for ts in _sandbox_relay_timestamps.get(bound_operator_email, []) if ts > cutoff]
+    if len(recent) >= SANDBOX_RELAY_MAX_PER_HOUR:
+        _sandbox_relay_timestamps[bound_operator_email] = recent
+        raise HTTPException(
+            status_code=429,
+            detail="Sandbox email relay rate limit exceeded (max 15 per hour)",
+        )
+    recent.append(now)
+    _sandbox_relay_timestamps[bound_operator_email] = recent
+
+    if not smtp_configured():
+        raise HTTPException(status_code=503, detail="Host SMTP is not configured")
+
+    smtp_cfg = smtp_values()
+    from_addr = (smtp_cfg.get("LEADDEED_MAIL_FROM") or smtp_cfg["LEADDEED_SMTP_USER"]).strip()
+    if "\r" in from_addr or "\n" in from_addr:
+        raise HTTPException(status_code=500, detail="Invalid host LEADDEED_MAIL_FROM")
+
+    parsed_from_addr = parseaddr(from_addr)[1] or smtp_cfg["LEADDEED_SMTP_USER"]
+    msg_domain = parsed_from_addr.rsplit("@", 1)[-1].strip() if "@" in parsed_from_addr else None
+
+    msg = MIMEMultipart("alternative")
+    if plain_text:
+        msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+    if html_text:
+        msg.attach(MIMEText(html_text, "html", "utf-8"))
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = bound_operator_email
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=msg_domain)
+
+    try:
+        await asyncio.to_thread(_send_sandbox_relay_mime, msg, bound_operator_email, smtp_cfg)
+    except Exception as exc:
+        logger.error("Sandbox email relay delivery failed for %s: %s", bound_operator_email, exc)
+        raise HTTPException(status_code=502, detail="SMTP relay delivery failed")
+
+    return {"ok": True, "to": bound_operator_email}
+
