@@ -32,6 +32,7 @@ _MANAGED_FILES = (
     "passphrase.hash",
     "tokens.json",
     "users.json",
+    "loopback.token",
 )
 
 

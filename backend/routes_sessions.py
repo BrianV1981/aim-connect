@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Header, HTTPException, Depends, Request, Response
 from main import (
     verify_token, require_admin, _get_user_from_token,
-    is_direct_local_loopback, verify_token_or_loopback,
+    is_direct_local_loopback, is_authorized_local_loopback, verify_token_or_loopback,
     SESSION_NAME_RE, AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT,
     ENABLE_E2EE, E2EE_SECRET, HOME_DIR
 )
@@ -830,8 +830,8 @@ async def get_sessions(x_api_token: str = Header(None)) -> dict:
 
 @router.get("/api/fleet/panes", dependencies=[Depends(verify_token_or_loopback)])
 async def get_fleet_panes(request: Request, x_api_token: str = Header(None)) -> dict:
-    """Return enriched pane and session telemetry for all allowed sessions (#209, #221)."""
-    local_ok = is_direct_local_loopback(request)
+    """Return enriched pane and session telemetry for all allowed sessions (#209, #221, #236)."""
+    local_ok = is_authorized_local_loopback(request)
     data = await asyncio.to_thread(_get_sessions_sync, x_api_token, local_ok)
     return {
         "sessions": data.get("sessions", []),

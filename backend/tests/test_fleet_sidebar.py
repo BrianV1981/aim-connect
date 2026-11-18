@@ -1035,3 +1035,101 @@ def test_background_subagent_and_task_tray_keep_thinking_without_chime_oscillati
 
 
 
+
+
+def test_loopback_telemetry_rejects_unauthenticated_bwrap_sandbox_requests():
+    """Unauthenticated 127.0.0.1 callers (e.g. shared-network bwrap tenants) must be rejected on /api/fleet/panes and /api/swarm/activity (#236)."""
+    from fastapi.testclient import TestClient
+    import main
+
+    loop_client = TestClient(main.app, client=("127.0.0.1", 50000))
+    headers = {"host": "127.0.0.1:8000"}
+    resp_panes = loop_client.get("/api/fleet/panes", headers=headers)
+    assert resp_panes.status_code == 401
+
+    resp_swarm = loop_client.get("/api/swarm/activity", headers=headers)
+    assert resp_swarm.status_code == 401
+
+    wrong_hdrs = {"host": "127.0.0.1:8000", "x-aim-loopback-token": "forged-sandbox-token"}
+    assert loop_client.get("/api/fleet/panes", headers=wrong_hdrs).status_code == 401
+    assert loop_client.get("/api/swarm/activity", headers=wrong_hdrs).status_code == 401
+
+
+def test_loopback_telemetry_allows_valid_host_loopback_token_only_when_unproxied(monkeypatch):
+    """Host sister services presenting X-AIM-Loopback-Token over direct loopback succeed, while proxied requests fail (#236)."""
+    from fastapi.testclient import TestClient
+    import main
+
+    test_loop_tok = "a" * 64
+    monkeypatch.setattr(main, "loopback_token", test_loop_tok)
+    loop_client = TestClient(main.app, client=("127.0.0.1", 50000))
+
+    fake_run = MagicMock(returncode=1, stdout="", stderr="")
+    with patch("routes_sessions.subprocess.run", return_value=fake_run):
+        ok_panes = loop_client.get(
+            "/api/fleet/panes",
+            headers={"host": "127.0.0.1:8000", "x-aim-loopback-token": test_loop_tok},
+        )
+        assert ok_panes.status_code == 200
+
+    ok_swarm = loop_client.get(
+        "/api/swarm/activity",
+        headers={"host": "localhost:8000", "x-aim-loopback-token": test_loop_tok},
+    )
+    assert ok_swarm.status_code == 200
+
+    # Proxied through Cloudflare or external Host header MUST NOT bypass verify_token even with loopback token
+    proxied_cf = loop_client.get(
+        "/api/fleet/panes",
+        headers={
+            "host": "127.0.0.1:8000",
+            "cf-connecting-ip": "203.0.113.99",
+            "x-aim-loopback-token": test_loop_tok,
+        },
+    )
+    assert proxied_cf.status_code == 401
+
+    proxied_host = loop_client.get(
+        "/api/swarm/activity",
+        headers={
+            "host": "api.leaddeeds.com",
+            "x-aim-loopback-token": test_loop_tok,
+        },
+    )
+    assert proxied_host.status_code == 401
+
+
+def test_loopback_token_file_permissions_and_gitignore(monkeypatch, tmp_path):
+    """loopback.token must be generated in AUTH_STATE_DIR with 0600 perms and protected by .gitignore & secret-guard (#236)."""
+    import importlib
+    from pathlib import Path
+    import stat
+    import subprocess
+    import main
+
+    repo_root = Path(__file__).resolve().parents[2]
+    auth_dir = tmp_path / "auth_loopback"
+    try:
+        monkeypatch.setenv("AIM_AUTH_DIR", str(auth_dir))
+        monkeypatch.delenv("AIM_LOOPBACK_TOKEN", raising=False)
+        importlib.reload(main)
+
+        tok_file = auth_dir / "loopback.token"
+        assert tok_file.is_file()
+        assert stat.S_IMODE(tok_file.stat().st_mode) == 0o600
+        assert len(main.loopback_token) == 64
+        assert tok_file.read_text(encoding="utf-8").strip() == main.loopback_token
+    finally:
+        monkeypatch.delenv("AIM_AUTH_DIR", raising=False)
+        importlib.reload(main)
+
+    res = subprocess.run(
+        ["git", "check-ignore", "loopback.token", "backend/loopback.token"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+    )
+    ignored = set(res.stdout.splitlines())
+    assert {"loopback.token", "backend/loopback.token"}.issubset(ignored)
+    secret_guard = (repo_root / ".github" / "workflows" / "secret-guard.yml").read_text(encoding="utf-8")
+    assert "loopback.token" in secret_guard

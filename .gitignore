@@ -13,6 +13,8 @@ backend/password.hash
 backend/passphrase.hash
 backend/tokens.json
 tokens.json
+backend/loopback.token
+loopback.token
 passphrase.hash
 password.hash
 patch_*.py

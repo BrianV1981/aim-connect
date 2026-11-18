@@ -38,6 +38,7 @@ from io import StringIO
 import logging
 import time
 import re
+import hmac
 from e2ee import encrypt_bytes, decrypt_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -218,6 +219,27 @@ def get_or_create_passphrase():
 # Initialize Passphrase hash on startup
 admin_passphrase_hash = get_or_create_passphrase()
 
+# --- Host-Only Loopback Telemetry Token (#236) ---
+LOOPBACK_TOKEN_FILE = os.path.join(AUTH_STATE_DIR, "loopback.token")
+
+def get_or_create_loopback_token() -> str:
+    """Return host-only loopback token (masked from bwrap sandboxes via --tmpfs HOME_DIR)."""
+    env_tok = os.environ.get("AIM_LOOPBACK_TOKEN", "").strip()
+    if env_tok:
+        return env_tok
+    if os.path.exists(LOOPBACK_TOKEN_FILE):
+        with open(LOOPBACK_TOKEN_FILE, "r", encoding="utf-8") as f:
+            tok = f.read().strip()
+        if tok:
+            return tok
+    tok = secrets.token_hex(32)
+    with open(LOOPBACK_TOKEN_FILE, "w", encoding="utf-8") as f:
+        f.write(tok)
+    os.chmod(LOOPBACK_TOKEN_FILE, 0o600)
+    return tok
+
+loopback_token = get_or_create_loopback_token()
+
 # --- Multi-User Support (optional users.json) ---
 USERS_FILE = os.path.join(AUTH_STATE_DIR, "users.json")
 
@@ -310,16 +332,26 @@ def is_direct_local_loopback(request: Request) -> bool:
     return host_hdr in ("127.0.0.1", "localhost")
 
 
+def is_authorized_local_loopback(request: Request) -> bool:
+    """Require both unproxied loopback transport AND matching host-only X-AIM-Loopback-Token (#236)."""
+    if not is_direct_local_loopback(request):
+        return False
+    supplied = (request.headers.get("x-aim-loopback-token") or "").strip()
+    if not supplied or not loopback_token:
+        return False
+    return hmac.compare_digest(supplied.encode("utf-8"), loopback_token.encode("utf-8"))
+
+
 def verify_token_or_loopback(request: Request, x_api_token: str = Header(None)):
-    """Allow valid x-api-token OR direct local loopback read access (#221)."""
-    if is_direct_local_loopback(request):
+    """Allow valid x-api-token OR authenticated direct local loopback read access (#221, #236)."""
+    if is_authorized_local_loopback(request):
         return
     verify_token(x_api_token)
 
 
 def require_admin_or_loopback(request: Request, x_api_token: str = Header(None)):
-    """Allow admin x-api-token OR direct local loopback read access (#221)."""
-    if is_direct_local_loopback(request):
+    """Allow admin x-api-token OR authenticated direct local loopback read access (#221, #236)."""
+    if is_authorized_local_loopback(request):
         return
     require_admin(x_api_token)
 
