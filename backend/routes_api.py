@@ -9,6 +9,7 @@ import hmac
 import hashlib
 import time
 from main import AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT
+from sandbox_smtp import get_gateway_signing_secret
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 logger = logging.getLogger("aim-connect")
@@ -22,7 +23,7 @@ def verify_vercel_jwt(authorization: str = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Bearer token")
 
-    secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "").strip()
+    secret = get_gateway_signing_secret()
     if not secret:
         raise HTTPException(status_code=500, detail="Missing signing secret")
 

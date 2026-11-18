@@ -432,3 +432,97 @@ def test_secret_guard_and_gitignore_cover_users_and_webauthn():
     secret_guard = (REPO_ROOT / ".github" / "workflows" / "secret-guard.yml").read_text(encoding="utf-8")
     assert '"users.json"' in secret_guard
     assert '"webauthn.json"' in secret_guard
+
+
+def test_vendor_neutral_gateway_signing_secret_with_legacy_fallback(monkeypatch):
+    """AIM_GATEWAY_SIGNING_SECRET must work without LEADDEED_DOWNLOAD_SIGNING_SECRET while keeping legacy fallback (#238)."""
+    import base64
+    import hashlib
+    import hmac
+    import json
+    import time
+    import routes_agents
+    import routes_api
+    import sandbox_smtp
+
+    def _mint(sec: str, email: str = "dev@example.org") -> str:
+        payload = {"p": "ai-analyst", "e": email, "exp": int(time.time()) + 1800}
+        body = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        sig = base64.urlsafe_b64encode(
+            hmac.new(sec.encode(), body.encode(), hashlib.sha256).digest()
+        ).decode().rstrip("=")
+        return f"{body}.{sig}"
+
+    monkeypatch.delenv("LEADDEED_DOWNLOAD_SIGNING_SECRET", raising=False)
+    monkeypatch.delenv("AIM_GATEWAY_SIGNING_SECRET", raising=False)
+    assert sandbox_smtp.get_gateway_signing_secret() == ""
+
+    neutral_sec = "neutral_aim_gateway_secret_238_primary"
+    monkeypatch.setenv("AIM_GATEWAY_SIGNING_SECRET", neutral_sec)
+    tok = _mint(neutral_sec, "neutral@example.org")
+    assert sandbox_smtp.get_gateway_signing_secret() == neutral_sec
+    assert routes_api.verify_vercel_jwt(f"Bearer {tok}") == "neutral@example.org"
+    assert routes_agents._verify_dashboard_jwt(tok)["e"] == "neutral@example.org"
+
+    # Legacy fallback when AIM_GATEWAY_SIGNING_SECRET is unset
+    monkeypatch.delenv("AIM_GATEWAY_SIGNING_SECRET", raising=False)
+    legacy_sec = "legacy_signing_secret_238_fallback"
+    monkeypatch.setenv("LEADDEED_DOWNLOAD_SIGNING_SECRET", legacy_sec)
+    leg_tok = _mint(legacy_sec, "legacy@example.org")
+    assert sandbox_smtp.get_gateway_signing_secret() == legacy_sec
+    assert routes_api.verify_vercel_jwt(f"Bearer {leg_tok}") == "legacy@example.org"
+    assert routes_agents._verify_dashboard_jwt(leg_tok)["e"] == "legacy@example.org"
+
+
+def test_vendor_neutral_smtp_and_relay_env_with_legacy_fallback(monkeypatch):
+    """AIM_SMTP_* and AIM_GATEWAY_SIGNING_SECRET must power sandbox email relay with zero raw SMTP leak (#238)."""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    import main
+    import sandbox_smtp
+
+    for k in (
+        "LEADDEED_DOWNLOAD_SIGNING_SECRET",
+        "LEADDEED_SMTP_HOST",
+        "LEADDEED_SMTP_PORT",
+        "LEADDEED_SMTP_USER",
+        "LEADDEED_SMTP_PASS",
+        "LEADDEED_MAIL_FROM",
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+    neutral_sec = "neutral_relay_signing_secret_238"
+    monkeypatch.setenv("AIM_GATEWAY_SIGNING_SECRET", neutral_sec)
+    monkeypatch.setenv("AIM_SMTP_HOST", "smtp.example.net")
+    monkeypatch.setenv("AIM_SMTP_PORT", "587")
+    monkeypatch.setenv("AIM_SMTP_USER", "relay@example.net")
+    monkeypatch.setenv("AIM_SMTP_PASS", "super_secret_aim_smtp_pw_238")
+    monkeypatch.setenv("AIM_MAIL_FROM", "AIM Agent <relay@example.net>")
+
+    assert sandbox_smtp.smtp_configured() is True
+    flags = sandbox_smtp.bwrap_smtp_setenv("alice@example.org")
+    assert "AIM_EMAIL_RELAY_URL" in flags
+    assert "AIM_EMAIL_RELAY_TOKEN" in flags
+    assert "super_secret_aim_smtp_pw_238" not in flags
+    assert "AIM_SMTP_PASS" not in flags
+    assert "AIM_SMTP_USER" not in flags
+    assert "AIM_SMTP_HOST" not in flags
+
+    redacted = sandbox_smtp.redact_bwrap_cmd(flags + "--setenv EXTRA super_secret_aim_smtp_pw_238")
+    assert "super_secret_aim_smtp_pw_238" not in redacted
+    relay_tok = sandbox_smtp.mint_sandbox_relay_token("alice@example.org", neutral_sec)
+    assert relay_tok not in redacted
+
+    loop_client = TestClient(main.app, client=("127.0.0.1", 50000))
+    with patch("routes_agents._send_sandbox_relay_mime") as mock_send:
+        res = loop_client.post(
+            "/api/sandbox/email-relay",
+            headers={"host": "127.0.0.1:8000", "Authorization": f"Bearer {relay_tok}"},
+            json={"to": "alice@example.org", "subject": "Neutral Relay Check", "plain_text": "Hello"},
+        )
+        assert res.status_code == 200, res.text
+        assert mock_send.called
+
+    env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "AIM_GATEWAY_SIGNING_SECRET" in env_example
+    assert "AIM_SMTP_HOST" in env_example

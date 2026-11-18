@@ -1,10 +1,9 @@
-"""Loopback HMAC email relay token & flag helpers for customer bwrap sandboxes (#233 / LD-038).
+"""Loopback HMAC email relay token & gateway secret helpers for customer bwrap sandboxes (#233, #238).
 
-Host SMTP credentials (`LEADDEED_SMTP_HOST`, `LEADDEED_SMTP_PORT`,
-`LEADDEED_SMTP_USER`, `LEADDEED_SMTP_PASS`) remain strictly in the host
+Host SMTP credentials (`AIM_SMTP_*` or legacy `LEADDEED_SMTP_*`) remain strictly in the host
 `aim-connect` process environment and are NEVER injected into customer `bwrap`
 command lines or sandbox environments. Instead, each customer sandbox receives
-`LEADDEED_EMAIL_RELAY_URL` and an HMAC-SHA256 `LEADDEED_EMAIL_RELAY_TOKEN`
+`AIM_EMAIL_RELAY_URL` / `LEADDEED_EMAIL_RELAY_URL` and an HMAC-SHA256 relay bearer token
 cryptographically bound to that seat's verified operator email.
 """
 
@@ -22,17 +21,22 @@ from typing import Iterable, Mapping
 DEFAULT_SANDBOX_EMAIL_RELAY_URL = "http://127.0.0.1:8000/api/sandbox/email-relay"
 SANDBOX_RELAY_TOKEN_PURPOSE = "sandbox-email-relay"
 
-SMTP_ENV_KEYS = (
-    "LEADDEED_SMTP_HOST",
-    "LEADDEED_SMTP_PORT",
-    "LEADDEED_SMTP_USER",
-    "LEADDEED_SMTP_PASS",
-    "LEADDEED_SMTP_SECURE",
-    "LEADDEED_MAIL_FROM",
+SMTP_ENV_ALIASES: tuple[tuple[str, str], ...] = (
+    ("AIM_SMTP_HOST", "LEADDEED_SMTP_HOST"),
+    ("AIM_SMTP_PORT", "LEADDEED_SMTP_PORT"),
+    ("AIM_SMTP_USER", "LEADDEED_SMTP_USER"),
+    ("AIM_SMTP_PASS", "LEADDEED_SMTP_PASS"),
+    ("AIM_SMTP_SECURE", "LEADDEED_SMTP_SECURE"),
+    ("AIM_MAIL_FROM", "LEADDEED_MAIL_FROM"),
 )
+
+SMTP_ENV_KEYS = tuple(legacy for _, legacy in SMTP_ENV_ALIASES)
 
 _REDACT_KEYS = frozenset(
     {
+        "AIM_SMTP_PASS",
+        "AIM_SMTP_USER",
+        "AIM_EMAIL_RELAY_TOKEN",
         "LEADDEED_SMTP_PASS",
         "LEADDEED_SMTP_USER",
         "LEADDEED_EMAIL_RELAY_TOKEN",
@@ -43,8 +47,17 @@ _REDACT_KEYS = frozenset(
 )
 
 _RELAY_TOKEN_FLAG_RE = re.compile(
-    r"(--setenv\s+(?:'LEADDEED_EMAIL_RELAY_TOKEN'|\"LEADDEED_EMAIL_RELAY_TOKEN\"|LEADDEED_EMAIL_RELAY_TOKEN)\s+)(\S+)"
+    r"(--setenv\s+(?:'(?:AIM|LEADDEED)_EMAIL_RELAY_TOKEN'|\"(?:AIM|LEADDEED)_EMAIL_RELAY_TOKEN\"|(?:AIM|LEADDEED)_EMAIL_RELAY_TOKEN)\s+)(\S+)"
 )
+
+
+def get_gateway_signing_secret(environ: Mapping[str, str] | None = None) -> str:
+    """Resolve vendor-neutral AIM_GATEWAY_SIGNING_SECRET with LEADDEED_DOWNLOAD_SIGNING_SECRET fallback (#238)."""
+    src = os.environ if environ is None else environ
+    primary = (src.get("AIM_GATEWAY_SIGNING_SECRET") or "").strip()
+    if primary:
+        return primary
+    return (src.get("LEADDEED_DOWNLOAD_SIGNING_SECRET") or "").strip()
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -106,12 +119,14 @@ def verify_sandbox_relay_token(token: str, signing_secret: str) -> str | None:
 
 
 def smtp_values(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return resolved SMTP configuration supporting AIM_SMTP_* primary keys and LEADDEED_SMTP_* fallback."""
     src = os.environ if environ is None else environ
     out: dict[str, str] = {}
-    for key in SMTP_ENV_KEYS:
-        val = (src.get(key) or "").strip()
+    for neutral_key, legacy_key in SMTP_ENV_ALIASES:
+        val = (src.get(neutral_key) or src.get(legacy_key) or "").strip()
         if val:
-            out[key] = val
+            out[neutral_key] = val
+            out[legacy_key] = val
     return out
 
 
@@ -137,19 +152,30 @@ def bwrap_smtp_setenv(
     src = os.environ if environ is None else environ
     if not smtp_configured(src):
         return ""
-    signing_secret = (src.get("LEADDEED_DOWNLOAD_SIGNING_SECRET") or "").strip()
+    signing_secret = get_gateway_signing_secret(src)
     relay_token = mint_sandbox_relay_token(operator_email, signing_secret)
-    effective_url = (src.get("LEADDEED_EMAIL_RELAY_URL") or relay_url or "").strip()
+    effective_url = (
+        src.get("AIM_EMAIL_RELAY_URL")
+        or src.get("LEADDEED_EMAIL_RELAY_URL")
+        or relay_url
+        or ""
+    ).strip()
     if not relay_token or not effective_url:
         return ""
 
+    q_url = shlex.quote(effective_url)
+    q_tok = shlex.quote(relay_token)
     parts: list[str] = [
-        f"--setenv LEADDEED_EMAIL_RELAY_URL {shlex.quote(effective_url)}",
-        f"--setenv LEADDEED_EMAIL_RELAY_TOKEN {shlex.quote(relay_token)}",
+        f"--setenv AIM_EMAIL_RELAY_URL {q_url}",
+        f"--setenv AIM_EMAIL_RELAY_TOKEN {q_tok}",
+        f"--setenv LEADDEED_EMAIL_RELAY_URL {q_url}",
+        f"--setenv LEADDEED_EMAIL_RELAY_TOKEN {q_tok}",
     ]
-    mail_from = (src.get("LEADDEED_MAIL_FROM") or "").strip()
+    mail_from = (src.get("AIM_MAIL_FROM") or src.get("LEADDEED_MAIL_FROM") or "").strip()
     if mail_from:
-        parts.append(f"--setenv LEADDEED_MAIL_FROM {shlex.quote(mail_from)}")
+        q_from = shlex.quote(mail_from)
+        parts.append(f"--setenv AIM_MAIL_FROM {q_from}")
+        parts.append(f"--setenv LEADDEED_MAIL_FROM {q_from}")
     return " ".join(parts) + " "
 
 

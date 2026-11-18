@@ -22,7 +22,12 @@ from main import (
 )
 from ws_handler import resolve_workspace_id_for_email, legacy_sanitize_email
 from grok_auth import grok_auth_path, grok_auth_ready, grok_auth_state
-from sandbox_smtp import smtp_configured, smtp_values, verify_sandbox_relay_token
+from sandbox_smtp import (
+    get_gateway_signing_secret,
+    smtp_configured,
+    smtp_values,
+    verify_sandbox_relay_token,
+)
 import logging
 
 router = APIRouter()
@@ -49,12 +54,12 @@ def _verify_dashboard_jwt(token: str) -> dict:
         if len(parts) != 2:
             raise HTTPException(status_code=401, detail="Invalid Token Format")
         payload_b64, signature_b64 = parts
-        secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+        secret = get_gateway_signing_secret()
         if not secret:
             raise HTTPException(status_code=500, detail="Missing Secret")
         expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
         expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-        if signature_b64.rstrip("=") != expected_b64:
+        if not hmac.compare_digest(signature_b64.rstrip("="), expected_b64):
             raise HTTPException(status_code=401, detail="Unauthorized")
         # Decode payload
         def _pad_b64(data):
@@ -602,7 +607,7 @@ async def sandbox_email_relay(
         raise HTTPException(status_code=401, detail="Missing Bearer relay token")
 
     raw_token = authorization[7:].strip()
-    signing_secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "").strip()
+    signing_secret = get_gateway_signing_secret()
     bound_operator_email = verify_sandbox_relay_token(raw_token, signing_secret)
     if not bound_operator_email:
         raise HTTPException(status_code=401, detail="Invalid sandbox relay token")

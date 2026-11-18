@@ -177,7 +177,8 @@ All configurable via `.env` (see `.env.example` for full list):
 | `ENABLE_E2EE` | `false` | Enable WebSocket encryption |
 | `E2EE_SECRET` | — | AES key derivation secret |
 | `NGROK_AUTHTOKEN` | — | Ngrok tunnel auth |
-| `LEADDEED_DOWNLOAD_SIGNING_SECRET` | — | HMAC signing for dashboard JWTs |
+| `AIM_GATEWAY_SIGNING_SECRET` | — | HMAC signing for external dashboard JWTs & sandbox relay (falls back to `LEADDEED_DOWNLOAD_SIGNING_SECRET`) |
+| `AIM_SMTP_HOST` / `PORT` / `USER` / `PASS` | — | Host-only loopback email relay SMTP config (falls back to `LEADDEED_SMTP_*`) |
 
 ---
 

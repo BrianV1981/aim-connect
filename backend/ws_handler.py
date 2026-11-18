@@ -24,7 +24,12 @@ from harness_transcript import (
     iter_new_opencode_assistant_texts,
     opencode_max_part_ts,
 )
-from sandbox_smtp import bwrap_smtp_setenv, redact_bwrap_cmd, smtp_configured
+from sandbox_smtp import (
+    bwrap_smtp_setenv,
+    get_gateway_signing_secret,
+    redact_bwrap_cmd,
+    smtp_configured,
+)
 from opencode_providers import (
     map_opencode_cli_model,
     opencode_bwrap_setenv,
@@ -255,7 +260,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 if len(parts) == 2:
                     payload_b64, signature_b64 = parts
 
-                    secret = os.environ.get("LEADDEED_DOWNLOAD_SIGNING_SECRET", "")
+                    secret = get_gateway_signing_secret()
                     if secret:
                         def pad_b64(data):
                             return data + "=" * (-len(data) % 4)
@@ -441,7 +446,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     "Injecting loopback sandbox email relay token into bwrap (SMTP credentials kept on host)."
                 )
             else:
-                logger.warning("LEADDEED_SMTP_* missing on host — customer agents cannot send mail.")
+                logger.warning("AIM_SMTP_* / LEADDEED_SMTP_* missing on host — customer agents cannot send mail.")
             
             # Completely decoupled execution pipelines for each harness
             if client_harness == "opencode":
