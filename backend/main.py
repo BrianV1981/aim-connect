@@ -122,8 +122,11 @@ DEFAULT_WORKSPACE = os.environ.get("AIM_WORKSPACE", os.path.abspath(os.path.join
 os.makedirs(DEFAULT_WORKSPACE, exist_ok=True)
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+AUTH_STATE_DIR = os.path.abspath(os.environ.get("AIM_AUTH_DIR", "").strip() or BACKEND_DIR)
+if AUTH_STATE_DIR != BACKEND_DIR:
+    os.makedirs(AUTH_STATE_DIR, mode=0o700, exist_ok=True)
 
-SECRET_FILE = os.path.join(BACKEND_DIR, "totp.secret")
+SECRET_FILE = os.path.join(AUTH_STATE_DIR, "totp.secret")
 
 def _should_print_first_run_creds() -> bool:
     """Print generated secrets only on an Operator TTY (./startup.sh first launch).
@@ -167,7 +170,7 @@ def get_or_create_totp():
 # Initialize TOTP on startup
 totp_instance = get_or_create_totp()
 
-PASSWORD_FILE = os.path.join(BACKEND_DIR, "password.hash")
+PASSWORD_FILE = os.path.join(AUTH_STATE_DIR, "password.hash")
 
 def get_or_create_password():
     if os.path.exists(PASSWORD_FILE):
@@ -192,7 +195,7 @@ def get_or_create_password():
 admin_password_hash = get_or_create_password()
 
 # --- Passphrase (Stealth "Name" field — third auth factor) ---
-PASSPHRASE_FILE = os.path.join(BACKEND_DIR, "passphrase.hash")
+PASSPHRASE_FILE = os.path.join(AUTH_STATE_DIR, "passphrase.hash")
 
 def get_or_create_passphrase():
     if os.path.exists(PASSPHRASE_FILE):
@@ -216,7 +219,7 @@ def get_or_create_passphrase():
 admin_passphrase_hash = get_or_create_passphrase()
 
 # --- Multi-User Support (optional users.json) ---
-USERS_FILE = os.path.join(BACKEND_DIR, "users.json")
+USERS_FILE = os.path.join(AUTH_STATE_DIR, "users.json")
 
 def load_users():
     """Load multi-user config. Returns dict of users or None for single-user mode."""
@@ -232,7 +235,7 @@ def load_users():
 
 users_db = load_users()
 
-TOKEN_FILE = os.path.join(BACKEND_DIR, "tokens.json")
+TOKEN_FILE = os.path.join(AUTH_STATE_DIR, "tokens.json")
 VALID_API_TOKENS = {}  # token -> {"expires": float, "user": str, "role": str, "prefix": str}
 if os.path.exists(TOKEN_FILE):
     try:

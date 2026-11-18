@@ -55,8 +55,14 @@ if [ "${1:-}" = "--foreground" ]; then
 fi
 
 # Pre-flight first-run 3FA bootstrap: when run interactively on a TTY, print QR code,
-# password, and passphrase to the foreground terminal before launching detached uvicorn (#206).
-if [ -t 1 ] && { [ ! -f "$DIR/backend/totp.secret" ] || [ ! -f "$DIR/backend/password.hash" ] || [ ! -f "$DIR/backend/passphrase.hash" ]; }; then
+# password, and passphrase to the foreground terminal before launching detached uvicorn (#206, #235).
+TOTP_SECRET_PATH="${AIM_AUTH_DIR:+$AIM_AUTH_DIR/totp.secret}"
+TOTP_SECRET_PATH="${TOTP_SECRET_PATH:-$DIR/backend/totp.secret}"
+PASSWORD_HASH_PATH="${AIM_AUTH_DIR:+$AIM_AUTH_DIR/password.hash}"
+PASSWORD_HASH_PATH="${PASSWORD_HASH_PATH:-$DIR/backend/password.hash}"
+PASSPHRASE_HASH_PATH="${AIM_AUTH_DIR:+$AIM_AUTH_DIR/passphrase.hash}"
+PASSPHRASE_HASH_PATH="${PASSPHRASE_HASH_PATH:-$DIR/backend/passphrase.hash}"
+if [ -t 1 ] && { [ ! -f "$TOTP_SECRET_PATH" ] || [ ! -f "$PASSWORD_HASH_PATH" ] || [ ! -f "$PASSPHRASE_HASH_PATH" ]; }; then
     if [ -x "$DIR/backend/venv/bin/python3" ]; then
         (cd "$DIR/backend" && "$DIR/backend/venv/bin/python3" -c "import main")
     elif command -v python3 >/dev/null 2>&1; then

@@ -7,7 +7,11 @@ from webauthn.helpers.options_to_json import options_to_json
 from typing import Dict, List, Optional
 import base64
 
-WEBAUTHN_DB = os.environ.get("WEBAUTHN_DB", "webauthn.json")
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+_AUTH_STATE_DIR = os.path.abspath(os.environ.get("AIM_AUTH_DIR", "").strip() or _BACKEND_DIR)
+if _AUTH_STATE_DIR != _BACKEND_DIR:
+    os.makedirs(_AUTH_STATE_DIR, mode=0o700, exist_ok=True)
+WEBAUTHN_DB = os.environ.get("WEBAUTHN_DB", "").strip() or os.path.join(_AUTH_STATE_DIR, "webauthn.json")
 RP_NAME = "AIM Connect"
 
 class WebAuthnManager:
@@ -25,6 +29,10 @@ class WebAuthnManager:
     def save_db(self):
         with open(WEBAUTHN_DB, "w") as f:
             json.dump(self.credentials, f)
+        try:
+            os.chmod(WEBAUTHN_DB, 0o600)
+        except OSError:
+            pass
             
     def get_user_credentials(self, user_name: str) -> List[Dict]:
         return self.credentials.get(user_name, [])

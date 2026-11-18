@@ -155,12 +155,13 @@ AIM-Connect ships with a hardened, multi-stage Dockerfile:
 - **Stage 1** builds the React frontend (no Node.js in the final image)
 - **Stage 2** runs the Python backend as a **non-root user** (`appuser`)
 - Includes a `HEALTHCHECK` endpoint at `/api/health`
-- Volume mounts are restricted to `workspace/` only — no source code or secrets exposed to the container
+- Persists 3FA hashes, TOTP secrets, and WebAuthn credentials in a dedicated `aim-auth-data` Docker volume (`/app/auth_data`) across container rebuilds while keeping backend source code isolated from host bind-mounts
+- Binds `127.0.0.1:8000` on the host by default (override via `AIM_BIND_HOST` in `.env`) so `http://localhost:8000` and local reverse proxies/tunnels work immediately without exposing raw HTTP to public interfaces
 
 **Quick start:**
-1. `cp .env.example .env` and fill in your `NGROK_AUTHTOKEN` and `ALLOWED_IPS`.
-2. Run `docker-compose up -d --build`.
-3. Check the logs (`docker logs aim-connect -f`) to capture your initial TOTP QR Code, admin password, and stealth passphrase.
+1. *(Optional)* `cp .env.example .env` and customize `ALLOWED_IPS`, `AIM_APP_NAME`, or `AIM_BIND_HOST`.
+2. Run `docker compose up -d --build`.
+3. Check the logs (`docker logs aim-connect -f`) to capture your initial TOTP QR Code, admin password, and stealth passphrase, then open `http://localhost:8000` (or route your HTTPS tunnel to `localhost:8000`).
 
 ---
 
@@ -207,7 +208,7 @@ If you hit an Ngrok limit but just need to get back online instantly without reg
 If you want to use AIM-Connect but refuse to expose it to the public internet whatsoever.
 
 **1. Mesh VPN (Tailscale / WireGuard)**
-*   **Setup:** Install Tailscale on your server and your phone. Access AIM-Connect via the internal VPN IP (e.g., `http://100.x.x.x:8000`).
+*   **Setup:** Install Tailscale on your server and your phone, set `ALLOW_HTTP=true` in your `.env` (since WireGuard already encrypts the mesh transport; if using Docker, also set `AIM_BIND_HOST=100.x.x.x`), and access AIM-Connect via the internal VPN IP (e.g., `http://100.x.x.x:8000`) or `tailscale serve`.
 *   **Pros:** Zero public exposure, mathematically impossible to port-scan.
 *   **Cons:** Requires the VPN app to be active on your client device, completely defeating the "Clientless SSH" philosophy if you are using a public or borrowed computer.
 

@@ -37,8 +37,8 @@ COPY startup.sh ./
 # Copy built frontend from stage 1
 COPY --from=frontend-build /build/frontend/dist frontend/dist
 
-# Create workspace directory
-RUN mkdir -p workspace
+# Create workspace and persistent auth state directories
+RUN mkdir -p workspace auth_data && chmod 700 auth_data
 
 # Create non-root user and set ownership
 RUN groupadd --system appuser && \
@@ -46,6 +46,7 @@ RUN groupadd --system appuser && \
     chown -R appuser:appuser /app
 
 USER appuser
+ENV AIM_AUTH_DIR=/app/auth_data
 
 EXPOSE 8000
 

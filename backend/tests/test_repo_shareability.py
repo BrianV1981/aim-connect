@@ -256,3 +256,115 @@ def test_startup_sh_skips_optional_mcp_and_cloudflared_when_absent(tmp_path):
     assert any("aim-connect-workspace:servers" in c for c in send_keys_calls)
     assert not any("aim-connect-workspace:mcp" in c for c in send_keys_calls)
     assert not any("aim-connect-workspace:cloudflared" in c for c in send_keys_calls)
+
+
+def test_docker_compose_onboarding_and_auth_persistence(tmp_path):
+    """docker-compose.yml must avoid bridge-NAT 403 on localhost, wire optional .env, drop dead NGROK vars, and persist auth_data (#235)."""
+    import shutil
+
+    compose_path = REPO_ROOT / "docker-compose.yml"
+    compose_text = compose_path.read_text(encoding="utf-8")
+    dockerfile_text = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert not compose_text.lstrip().startswith("version:"), "Deprecated compose version key should be removed"
+    assert "NGROK_AUTHTOKEN" not in compose_text, "docker-compose.yml should not hardcode unused NGROK_AUTHTOKEN"
+    assert "NGROK_DOMAIN" not in compose_text, "docker-compose.yml should not hardcode unused NGROK_DOMAIN"
+    assert "env_file:" in compose_text
+    assert "required: false" in compose_text
+    assert "${AIM_BIND_HOST:-127.0.0.1}:8000:8000" in compose_text
+    assert "ALLOW_HTTP" in compose_text
+    assert "aim-auth-data:/app/auth_data" in compose_text
+
+    assert "AIM_AUTH_DIR=/app/auth_data" in dockerfile_text
+    assert "auth_data" in dockerfile_text
+
+    if shutil.which("docker"):
+        # Verify `docker compose config` succeeds even in a fresh clone directory without a .env file
+        isolated_dir = tmp_path / "fresh_clone"
+        isolated_dir.mkdir()
+        shutil.copy2(compose_path, isolated_dir / "docker-compose.yml")
+        res = subprocess.run(
+            ["docker", "compose", "config"],
+            cwd=str(isolated_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert res.returncode == 0, f"docker compose config failed without .env: {res.stderr}"
+        assert "127.0.0.1" in res.stdout
+        assert "aim-auth-data" in res.stdout
+
+
+def test_aim_auth_dir_persists_3fa_tokens_and_webauthn_separately_from_backend(monkeypatch, tmp_path):
+    """AIM_AUTH_DIR must isolate 3FA secrets, tokens.json, users.json, and webauthn.json outside BACKEND_DIR (#235)."""
+    import importlib
+    import stat
+    import main
+    import routes_auth
+    import webauthn_manager
+
+    auth_dir = tmp_path / "persisted_auth"
+    try:
+        monkeypatch.setenv("AIM_AUTH_DIR", str(auth_dir))
+        monkeypatch.delenv("WEBAUTHN_DB", raising=False)
+        importlib.reload(main)
+        importlib.reload(routes_auth)
+        importlib.reload(webauthn_manager)
+
+        assert os.path.realpath(main.AUTH_STATE_DIR) == os.path.realpath(str(auth_dir))
+        assert os.path.dirname(main.SECRET_FILE) == main.AUTH_STATE_DIR
+        assert os.path.dirname(main.PASSWORD_FILE) == main.AUTH_STATE_DIR
+        assert os.path.dirname(main.PASSPHRASE_FILE) == main.AUTH_STATE_DIR
+        assert os.path.dirname(main.USERS_FILE) == main.AUTH_STATE_DIR
+        assert os.path.dirname(main.TOKEN_FILE) == main.AUTH_STATE_DIR
+        assert os.path.dirname(webauthn_manager.WEBAUTHN_DB) == main.AUTH_STATE_DIR
+
+        for fname in ("totp.secret", "password.hash", "passphrase.hash"):
+            fpath = auth_dir / fname
+            assert fpath.is_file(), f"Expected {fname} generated inside AIM_AUTH_DIR"
+            assert stat.S_IMODE(fpath.stat().st_mode) == 0o600
+
+        webauthn_manager.webauthn_mgr.credentials["admin"] = [{"id": "abc", "public_key": "xyz", "sign_count": 1}]
+        webauthn_manager.webauthn_mgr.save_db()
+        w_path = auth_dir / "webauthn.json"
+        assert w_path.is_file()
+        assert stat.S_IMODE(w_path.stat().st_mode) == 0o600
+    finally:
+        monkeypatch.delenv("AIM_AUTH_DIR", raising=False)
+        importlib.reload(main)
+        importlib.reload(routes_auth)
+        importlib.reload(webauthn_manager)
+
+    assert main.AUTH_STATE_DIR == main.BACKEND_DIR
+    assert os.path.dirname(webauthn_manager.WEBAUTHN_DB) == main.BACKEND_DIR
+
+
+def test_enforce_https_bridge_nat_vs_allow_http(monkeypatch):
+    """Bridge-NAT / Tailscale HTTP IPs (172.18.0.1, 100.x) must 403 when ALLOW_HTTP=False and pass when ALLOW_HTTP=True (#235)."""
+    from fastapi.testclient import TestClient
+    import main
+
+    monkeypatch.setattr(main, "ALLOW_HTTP", False)
+    nat_client = TestClient(main.app, client=("172.18.0.1", 50000))
+    assert nat_client.get("/api/health").status_code == 200
+    blocked = nat_client.get("/api/sessions")
+    assert blocked.status_code == 403
+    assert "HTTPS required" in blocked.json()["detail"]
+
+    monkeypatch.setattr(main, "ALLOW_HTTP", True)
+    allowed_nat = nat_client.get("/api/sessions")
+    # Passes enforce_https (401 from missing x-api-token rather than 403 HTTPS required)
+    assert allowed_nat.status_code == 401
+
+    tailscale_client = TestClient(main.app, client=("100.88.12.34", 50000))
+    assert tailscale_client.get("/api/sessions").status_code == 401
+
+
+def test_readme_documents_docker_persistence_and_tailscale_allow_http():
+    """README.md must document Docker auth-volume persistence and ALLOW_HTTP=true for Tailscale HTTP (#235)."""
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "aim-auth-data" in readme
+    assert "ALLOW_HTTP=true" in readme
+    # Docker quick-start should no longer tell users to fill NGROK_AUTHTOKEN for docker compose
+    docker_section = readme.split("## 🐳 Deployment (Docker)", 1)[1].split("---", 1)[0]
+    assert "NGROK_AUTHTOKEN" not in docker_section

@@ -1,15 +1,20 @@
-version: "3.8"
 services:
   aim-connect:
     build: .
     container_name: aim-connect
     ports:
-      - "8000:8000"
+      - "${AIM_BIND_HOST:-127.0.0.1}:8000:8000"
+    env_file:
+      - path: ./.env
+        required: false
     environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-      - NGROK_DOMAIN=${NGROK_DOMAIN}
+      - ALLOW_HTTP=${ALLOW_HTTP:-true}
     volumes:
       - ./workspace:/app/workspace
+      - aim-auth-data:/app/auth_data
     restart: unless-stopped
     stdin_open: true
     tty: true
+
+volumes:
+  aim-auth-data:
