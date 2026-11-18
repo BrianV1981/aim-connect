@@ -921,7 +921,6 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 message = await websocket.receive_text()
                 last_activity = time.time()
                 try:
-                    logger.info(f"Processing message (len={len(message)}): {message[:50]}...")
                     if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
                         try:
                             message = decrypt_message(message, E2EE_SECRET)
