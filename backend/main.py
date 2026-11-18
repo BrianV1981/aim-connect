@@ -378,61 +378,63 @@ app.include_router(forensics_router)
 
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 
+_NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+def _render_frontend_file(dist_dir: str, catchall: str):
+    """Resolve and render a SPA static asset, manifest.json, or dynamic-titled index.html (#237)."""
+    import html as _html
+    import urllib.parse
+    from fastapi.responses import HTMLResponse
+
+    base = os.path.realpath(dist_dir)
+    file_path = os.path.realpath(os.path.join(base, catchall))
+    if file_path != base and not file_path.startswith(base + os.sep):
+        file_path = os.path.join(base, "index.html")
+    elif not os.path.exists(file_path) or not os.path.isfile(file_path):
+        file_path = os.path.join(base, "index.html")
+
+    if file_path.endswith("manifest.json"):
+        with open(file_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        app_name = os.environ.get("AIM_APP_NAME")
+        if app_name:
+            manifest["name"] = app_name
+            manifest["short_name"] = app_name
+            safe_id = urllib.parse.quote(app_name.lower().replace(" ", "-"))
+            manifest["id"] = f"/?id={safe_id}"
+            manifest["start_url"] = f"/?id={safe_id}"
+        app_color = os.environ.get("AIM_APP_COLOR")
+        if app_color:
+            manifest["background_color"] = app_color
+            manifest["theme_color"] = app_color
+        return JSONResponse(manifest)
+
+    if file_path.endswith("index.html"):
+        app_name = os.environ.get("AIM_APP_NAME")
+        if app_name:
+            with open(file_path, "r", encoding="utf-8") as f:
+                raw_html = f.read()
+            escaped_name = _html.escape(app_name)
+            rendered = raw_html.replace("<title>A.I.M. Connect</title>", f"<title>{escaped_name}</title>")
+            return HTMLResponse(content=rendered, headers=_NO_STORE_HEADERS)
+        return FileResponse(file_path, headers=_NO_STORE_HEADERS)
+
+    return FileResponse(file_path)
+
 
 if os.path.exists(frontend_path):
     # Mount Vite static assets
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
-    
+
     # Catch-all for SPA routing
     @app.get("/{catchall:path}")
     def serve_frontend(catchall: str):
-        base = os.path.realpath(frontend_path)
-        file_path = os.path.realpath(os.path.join(base, catchall))
-        if file_path != base and not file_path.startswith(base + os.sep):
-            return FileResponse(os.path.join(frontend_path, "index.html"), headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
-            
-        if not os.path.exists(file_path) or not os.path.isfile(file_path):
-            file_path = os.path.join(frontend_path, "index.html")
-
-        if file_path.endswith("index.html"):
-            return FileResponse(file_path, headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
-            
-        if file_path.endswith("manifest.json"):
-            import json
-            from fastapi.responses import JSONResponse
-            with open(file_path, "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-            app_name = os.environ.get("AIM_APP_NAME")
-            if app_name:
-                manifest["name"] = app_name
-                manifest["short_name"] = app_name
-                import urllib.parse
-                safe_id = urllib.parse.quote(app_name.lower().replace(' ', '-'))
-                manifest["id"] = f"/?id={safe_id}"
-                manifest["start_url"] = f"/?id={safe_id}"
-            app_color = os.environ.get("AIM_APP_COLOR")
-            if app_color:
-                manifest["background_color"] = app_color
-                manifest["theme_color"] = app_color
-            return JSONResponse(manifest)
-
-        if file_path.endswith("index.html"):
-            headers = {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
-            }
-            app_name = os.environ.get("AIM_APP_NAME")
-            if app_name:
-                from fastapi.responses import HTMLResponse
-                with open(file_path, "r", encoding="utf-8") as f:
-                    html = f.read()
-                html = html.replace("<title>A.I.M. Connect</title>", f"<title>{app_name}</title>")
-                return HTMLResponse(content=html, headers=headers)
-            
-            return FileResponse(file_path, headers=headers)
-
-        return FileResponse(file_path)
+        return _render_frontend_file(frontend_path, catchall)
 else:
     @app.get("/")
     def read_root():

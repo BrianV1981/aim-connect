@@ -368,3 +368,67 @@ def test_readme_documents_docker_persistence_and_tailscale_allow_http():
     # Docker quick-start should no longer tell users to fill NGROK_AUTHTOKEN for docker compose
     docker_section = readme.split("## 🐳 Deployment (Docker)", 1)[1].split("---", 1)[0]
     assert "NGROK_AUTHTOKEN" not in docker_section
+
+
+def test_startup_and_restart_scripts_scope_lsof_to_tcp_listen():
+    """startup.sh, backend/restart_server.sh, and docs/AGENT_ARCHITECTURE.md must scope lsof with -sTCP:LISTEN (#237)."""
+    startup_text = STARTUP_SH.read_text(encoding="utf-8")
+    restart_text = (REPO_ROOT / "backend" / "restart_server.sh").read_text(encoding="utf-8")
+    arch_text = (REPO_ROOT / "docs" / "AGENT_ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    assert "lsof -ti :" not in startup_text
+    assert "lsof -tiTCP:8000 -sTCP:LISTEN" in startup_text
+    assert "lsof -tiTCP:8001 -sTCP:LISTEN" in startup_text
+
+    assert "lsof -ti :" not in restart_text
+    assert "lsof -tiTCP:8000 -sTCP:LISTEN" in restart_text
+
+    assert "lsof -ti :" not in arch_text
+    assert "lsof -tiTCP:8000 -sTCP:LISTEN" in arch_text
+
+
+def test_serve_frontend_rewrites_aim_app_name_title_with_no_store_headers(monkeypatch, tmp_path):
+    """_render_frontend_file must rewrite <title> when AIM_APP_NAME is set (escaping HTML) with no-store headers (#237)."""
+    import main
+
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    (dist_dir / "index.html").write_text(
+        "<!doctype html><html><head><title>A.I.M. Connect</title></head><body></body></html>",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("AIM_APP_NAME", "Gaming <Node>")
+    resp = main._render_frontend_file(str(dist_dir), "")
+    assert resp.status_code == 200
+    assert "no-store" in resp.headers.get("cache-control", "")
+    body = resp.body.decode("utf-8")
+    assert "<title>Gaming &lt;Node&gt;</title>" in body
+    assert "<title>A.I.M. Connect</title>" not in body
+
+    monkeypatch.delenv("AIM_APP_NAME", raising=False)
+    default_resp = main._render_frontend_file(str(dist_dir), "unknown/route")
+    assert "no-store" in default_resp.headers.get("cache-control", "")
+
+
+def test_secret_guard_and_gitignore_cover_users_and_webauthn():
+    """.gitignore and secret-guard.yml must cover users.json and webauthn.json (#237)."""
+    candidates = [
+        "users.json",
+        "backend/users.json",
+        "webauthn.json",
+        "backend/webauthn.json",
+    ]
+    res = subprocess.run(
+        ["git", "check-ignore", *candidates],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    ignored = set(res.stdout.splitlines())
+    missing = [c for c in candidates if c not in ignored]
+    assert not missing, f"Missing .gitignore coverage: {missing}"
+
+    secret_guard = (REPO_ROOT / ".github" / "workflows" / "secret-guard.yml").read_text(encoding="utf-8")
+    assert '"users.json"' in secret_guard
+    assert '"webauthn.json"' in secret_guard

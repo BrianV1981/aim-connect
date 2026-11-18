@@ -70,7 +70,7 @@ if [ -t 1 ] && { [ ! -f "$TOTP_SECRET_PATH" ] || [ ! -f "$PASSWORD_HASH_PATH" ] 
     fi
 fi
 
-PID_8000="$(lsof -ti :8000 2>/dev/null | head -n 1)"
+PID_8000="$(lsof -tiTCP:8000 -sTCP:LISTEN 2>/dev/null | head -n 1)"
 if [ -n "$PID_8000" ]; then
     echo -e "\033[92m[1/3] FastAPI Backend already running on :8000 (PID $PID_8000)\033[0m"
 else
@@ -83,7 +83,7 @@ else
 fi
 
 # [2/3] Optional MCP SSE Server (Port 8001)
-PID_8001="$(lsof -ti :8001 2>/dev/null | head -n 1)"
+PID_8001="$(lsof -tiTCP:8001 -sTCP:LISTEN 2>/dev/null | head -n 1)"
 if [ -n "$PID_8001" ]; then
     ensure_window "mcp"
     echo -e "\033[92m[2/3] MCP SSE Server already running on :8001 (PID $PID_8001)\033[0m"

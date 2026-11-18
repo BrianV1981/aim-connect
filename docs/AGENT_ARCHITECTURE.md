@@ -108,8 +108,8 @@ This application runs persistently using `tmux` sessions. **Do not use standard 
 # Idempotent health-check startup (starts only stopped services)
 ./startup.sh
 
-# Recycle only the :8000 FastAPI backend by PID
-kill "$(lsof -ti :8000)" && ./startup.sh
+# Recycle only the :8000 FastAPI backend by TCP LISTEN PID
+kill "$(lsof -tiTCP:8000 -sTCP:LISTEN)" && ./startup.sh
 ```
 
 ---

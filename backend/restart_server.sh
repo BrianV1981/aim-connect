@@ -8,20 +8,20 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "🛑 Stopping existing Uvicorn server on :8000..."
 
-PID_8000="$(lsof -ti :8000 2>/dev/null | head -n 1)"
+PID_8000="$(lsof -tiTCP:8000 -sTCP:LISTEN 2>/dev/null | head -n 1)"
 if [ -n "$PID_8000" ]; then
     kill "$PID_8000" 2>/dev/null
 fi
 
 echo "⏳ Waiting for port 8000 to clear..."
 for i in {1..50}; do
-    if ! lsof -ti :8000 >/dev/null 2>&1; then
+    if ! lsof -tiTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
         break
     fi
     sleep 0.1
 done
 
-if lsof -ti :8000 >/dev/null 2>&1; then
+if lsof -tiTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
     echo "❌ Error: Port 8000 is still in use. Restart failed."
     exit 1
 fi
