@@ -27,9 +27,9 @@ Advanced configuration guides for exposing your sovereign terminal to the outsid
 
 *   [**Wiring New Clients**](./WIRING_NEW_CLIENTS_SOP.md) - SOP for onboarding new operators into the Joshua Matrix.
 
-## 📁 Archive
+## 🔒 Security & Release History
 
-Completed sprint dispatches, historical audit reports, and session transcripts are preserved in `docs/archive/`.
+See the root [SECURITY.md](../SECURITY.md) for the SPA threat model and [CHANGELOG.md](../CHANGELOG.md) for historical audit sprints and version notes.
 
 ---
 *Knowledge is power. Hosted knowledge is a dependency. Local knowledge is sovereignty.*

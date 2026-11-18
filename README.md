@@ -3,9 +3,9 @@
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/brianv1981)
 
-**A Clientless, Sovereign, Web-Based Terminal Multiplexer.**
+**A Clientless, Sovereign Web Terminal & AI Agent Fleet Cockpit.**
 
-AIM-Connect transforms any web browser on any device into a secure, root-level control panel for your Linux server. No SSH keys to carry, no terminal apps to download, and no corporate bouncers. Just raw, unrestricted access to your machine from anywhere on Earth.
+AIM-Connect transforms any web browser on any device into a secure, root-level command center for your Linux server and autonomous CLI coding agents. No SSH keys to carry, no terminal apps to download, and no corporate bouncers. Just raw, unrestricted access to your machine and your entire `tmux` fleet from anywhere on Earth.
 
 <p align="center">
   <img src="docs/screenshots/aim-connect_homepage.png" alt="AIM-Connect desktop home" width="820" />
@@ -32,19 +32,16 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 
 ## 🚀 Key Features
 
-*   **Clientless SSH Alternative:** Access your terminal from Safari, Chrome, or Firefox. No App Store downloads required.
-*   **The "Immortality" Protocol:** Built on top of `tmux`. Close your browser, put your phone in your pocket, and your scripts keep running. Log back in and instantly re-attach to the live terminal stream.
-*   **The Web IDE (Microsoft Monaco Engine):** The visual file explorer isn't just a basic text box. It is a fully functional Sovereign Web IDE powered by the exact same engine as VS Code. Tap a script to edit its code with full syntax highlighting, predictive text, line numbers, and a native find/replace mode. Hit "Save" to instantly overwrite the file on your Linux server. You can visually create, rename, and delete files/folders right from your phone.
-*   **Three-Factor Auth (Zero-Trust):** Secured by three-layer authentication (Stealth Passphrase + Admin Password + Google Authenticator TOTP), strict API token TTLs, TOTP replay protection, Rate Limiting, and IP Allowlisting. No cloud IdP, no accounts — you own every byte of the auth chain. Multi-user configurations are natively supported via `users.json`.
-*   **WebAuthn Biometrics (TouchID/FaceID):** Optionally bypass the TOTP pipeline by registering your device's secure enclave (FaceID/TouchID/YubiKey) for cryptographic passwordless logins.
-*   **Optional End-to-End Encryption (E2EE):** Enter a pre-shared 256-bit AES-GCM secret to cryptographically scramble your keystrokes and terminal outputs in the browser *before* they hit the WebSocket. This ensures your traffic remains completely opaque even if your SSL reverse proxy is compromised. You can dynamically manage and sync this encryption key directly from the Settings menu.
-*   **Dynamic Custom Macros:** Build your own interface. Using the "Commander Toolbar", you can add custom macro buttons (e.g. `pm2 logs\r`) on the fly. The app persists your macros securely in your browser's local storage.
-*   **Sovereign Mobile Keyboard & Viewport Management:** Native iOS and Android keyboards notoriously ruin mobile coding by hijacking the viewport and inserting ghost characters via predictive text. AIM-Connect features a custom, on-screen HTML keyboard with specialized developer keys (`[`, `]`, `|`, `\`) that dynamically adjusts the viewport to prevent screen clipping.
-*   **Tmux GUI Session Control:** Never lose your place. AIM-Connect features a built-in session manager. Use the native UI dropdown to create new isolated `tmux` workspaces, instantly teleport between running tasks, or permanently destroy environments when you are finished.
-*   **100% Free Voice Macro Engine (Speech-to-Terminal):** Talk to your terminal without paying API fees or renting cloud seats. AIM-Connect includes a completely free, built-in voice recognition engine. Beyond simple dictation, it features a fully programmable **Voice Trigger** system. Map any spoken phrase (e.g. "deploy to production") to execute custom terminal commands (`git push && pm2 restart\r`) instantly. As we like to say: *"Speech-to-text that learns you, not speech-to-text that you have to learn."*
-*   **Scrollback & Copy Mode:** Tap "🔍 Scroll/Copy" to capture the full terminal scrollback buffer. Switch between color-rendered ANSI view and a text-selection mode for easy copy-paste on mobile — something native terminal apps struggle with.
-*   **Collaborative Sovereignty (Multi-User):** Stop paying for arbitrary "seat licenses" just to share your own hardware. Because `aim-connect` relies on raw OS-level `pty` forks, it natively supports isolated, simultaneous multi-user environments. Configure multiple operators securely via `users.json` for full 3FA access, or generate temporary magic-link JWTs to invite external collaborators into strictly isolated background sessions—without relying on any third-party account systems or corporate gatekeepers.
-*   **Sovereign Agent Gateway (IaaS for Terminals):** AIM-Connect can act as a headless terminal backend for your other web applications. External apps can securely route their users to your `aim-connect` WebSocket by generating a "Magic Link" JWT signed with a shared `LEADDEED_DOWNLOAD_SIGNING_SECRET`. `aim-connect` validates the cryptographic signature and automatically spins up a completely isolated, sandboxed tmux session (e.g. `agent-[user_email]`) for that user. This provides a secure, sandboxed CLI environment for external users without exposing your root machine or primary dashboard.
+*   **Clientless SSH & Immortal `tmux` Streams:** Access your server from Safari, Chrome, or Firefox with zero App Store installs. Close your browser, put your phone in your pocket, and your processes keep running—log back in and instantly re-attach to the live PTY stream.
+*   **Multi-Session AI Fleet Cockpit (`Fleet Sidebar`):** Supervise dozens of concurrent `tmux` workspaces and autonomous CLI coding agents (`Claude`, `Codex`, `OpenCode`, `Grok`, `Antigravity`) from a single sidebar with live status badges (`THINKING`, `✋ Waiting` approval chimes, `ERROR`, `IDLE`), 30%-Rule context saturation meters, and sticky-red compaction radar.
+*   **Keyboard-First `Cmd+K` Command Palette & Token Grabber:** Teleport across sessions, dispatch slash commands, or extract deduplicated URLs (with automatic secret-query redaction), file paths, IPs, and git SHAs straight from terminal scrollback without touching a mouse.
+*   **Split-Pane Web IDE, Session Brain, & Git Diff (`Monaco Engine`):** Open `📁 Files` side-by-side without unmounting your live terminal. Edit code with VS Code's Monaco engine, inspect session-scoped project docs and active git worktrees, prevent lost edits with `HTTP 409` `mtime` conflict detection, and review working-tree changes in a syntax-highlighted side-by-side Monaco Diff viewer.
+*   **Cross-Fleet FTS5 Forensics & Swarm Feed:** Search structured agent transcripts and tool-call histories across your entire machine via SQLite WAL `FTS5` (`?mode=ro`) and monitor inter-agent dispatches in real time.
+*   **`🔊` Neural TTS Spoken Briefings (`Piper ONNX` + `Edge Neural`):** Hear plain-English spoken summaries of agent completions hands-free on mobile or desktop using offline local `piper-tts` ONNX voices or cloud Microsoft Edge Neural voices (with automatic offline and browser Web Speech fallback).
+*   **Three-Factor Auth + WebAuthn Biometrics (Zero-Trust):** Secured by Stealth Passphrase + Admin Password + TOTP (with replay protection, rate limiting, and IP allowlisting), plus optional passwordless **FaceID / TouchID / YubiKey** login via FIDO2 WebAuthn and multi-user `users.json` support.
+*   **Client-Side End-to-End Encryption (`AES-256-GCM`):** Optionally scramble keystrokes and terminal streams in the browser *before* they hit the WebSocket so traffic stays opaque even to your TLS reverse proxy.
+*   **Sovereign Mobile Keyboard, Voice Macros, & Native Copy Mode:** Custom on-screen developer keyboard (`Tab`, `Esc`, sticky `Ctrl`, pipes, brackets) that suppresses mobile autocorrect ghosting, a 100% free programmable **Voice Trigger** dictation engine, and a memoized ANSI **Scroll/Copy** overlay with 1-tap selection copy.
+*   **Multi-Tenant Sovereign Agent Gateway (`bwrap` Isolation):** Act as a headless terminal backend for external web apps using HMAC-SHA256 magic-link JWTs (`AIM_GATEWAY_SIGNING_SECRET`), spawning per-user Bubblewrap (`bwrap`) sandboxes with per-JWT WebSocket E2EE transport keys and a host-only loopback email relay.
 
 ---
 
@@ -60,9 +57,9 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
    ```bash
    cp .env.example .env
    ```
-   *Edit `.env` to configure your settings:*
-   - `NGROK_AUTHTOKEN`: (Required if using ngrok) Your token.
-   - `ALLOWED_IPS`: (Optional) A comma-separated list of IPs allowed to access the server (e.g., `192.168.1.5,203.0.113.42`). Leave blank or commented out to allow all IPs.
+   *Edit `.env` to configure your optional settings:*
+   - `ALLOWED_IPS`: (Optional) Comma-separated list of IPs allowed to access the server (e.g., `192.168.1.5,203.0.113.42`). Leave blank to allow all IPs.
+   - `AIM_PUBLIC_URL` / `CLOUDFLARED_CONFIG`: (Optional) Display URL and Cloudflare Tunnel config path if exposing beyond `http://localhost:8000`.
 
 ### Step 2: Build the Frontend
 You must compile the React assets before launching the backend.
@@ -99,11 +96,10 @@ On first launch, AIM-Connect auto-generates three credentials and prints them to
 > **To reset:** `rm backend/passphrase.hash && ./startup.sh` (or `backend/password.hash` / `backend/totp.secret`)
 
 ### Step 5: Accessing the Dashboard
-1. Look at your terminal output to find your secure public URL (e.g., `https://random-string.ngrok.app`).
-2. Open that URL on your phone or remote browser.
-3. You will be greeted by the **AIM Secure** login screen with three fields.
-4. Enter your **Stealth Passphrase** in the "Name" field, your **Admin Password**, then your **6-digit TOTP pin** from your authenticator app.
-5. You are in!
+1. Open `http://localhost:8000` locally (or your configured HTTPS tunnel URL on your phone or remote browser).
+2. You will be greeted by the **AIM Secure** login screen with three fields.
+3. Enter your **Stealth Passphrase** in the "Name" field, your **Admin Password**, then your **6-digit TOTP pin** from your authenticator app.
+4. You are in!
 
 ### Step 6: PWA & Multi-Server Theming (Optional)
 AIM-Connect is a Progressive Web App (PWA). You can install it natively on your phone by tapping "Add to Home Screen" in your mobile browser.
@@ -167,7 +163,7 @@ AIM-Connect ships with a hardened, multi-stage Dockerfile:
 
 ## 🌐 Networking & Tunneling Playbook (Sovereign OS Access)
 
-By default, AIM-Connect uses Ngrok to quickly bypass home NAT firewalls and provide HTTPS. However, Ngrok's free tier has strict bandwidth caps (~1GB/month) which live pseudo-terminals will quickly exhaust. 
+Out of the box, `./startup.sh` boots AIM-Connect locally on `http://localhost:8000` in idempotent health-check mode (and automatically starts an authenticated Cloudflare Tunnel if `CLOUDFLARED_CONFIG` is present). While Ngrok is great for quick tests, Ngrok's free tier has strict bandwidth caps (~1GB/month) which live pseudo-terminals will quickly exhaust. 
 
 If you are building a production-grade Web OS, or just need to bypass a ban, here is the complete playbook of your tunneling options:
 
@@ -240,15 +236,14 @@ When setting up custom Google Cloud credentials for tools like Rclone or persona
 
 ## 📖 How to Use the UI
 
-*   **Session Manager (Top Bar):** Use the dropdown to swap between active Tmux sessions. Tap `+` to spawn a new isolated workspace, or `🗑️` to kill the current one.
-*   **File Explorer:** Tap `📁 Files` in the header to toggle the full-screen file browser. Navigate directories, tap any text file to open it in the built-in editor, then hit `Save` to write changes directly to the server. Create new files/folders with the `+ File` / `+ Dir` buttons.
-*   **Commander Toolbar:** Your custom macro buttons live here. Tap `⚙️` to open the Macro Library where you can create, edit, pin/unpin, and delete macros. Each macro can be local (📱, stored in your browser) or server-synced (☁️, shared across devices). Add `\r` to a command to auto-press Enter.
-*   **Sovereign Keyboard:** Tap `⌨️` to toggle the custom on-screen keyboard. It suppresses the native virtual keyboard to prevent autocorrect and ghost characters. Includes specialized keys for `Tab`, `Esc`, `Ctrl`, pipes, brackets, and more. Choose between Standard and Hacker (terminal keys) layouts in Settings.
-*   **Voice Dictation:** Tap `🎤 Voice` to start speech-to-terminal input. Say "Enter", "Send", or "Execute" to submit commands verbally. Use verbal punctuation ("comma", "period", "question mark") for natural dictation. Enable Continuous Loop mode in Settings to keep the mic hot. *(Note: Requires a browser that fully supports the Web Speech API like Chrome, Edge, or Safari. Privacy browsers like Brave often do not support this feature.)*
-*   **Scroll/Copy Mode:** Tap `🔍 Scroll/Copy` to capture the terminal scrollback. Switch between Color View (rendered ANSI) and Select Text mode for easy copy-paste on mobile. Scroll to the bottom to auto-exit.
-*   **Settings:** Tap `⚙️ Settings` to configure keyboard layout, auto-capitalization, terminal font size, terminal theme (Standard / High Contrast / Hacker Green), keyboard feedback (audio/haptic/off), and voice dictation options.
-*   **WebAuthn Biometrics:** Inside the Settings modal, tap "Register FaceID / TouchID" to bind your current device. Once bound, you can simply type your Name on the login screen and tap "Login with FaceID" to bypass the password/TOTP fields entirely.
-*   **End-to-End Encryption:** On the login screen, fill out the "E2EE Secret (Optional)" field with a custom string (e.g., `my_secret_key`) *before* logging in. You must export this exact same string on your server as an environment variable (`export E2EE_SECRET="my_secret_key"`) before starting `./startup.sh`. If the secrets match, all WebSocket traffic is locally AES-GCM encrypted. To deactivate it, just leave the field blank and don't export the variable on the server.
+*   **Fleet Sidebar & Session Control:** Open the **Fleet Sidebar** to monitor all active `tmux` sessions, inspect live status (`THINKING`, `✋ Waiting`, `IDLE`) and 30%-Rule context meters, spawn new sessions, dispatch quick commands, or delete workspaces via the per-card `🗑️` button. Tap `aim-connect` in the header to return to the Welcome Screen.
+*   **`Cmd+K` Command Palette & Token Grabber:** Press `Cmd+K` (or `Ctrl+K`) to jump between sessions, toggle cockpit tools, or open the **Token Grabber** to copy URLs, file paths, IPv4s, and git SHAs extracted from terminal scrollback.
+*   **Split-Pane File Explorer, Brain, & Diff IDE:** Tap `📁 Files` to open the non-unmounting split-pane workspace alongside your live terminal. Browse files, inspect session Brain docs and active worktrees, view side-by-side **Git Diffs**, or edit and save with `mtime` conflict protection.
+*   **Forensics & Swarm Inspector:** Open **Forensics** to inspect structured agent tool-call turns, run instant SQLite `FTS5` cross-fleet transcript searches, and view inter-agent Swarm dispatches.
+*   **`🔊` Neural TTS & Alert Chimes:** Tap `🔊 Speak` (or enable Auto-Playback in Settings) to hear spoken summaries via local `piper-tts` ONNX or Edge Neural voices, and keep `🔔 Agent Alert Chime` enabled to get notified the moment a background session needs input (`✋ Waiting`) or finishes work.
+*   **Commander Toolbar & Sovereign Keyboard:** Tap `⚙️` on the Commander Toolbar to pin local (📱) or server-synced (☁️) macros, and tap `⌨️` to toggle the ghost-free Sovereign Mobile Keyboard (`Tab`, `Esc`, sticky `Ctrl`, pipes, brackets).
+*   **Voice Dictation & Scroll/Copy Mode:** Tap `🎤 Voice` for speech-to-terminal input and programmable Voice Triggers, or tap `🔍 Scroll/Copy` to highlight and copy clean ANSI or plain-text scrollback (`✂️ Copy Selection`) without mobile selection collapse.
+*   **Settings, WebAuthn, & E2EE:** Tap `⚙️ Settings` to register **FaceID / TouchID** passkeys, select TTS voices and terminal themes, or configure client-side **AES-256-GCM E2EE** (`ENABLE_E2EE=true` and `E2EE_SECRET` on the server).
 
 ---
 
@@ -275,14 +270,12 @@ pip install -r requirements-test.txt
 python -m pytest tests/ -v
 ```
 
-**16 tests** covering:
-- Three-factor auth flow (passphrase + password + TOTP)
-- Individual factor rejection (wrong passphrase, wrong password, wrong TOTP)
-- TOTP replay protection
-- Rate limiting and lockout
-- Session name validation
-- Path traversal prevention
-- Token expiry and unauthenticated access
+**170+ tests** covering:
+- Three-factor auth flow (passphrase + password + TOTP), TOTP replay protection, and WebAuthn `rp_id` resolution
+- Rate limiting, lockout eviction, token expiry, and loopback/proxy boundaries
+- Fleet Sidebar telemetry, 30%-Rule & compaction radar, `✋ Waiting` alerts, and `🔊` Neural TTS extraction
+- Split-pane IDE `mtime` conflict guards, path traversal prevention, FTS5 forensics, and URL token secret redaction
+- Per-JWT WebSocket AES-256-GCM transport encryption, `bwrap` sandbox SMTP credential isolation, and repository shareability guards
 
 Tests also run automatically via GitHub Actions CI on every push and PR to `master`.
 

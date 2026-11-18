@@ -526,3 +526,72 @@ def test_vendor_neutral_smtp_and_relay_env_with_legacy_fallback(monkeypatch):
     env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
     assert "AIM_GATEWAY_SIGNING_SECRET" in env_example
     assert "AIM_SMTP_HOST" in env_example
+
+
+def test_readme_showcases_v18_fleet_cockpit_neural_tts_and_accurate_test_count():
+    """README.md must document the shipped Fleet Cockpit, Neural TTS, accurate startup/tunnel defaults, and 170+ tests (#239)."""
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "**16 tests**" not in readme
+    assert "Session Manager (Top Bar): Use the dropdown" not in readme
+    assert "By default, AIM-Connect uses Ngrok" not in readme
+
+    required_phrases = [
+        "Fleet Sidebar",
+        "Cmd+K",
+        "Diff",
+        "Forensics",
+        "Neural TTS",
+        "piper",
+        "AIM_GATEWAY_SIGNING_SECRET",
+        "170+",
+    ]
+    for phrase in required_phrases:
+        assert phrase.lower() in readme.lower(), f"README.md missing expected v1.8.0 capability: {phrase}"
+
+
+def test_no_broken_markdown_links_or_missing_inline_docs_refs():
+    """Every relative markdown link and inline `docs/...` reference in tracked .md files must exist and be tracked (#239)."""
+    import re
+
+    res = subprocess.run(
+        ["git", "ls-files"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    tracked = set(res.stdout.splitlines())
+    link_re = re.compile(r'\[[^\]]*\]\(([^)]+)\)|src="([^"]+)"')
+    inline_doc_re = re.compile(r"`(docs/[A-Za-z0-9_./-]+)`")
+
+    broken = []
+    for rel in sorted(tracked):
+        if not rel.endswith(".md"):
+            continue
+        fpath = REPO_ROOT / rel
+        text = fpath.read_text(encoding="utf-8", errors="ignore")
+
+        for m in link_re.finditer(text):
+            target = (m.group(1) or m.group(2) or "").strip()
+            if not target or target.startswith(("http://", "https://", "mailto:", "#", "file://")):
+                continue
+            clean = target.split("#")[0].split("?")[0].strip()
+            if not clean:
+                continue
+            resolved = (fpath.parent / clean).resolve()
+            if not resolved.exists():
+                broken.append(f"{rel} -> {target} (missing)")
+            else:
+                rel_res = str(resolved.relative_to(REPO_ROOT.resolve()))
+                if rel_res not in tracked and not any(t.startswith(rel_res + "/") for t in tracked):
+                    broken.append(f"{rel} -> {target} (untracked)")
+
+        for m in inline_doc_re.finditer(text):
+            ref = m.group(1)
+            if ref not in tracked and not any(t.startswith(ref.rstrip("/") + "/") for t in tracked):
+                broken.append(f"{rel} -> `{ref}` (missing/untracked inline ref)")
+
+    assert not broken, "Broken or untracked doc references:\n" + "\n".join(broken)
+
+    contrib = (REPO_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    assert "security/advisories/new" in contrib

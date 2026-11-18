@@ -10,7 +10,7 @@ As a solo maintainer, this document outlines the rules of engagement to help kee
 
 Because AIM-Connect involves **root-level terminal access**, security is our highest priority. 
 **If you discover a security vulnerability, PLEASE DO NOT OPEN A PUBLIC ISSUE.** 
-Instead, please email me directly so we can patch it responsibly before disclosure.
+Instead, submit a private report via **[GitHub Security Advisories](https://github.com/BrianV1981/aim-connect/security/advisories/new)** (see `SECURITY.md` for our threat model) so we can patch it responsibly before disclosure.
 
 ## 2. Reporting Bugs
 
@@ -25,7 +25,7 @@ Issues like *"It doesn't work"* will be closed.
 
 ## 3. Suggesting Enhancements
 
-Before requesting a new feature, please read the `ROADMAP.md` (or `docs/DEEPSEEK_AUDIT.md`) to see if it is already planned. If it is a brand new idea, open an Issue to propose it.
+Before requesting a new feature, please read `ROADMAP.md` and `docs/README.md` to see if it is already planned or documented. If it is a brand new idea, open an Issue to propose it.
 
 ## 4. Pull Requests (The Golden Rule)
 
