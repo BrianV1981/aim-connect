@@ -1298,11 +1298,20 @@ function App() {
       window.visualViewport.addEventListener('resize', handleResize);
     }
 
+    let lastSentCols = 0;
+    let lastSentRows = 0;
     const resizeObserver = new ResizeObserver(() => {
       if (fitAddon.current) {
         fitAddon.current.fit();
         const dims = fitAddon.current.proposeDimensions();
-        if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
+        if (
+          dims &&
+          (dims.cols !== lastSentCols || dims.rows !== lastSentRows) &&
+          ws.current &&
+          ws.current.readyState === WebSocket.OPEN
+        ) {
+          lastSentCols = dims.cols;
+          lastSentRows = dims.rows;
           ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
         }
       }
@@ -1312,11 +1321,31 @@ function App() {
       resizeObserver.observe(terminalRef.current);
     }
 
-    // Mobile touch-to-scroll adapter
+    // Mobile touch-to-scroll adapter (throttled to ~30fps to prevent WS/PTY redraw storms, #245)
+    const TOUCH_SCROLL_THROTTLE_MS = 32;
     let lastTouchY = 0;
+    let pendingTouchDeltaY = 0;
+    let lastTouchWheelFlushTs = 0;
+    let touchFlushTimer = null;
+
+    const flushTouchWheel = () => {
+      touchFlushTimer = null;
+      if (!terminalRef.current || Math.abs(pendingTouchDeltaY) <= 5) return;
+      const wheelEvent = new WheelEvent('wheel', {
+        deltaY: pendingTouchDeltaY * 2,
+        bubbles: true,
+        cancelable: true,
+      });
+      pendingTouchDeltaY = 0;
+      lastTouchWheelFlushTs = Date.now();
+      const target = terminalRef.current.querySelector('.xterm-screen') || terminalRef.current;
+      target.dispatchEvent(wheelEvent);
+    };
+
     const handleTouchStart = (e) => {
       if (e.touches.length === 1) {
         lastTouchY = e.touches[0].clientY;
+        pendingTouchDeltaY = 0;
       }
     };
 
@@ -1327,17 +1356,20 @@ function App() {
         e.preventDefault(); // Stop browser pull-to-refresh / scrolling
         const currentY = e.touches[0].clientY;
         const deltaY = lastTouchY - currentY;
-        
-        // Dispatch synthetic wheel event so xterm translates it to tmux mouse scrolls
-        if (Math.abs(deltaY) > 5) {
-          const wheelEvent = new WheelEvent('wheel', {
-            deltaY: deltaY * 2, // Multiplier for scroll speed
-            bubbles: true,
-            cancelable: true
-          });
-          const target = terminalRef.current.querySelector('.xterm-screen') || terminalRef.current;
-          target.dispatchEvent(wheelEvent);
-          lastTouchY = currentY;
+        lastTouchY = currentY;
+        pendingTouchDeltaY += deltaY;
+
+        if (Math.abs(pendingTouchDeltaY) > 5) {
+          const elapsed = Date.now() - lastTouchWheelFlushTs;
+          if (elapsed >= TOUCH_SCROLL_THROTTLE_MS) {
+            if (touchFlushTimer) {
+              clearTimeout(touchFlushTimer);
+              touchFlushTimer = null;
+            }
+            flushTouchWheel();
+          } else if (!touchFlushTimer) {
+            touchFlushTimer = setTimeout(flushTouchWheel, TOUCH_SCROLL_THROTTLE_MS - elapsed);
+          }
         }
       }
     };
@@ -1358,6 +1390,8 @@ function App() {
     window.addEventListener('scroll', handleScroll);
 
     return () => {
+      if (touchFlushTimer) clearTimeout(touchFlushTimer);
+      resizeObserver.disconnect();
       window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('resize', handleResize);
       if (window.visualViewport) {

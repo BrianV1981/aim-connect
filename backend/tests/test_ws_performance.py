@@ -409,4 +409,103 @@ def test_frontend_ping_pong_watchdog_and_tab_client_id():
     assert "lastServerMessageAt" in app_jsx
 
 
+def test_pty_coalesced_read_merges_burst_and_preserves_bytes(monkeypatch):
+    """40x1KB TUI redraw bursts must coalesce into <=4 E2EE WS frames while single echoes stay instant (#245)."""
+    import main
+    import ws_handler
+    from e2ee import decrypt_bytes
+
+    secret = "test-e2ee-plane-a-245"
+    admin_token = "test-admin-ws-token-245"
+
+    monkeypatch.setattr(ws_handler, "ENABLE_E2EE", True)
+    monkeypatch.setattr(ws_handler, "E2EE_SECRET", secret)
+    monkeypatch.setattr(ws_handler, "ALLOWED_IPS", "")
+    ws_handler.auth_attempts.clear()
+    monkeypatch.setitem(
+        ws_handler.VALID_API_TOKENS,
+        admin_token,
+        {"expires": time.time() + 3600, "role": "admin", "prefix": ""},
+    )
+
+    parent_sock, peer_sock = socket.socketpair()
+    parent_fd = parent_sock.detach()
+
+    async def _noop_tmux(*_a, **_kw):
+        return (0, "aim-connect\n", "")
+
+    monkeypatch.setattr(ws_handler, "_run_tmux_cmd", _noop_tmux)
+    monkeypatch.setattr(ws_handler.pty, "fork", lambda: (818181, parent_fd))
+    monkeypatch.setattr(ws_handler, "set_pty_size", lambda *_a, **_k: None)
+    monkeypatch.setattr(ws_handler.os, "kill", lambda *_a, **_k: None)
+    monkeypatch.setattr(ws_handler.os, "waitpid", lambda *_a, **_k: (818181, 0))
+
+    # Build a deterministic 40 KB payload across 40 separate 1 KB send() calls
+    blocks = [f"LINE-{idx:04d}-".encode("ascii") + (b"X" * 1014) for idx in range(40)]
+    expected_payload = b"".join(blocks)
+    assert len(expected_payload) == 40 * 1024
+
+    client = TestClient(main.app)
+    with client.websocket_connect("/ws") as ws:
+        try:
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "auth",
+                        "token": admin_token,
+                        "harness": "admin",
+                        "session": "aim-connect",
+                        "client_id": "tab-coalesce-245",
+                    }
+                )
+            )
+            assert json.loads(ws.receive_text())["type"] == "auth_success"
+
+            # 1. Interactive 3-byte echo fast-path
+            t0 = time.perf_counter()
+            peer_sock.sendall(b"ok!")
+            echo_cipher = ws.receive_bytes()
+            echo_ms = (time.perf_counter() - t0) * 1000.0
+            assert decrypt_bytes(echo_cipher, secret) == b"ok!"
+            assert echo_ms < 250.0
+
+            # 2. 40 x 1 KB full-screen TUI redraw burst
+            for blk in blocks:
+                peer_sock.sendall(blk)
+
+            received_frames: list[bytes] = []
+            decrypted_parts: list[bytes] = []
+            collected = 0
+            while collected < len(expected_payload):
+                frame = ws.receive_bytes()
+                received_frames.append(frame)
+                plain = decrypt_bytes(frame, secret)
+                decrypted_parts.append(plain)
+                collected += len(plain)
+
+            assert b"".join(decrypted_parts) == expected_payload
+            assert len(received_frames) <= 4, (
+                f"Expected 40x1KB burst to coalesce into <=4 WS frames, got {len(received_frames)} frames"
+            )
+        finally:
+            try:
+                peer_sock.close()
+            except OSError:
+                pass
+
+
+def test_frontend_e2ee_binary_batching_and_touch_scroll_throttle():
+    """e2ee.js must coalesce contiguous binary buffers and App.jsx must throttle touch scroll (#245)."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    e2ee_js = (repo_root / "frontend" / "src" / "e2ee.js").read_text(encoding="utf-8")
+    app_jsx = (repo_root / "frontend" / "src" / "App.jsx").read_text(encoding="utf-8")
+
+    assert "concatArrayBuffers" in e2ee_js
+    assert "TOUCH_SCROLL_THROTTLE_MS" in app_jsx
+    assert "resizeObserver.disconnect()" in app_jsx
+
+
+
 

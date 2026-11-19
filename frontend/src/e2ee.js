@@ -60,6 +60,22 @@ export async function decryptMessage(b64Message, key) {
   return dec.decode(decryptedBuf);
 }
 
+export function concatArrayBuffers(buffers) {
+  if (!buffers || buffers.length === 0) return new ArrayBuffer(0);
+  if (buffers.length === 1) return buffers[0];
+  let totalLength = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    totalLength += buffers[i].byteLength;
+  }
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    merged.set(new Uint8Array(buffers[i]), offset);
+    offset += buffers[i].byteLength;
+  }
+  return merged.buffer;
+}
+
 export class E2EESocketWrapper {
   constructor(socket, secretStr) {
     this.socket = socket;
@@ -121,13 +137,30 @@ export class E2EESocketWrapper {
             this.onmessage({ data: decryptedStr });
           }
         } else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
-          // If it's a blob, we must read it
+          if (!this.key) await this.init();
           let buffer = event.data;
           if (event.data instanceof Blob) {
             buffer = await event.data.arrayBuffer();
           }
-          const decryptedBuf = await decryptBytes(buffer, this.key);
-          this.onmessage({ data: decryptedBuf });
+          const decryptedChunks = [await decryptBytes(buffer, this.key)];
+          let batchBytes = decryptedChunks[0].byteLength;
+
+          // Coalesce contiguous binary PTY frames queued behind this one before xterm.write (#245)
+          while (
+            this.inQueue.length > 0 &&
+            batchBytes < 65536 &&
+            (this.inQueue[0].data instanceof ArrayBuffer || this.inQueue[0].data instanceof Blob)
+          ) {
+            const nextEv = this.inQueue.shift();
+            let nextBuf = nextEv.data;
+            if (nextBuf instanceof Blob) {
+              nextBuf = await nextBuf.arrayBuffer();
+            }
+            const nextDec = await decryptBytes(nextBuf, this.key);
+            decryptedChunks.push(nextDec);
+            batchBytes += nextDec.byteLength;
+          }
+          this.onmessage({ data: concatArrayBuffers(decryptedChunks) });
         }
       } catch (err) {
         console.error("E2EE Decrypt error", err);

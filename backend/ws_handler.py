@@ -13,6 +13,8 @@ import termios
 import subprocess
 import pty
 import signal
+import errno
+import select
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from main import (
     AIM_CONNECT_ROOT, BACKEND_DIR, ENABLE_E2EE, E2EE_SECRET, ALLOWED_IPS, 
@@ -49,6 +51,9 @@ logger = logging.getLogger("aim-connect")
 PUBLIC_HARNESS_BOOT_S = 5
 PUBLIC_HARNESS_SETTLE_S = 4
 ADMIN_KEEPALIVE_INTERVAL_S = 20.0
+PTY_READ_CHUNK_BYTES = 16384
+PTY_MAX_COALESCED_BYTES = 65536
+PTY_COALESCE_WINDOW_S = 0.008
 
 # Track active Plane A PTY children by (api_token, client_id) so same-tab reconnects
 # immediately evict and reap their stale zombie tmux client without affecting other tabs (#244).
@@ -72,6 +77,61 @@ def _cleanup_admin_pty_entry(entry: dict) -> None:
         os.waitpid(entry["pid"], 0)
     except Exception:
         pass
+
+
+def _read_pty_coalesced(
+    fd: int,
+    chunk_bytes: int = PTY_READ_CHUNK_BYTES,
+    max_bytes: int = PTY_MAX_COALESCED_BYTES,
+    coalesce_s: float = PTY_COALESCE_WINDOW_S,
+) -> bytes:
+    """Read and coalesce PTY output bursts while keeping interactive echoes instant (#245).
+
+    - Small echoes (<512B) with no follow-up bytes queued return immediately (0ms delay).
+    - Full-screen TUI redraws / scroll bursts coalesce up to `coalesce_s` (8ms) and `max_bytes` (64KB).
+    """
+    try:
+        first = os.read(fd, chunk_bytes)
+    except OSError as e:
+        if e.errno in (errno.EIO, errno.EBADF):
+            return b""
+        raise
+    if not first:
+        return b""
+
+    if len(first) < 512:
+        try:
+            rlist, _, _ = select.select([fd], [], [], 0.0)
+        except (OSError, ValueError):
+            return first
+        if not rlist:
+            return first
+
+    chunks = [first]
+    total = len(first)
+    deadline = time.monotonic() + coalesce_s
+    while total < max_bytes:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            rlist, _, _ = select.select([fd], [], [], min(0.002, remaining))
+        except (OSError, ValueError):
+            break
+        if not rlist:
+            break
+        try:
+            more = os.read(fd, min(chunk_bytes, max_bytes - total))
+        except OSError as e:
+            if e.errno in (errno.EIO, errno.EBADF):
+                break
+            raise
+        if not more:
+            break
+        chunks.append(more)
+        total += len(more)
+
+    return b"".join(chunks) if len(chunks) > 1 else first
 
 def resolve_workspace_id_for_email(email: str) -> str:
     """Map login email → agent_workspaces/agent-{id}/ (#184).
@@ -988,7 +1048,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         loop = asyncio.get_running_loop()
         while not pty_entry["evict_event"].is_set():
             try:
-                data = await loop.run_in_executor(None, os.read, fd, 1024)
+                data = await loop.run_in_executor(None, _read_pty_coalesced, fd)
                 if not data:
                     break
                 if ENABLE_E2EE and E2EE_SECRET:
