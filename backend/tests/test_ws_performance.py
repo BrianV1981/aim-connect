@@ -223,3 +223,190 @@ def test_frontend_deduplicates_reconnect_switch_session():
     assert "activeSessionRef.current !== authRequestedSession" in app_jsx
 
 
+def test_admin_ws_bidirectional_ping_pong_and_idle_keepalive(monkeypatch):
+    """Plane A WS must reply with E2EE text pong frames (never raw PTY bytes) and emit idle keepalives (#244)."""
+    import main
+    import ws_handler
+    from e2ee import decrypt_message
+
+    secret = "test-e2ee-plane-a-244"
+    admin_token = "test-admin-ws-token-244"
+
+    monkeypatch.setattr(ws_handler, "ENABLE_E2EE", True)
+    monkeypatch.setattr(ws_handler, "E2EE_SECRET", secret)
+    monkeypatch.setattr(ws_handler, "ALLOWED_IPS", "")
+    monkeypatch.setattr(ws_handler, "ADMIN_KEEPALIVE_INTERVAL_S", 0.06, raising=False)
+    ws_handler.auth_attempts.clear()
+    monkeypatch.setitem(
+        ws_handler.VALID_API_TOKENS,
+        admin_token,
+        {"expires": time.time() + 3600, "role": "admin", "prefix": ""},
+    )
+
+    parent_sock, peer_sock = socket.socketpair()
+    parent_fd = parent_sock.detach()
+
+    async def _noop_tmux(*_a, **_kw):
+        return (0, "aim-connect\n", "")
+
+    monkeypatch.setattr(ws_handler, "_run_tmux_cmd", _noop_tmux)
+    monkeypatch.setattr(ws_handler.pty, "fork", lambda: (616161, parent_fd))
+    monkeypatch.setattr(ws_handler, "set_pty_size", lambda *_a, **_k: None)
+    monkeypatch.setattr(ws_handler.os, "kill", lambda *_a, **_k: None)
+    monkeypatch.setattr(ws_handler.os, "waitpid", lambda *_a, **_k: (616161, 0))
+
+    client = TestClient(main.app)
+    try:
+        with client.websocket_connect("/ws") as ws:
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "auth",
+                        "token": admin_token,
+                        "harness": "admin",
+                        "session": "aim-connect",
+                        "client_id": "tab-ping-test",
+                    }
+                )
+            )
+            assert json.loads(ws.receive_text())["type"] == "auth_success"
+
+            # 1. Explicit ping -> encrypted text pong preserving timestamp
+            ws.send_text(encrypt_message(json.dumps({"type": "ping", "ts": 987654}), secret))
+            raw_pong = ws.receive_text()
+            pong_obj = json.loads(decrypt_message(raw_pong, secret))
+            assert pong_obj["type"] == "pong"
+            assert pong_obj["ts"] == 987654
+
+            # 2. Idle keepalive -> encrypted text pong with keepalive=True
+            raw_ka = ws.receive_text()
+            ka_obj = json.loads(decrypt_message(raw_ka, secret))
+            assert ka_obj["type"] == "pong"
+            assert ka_obj.get("keepalive") is True
+
+            peer_sock.close()
+    finally:
+        try:
+            peer_sock.close()
+        except OSError:
+            pass
+
+
+def test_admin_ws_reconnect_evicts_same_tab_zombie_pty_only(monkeypatch):
+    """Same-tab reconnect must immediately reap its stale PTY without affecting other device tabs (#244)."""
+    import main
+    import ws_handler
+
+    admin_token = "test-admin-ws-token-evict-244"
+    monkeypatch.setattr(ws_handler, "ENABLE_E2EE", False)
+    monkeypatch.setattr(ws_handler, "E2EE_SECRET", "")
+    monkeypatch.setattr(ws_handler, "ALLOWED_IPS", "")
+    ws_handler.auth_attempts.clear()
+    monkeypatch.setitem(
+        ws_handler.VALID_API_TOKENS,
+        admin_token,
+        {"expires": time.time() + 3600, "role": "admin", "prefix": ""},
+    )
+
+    async def _noop_tmux(*_a, **_kw):
+        return (0, "aim-connect\n", "")
+
+    monkeypatch.setattr(ws_handler, "_run_tmux_cmd", _noop_tmux)
+    monkeypatch.setattr(ws_handler, "set_pty_size", lambda *_a, **_k: None)
+
+    socks: list[socket.socket] = []
+    pids_iter = iter([7001, 7002, 7003])
+    killed_pids: list[int] = []
+
+    def _next_pty():
+        parent_s, peer_s = socket.socketpair()
+        socks.append(peer_s)
+        return next(pids_iter), parent_s.detach()
+
+    monkeypatch.setattr(ws_handler.pty, "fork", _next_pty)
+    monkeypatch.setattr(ws_handler.os, "kill", lambda pid, _sig: killed_pids.append(pid))
+    monkeypatch.setattr(ws_handler.os, "waitpid", lambda pid, _opt: (pid, 0))
+
+    def _close_all_socks():
+        for s in socks:
+            try:
+                s.close()
+            except OSError:
+                pass
+
+    client = TestClient(main.app)
+    with client.websocket_connect("/ws") as ws_tab_a1:
+        try:
+            ws_tab_a1.send_text(
+                json.dumps(
+                    {
+                        "type": "auth",
+                        "token": admin_token,
+                        "harness": "admin",
+                        "session": "aim-connect",
+                        "client_id": "tab-alpha",
+                    }
+                )
+            )
+            assert json.loads(ws_tab_a1.receive_text())["type"] == "auth_success"
+            assert killed_pids == []
+
+            with client.websocket_connect("/ws") as ws_tab_b:
+                ws_tab_b.send_text(
+                    json.dumps(
+                        {
+                            "type": "auth",
+                            "token": admin_token,
+                            "harness": "admin",
+                            "session": "aim-connect",
+                            "client_id": "tab-beta",
+                        }
+                    )
+                )
+                assert json.loads(ws_tab_b.receive_text())["type"] == "auth_success"
+                # Separate device/tab must NOT evict tab-alpha
+                assert killed_pids == []
+
+                # Now tab-alpha reconnects while ws_tab_a1 is still half-open
+                with client.websocket_connect("/ws") as ws_tab_a2:
+                    try:
+                        ws_tab_a2.send_text(
+                            json.dumps(
+                                {
+                                    "type": "auth",
+                                    "token": admin_token,
+                                    "harness": "admin",
+                                    "session": "aim-connect",
+                                    "client_id": "tab-alpha",
+                                }
+                            )
+                        )
+                        assert json.loads(ws_tab_a2.receive_text())["type"] == "auth_success"
+                        # Stale pid 7001 from tab-alpha MUST be immediately killed, while 7002 (tab-beta) stays alive!
+                        assert 7001 in killed_pids
+                        assert 7002 not in killed_pids
+
+                        # New tab-alpha PTY (socks[2]) still works cleanly even after old ws_tab_a1 exits
+                        ws_tab_a2.send_text(json.dumps({"type": "input", "payload": "hi"}))
+                        socks[2].settimeout(2.0)
+                        assert socks[2].recv(16) == b"hi"
+                    finally:
+                        _close_all_socks()
+        finally:
+            _close_all_socks()
+
+
+def test_frontend_ping_pong_watchdog_and_tab_client_id():
+    """App.jsx must attach per-tab client_id, handle pong frames, and run a visibility/pong watchdog (#244)."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    app_jsx = (repo_root / "frontend" / "src" / "App.jsx").read_text(encoding="utf-8")
+    assert "aim-tab-client-id" in app_jsx
+    assert "client_id:" in app_jsx
+    assert "msg.type === 'pong'" in app_jsx
+    assert "visibilitychange" in app_jsx
+    assert "lastServerMessageAt" in app_jsx
+
+
+

@@ -425,6 +425,20 @@ function App() {
   const passwordRef = useRef('');
   const harnessRef = useRef('admin');
   const apiTokenRef = useRef(localStorage.getItem('aim-token') || null);
+  const clientIdRef = useRef((() => {
+    try {
+      let cid = sessionStorage.getItem('aim-tab-client-id');
+      if (!cid) {
+        cid = (window.crypto && window.crypto.randomUUID)
+          ? window.crypto.randomUUID()
+          : `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        sessionStorage.setItem('aim-tab-client-id', cid);
+      }
+      return cid;
+    } catch (e) {
+      return `tab-${Date.now().toString(36)}`;
+    }
+  })());
   const reconnectAttempts = useRef(0);
   const [connState, setConnState] = useState('disconnected');
   const editorRef = useRef(null);
@@ -920,6 +934,18 @@ function App() {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    // Cleanly dispose any stale socket owned by this tab before opening a replacement (#244)
+    if (ws.current) {
+      try {
+        if (typeof ws.current._dispose === 'function') {
+          ws.current._dispose();
+        } else {
+          ws.current.close();
+        }
+      } catch (e) {}
+      ws.current = null;
+    }
     
     const rawSocket = new WebSocket(wsUrl);
     rawSocket.binaryType = 'arraybuffer';
@@ -928,25 +954,50 @@ function App() {
     socket.init();
     
     let pingInterval;
+    let disposed = false;
     let authRequestedSession = '';
+    let lastServerMessageAt = Date.now();
+
+    const handleVisibilityChange = () => {
+      if (disposed || document.visibilityState !== 'visible') return;
+      // Reset grace clock on foreground wake and probe socket liveness immediately (#244)
+      lastServerMessageAt = Date.now();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    socket._dispose = () => {
+      disposed = true;
+      if (pingInterval) clearInterval(pingInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      socket.close();
+    };
 
     socket.onopen = () => {
-      // Send the API token to WS, not the original PIN, plus current activeSession on reconnect (#217, #243)
+      // Send the API token to WS, not the original PIN, plus current activeSession & tab client_id (#217, #243, #244)
       authRequestedSession = activeSessionRef.current || '';
+      lastServerMessageAt = Date.now();
       socket.send(
         JSON.stringify({
           type: 'auth',
           token: apiTokenRef.current,
           harness: harnessRef.current,
           session: authRequestedSession || undefined,
+          client_id: clientIdRef.current,
         })
       );
     };
 
     socket.onmessage = (event) => {
+      lastServerMessageAt = Date.now();
       if (typeof event.data === 'string') {
         try {
           const msg = JSON.parse(event.data);
+          if (msg.type === 'pong') {
+            return;
+          }
           if (msg.type === 'auth_success') {
             ws.current = socket;
             authRef.current = true;
@@ -968,10 +1019,17 @@ function App() {
               }
             }
             
-            // Keep-alive ping every 10s to prevent aggressive proxy timeouts
+            // Bidirectional keepalive every 10s + dead-socket watchdog when visible (#244)
             pingInterval = setInterval(() => {
               if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'ping' }));
+                if (
+                  document.visibilityState === 'visible' &&
+                  Date.now() - lastServerMessageAt > 35000
+                ) {
+                  socket.close();
+                  return;
+                }
+                socket.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
               }
             }, 10000);
             return;
@@ -1002,6 +1060,8 @@ function App() {
 
     socket.onclose = (event) => {
       if (pingInterval) clearInterval(pingInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (disposed) return;
       if (event.code === 1008) {
         if (term.current) term.current.writeln('\x1b[31m\n[Session expired. Please log in again.]\x1b[0m');
         setConnState('disconnected');

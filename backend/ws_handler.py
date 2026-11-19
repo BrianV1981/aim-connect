@@ -12,13 +12,14 @@ import fcntl
 import termios
 import subprocess
 import pty
+import signal
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from main import (
     AIM_CONNECT_ROOT, BACKEND_DIR, ENABLE_E2EE, E2EE_SECRET, ALLOWED_IPS, 
     auth_attempts, LOCKOUT_TIME, MAX_AUTH_ATTEMPTS, VALID_API_TOKENS,
     AGENT_WORKSPACES_DIR, HOME_DIR
 )
-from e2ee import encrypt_bytes, decrypt_message, derive_session_transport_key
+from e2ee import encrypt_bytes, encrypt_message, decrypt_message, derive_session_transport_key
 from harness_transcript import (
     extract_live_agent_text,
     iter_new_opencode_assistant_texts,
@@ -47,6 +48,30 @@ logger = logging.getLogger("aim-connect")
 # PTY is_new_session pause. Do not emit auth_success before both finish.
 PUBLIC_HARNESS_BOOT_S = 5
 PUBLIC_HARNESS_SETTLE_S = 4
+ADMIN_KEEPALIVE_INTERVAL_S = 20.0
+
+# Track active Plane A PTY children by (api_token, client_id) so same-tab reconnects
+# immediately evict and reap their stale zombie tmux client without affecting other tabs (#244).
+_ACTIVE_ADMIN_PTY_CLIENTS: dict[tuple[str, str], dict] = {}
+
+
+def _cleanup_admin_pty_entry(entry: dict) -> None:
+    """Idempotently signal eviction, close PTY master fd once, and reap child tmux client (#244)."""
+    if not entry or entry.get("cleaned_up"):
+        return
+    entry["cleaned_up"] = True
+    ev = entry.get("evict_event")
+    if ev is not None:
+        ev.set()
+    try:
+        os.close(entry["fd"])
+    except Exception:
+        pass
+    try:
+        os.kill(entry["pid"], signal.SIGKILL)
+        os.waitpid(entry["pid"], 0)
+    except Exception:
+        pass
 
 def resolve_workspace_id_for_email(email: str) -> str:
     """Map login email → agent_workspaces/agent-{id}/ (#184).
@@ -106,6 +131,27 @@ async def ws_send_app_text(
         return True
     except Exception as e:
         logger.warning(f"ws_send_app_text failed: {e}")
+        return False
+
+
+async def ws_send_control_json(
+    websocket: WebSocket, payload: dict, e2ee_secret: str | None = None
+) -> bool:
+    """Send JSON control message (e.g. pong, error) as a text WebSocket frame (#244).
+
+    Uses base64 E2EE text framing (encrypt_message + send_text) when E2EE is enabled so
+    E2EESocketWrapper delivers a string to JSON.parse() rather than raw PTY ArrayBuffer bytes.
+    """
+    active_secret = E2EE_SECRET if e2ee_secret is None else e2ee_secret
+    raw = json.dumps(payload, separators=(",", ":"))
+    try:
+        if ENABLE_E2EE and active_secret:
+            await websocket.send_text(encrypt_message(raw, active_secret))
+        else:
+            await websocket.send_text(raw)
+        return True
+    except Exception as e:
+        logger.debug(f"ws_send_control_json failed: {e}")
         return False
 
 async def ws_drain_client_or_sleep(
@@ -230,6 +276,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     authenticated = False
     target_session_override = None
     requested_admin_session = None
+    client_instance_id = ""
     client_gemini_api_key = None
     client_gemini_model = None
     client_grok_thinking = None
@@ -272,6 +319,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     req_sess = (data.get("session") or "").strip()
                     if req_sess and re.match(r"^[a-zA-Z0-9_.-]+$", req_sess):
                         requested_admin_session = req_sess
+                    raw_cid = str(data.get("client_id") or "").strip()
+                    if raw_cid and re.match(r"^[a-zA-Z0-9_.:-]{1,128}$", raw_cid):
+                        client_instance_id = raw_cid
+                        stale_entry = _ACTIVE_ADMIN_PTY_CLIENTS.pop((token, client_instance_id), None)
+                        if stale_entry:
+                            logger.info(
+                                f"Evicting stale admin PTY pid={stale_entry['pid']} on same-tab reconnect"
+                            )
+                            _cleanup_admin_pty_entry(stale_entry)
             elif "." in token:
                 parts = token.split(".")
                 if len(parts) == 2:
@@ -910,15 +966,27 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         os.execvp("tmux", ["tmux", "attach", "-t", target_session])
     
     # Parent process
-    loop = asyncio.get_event_loop()
-    
+    pty_entry = {
+        "pid": pid,
+        "fd": fd,
+        "evict_event": asyncio.Event(),
+        "cleaned_up": False,
+    }
+    pty_client_key = (token, client_instance_id) if client_instance_id else None
+    if pty_client_key:
+        prev_entry = _ACTIVE_ADMIN_PTY_CLIENTS.get(pty_client_key)
+        if prev_entry is not None and prev_entry is not pty_entry:
+            _cleanup_admin_pty_entry(prev_entry)
+        _ACTIVE_ADMIN_PTY_CLIENTS[pty_client_key] = pty_entry
+
     last_activity = time.time()
-    INACTIVITY_TIMEOUT = 86400 # 24 hours
+    last_outbound = time.time()
+    INACTIVITY_TIMEOUT = 86400  # 24 hours
 
     async def read_from_pty():
-        nonlocal last_activity
+        nonlocal last_activity, last_outbound
         loop = asyncio.get_running_loop()
-        while True:
+        while not pty_entry["evict_event"].is_set():
             try:
                 data = await loop.run_in_executor(None, os.read, fd, 1024)
                 if not data:
@@ -926,14 +994,17 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 if ENABLE_E2EE and E2EE_SECRET:
                     data = encrypt_bytes(data, E2EE_SECRET)
                 await websocket.send_bytes(data)
-                last_activity = time.time()
+                now_ts = time.time()
+                last_activity = now_ts
+                last_outbound = now_ts
             except Exception as e:
-                logger.error(f"PTY read error: {e}")
+                if not pty_entry["cleaned_up"]:
+                    logger.error(f"PTY read error: {e}")
                 break
 
     async def write_to_pty():
-        nonlocal last_activity, target_session
-        while True:
+        nonlocal last_activity, last_outbound, target_session
+        while not pty_entry["evict_event"].is_set():
             try:
                 message = await websocket.receive_text()
                 last_activity = time.time()
@@ -943,17 +1014,29 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                             message = decrypt_message(message, E2EE_SECRET)
                         except Exception as dec_err:
                             logger.warning(f"E2EE Decryption failed (Invalid Secret?): {dec_err}")
-                            await ws_send_app_text(websocket, json.dumps({"type": "error", "message": "E2EE Decryption Failed. Check your E2EE Secret."}))
+                            await ws_send_control_json(
+                                websocket,
+                                {"type": "error", "message": "E2EE Decryption Failed. Check your E2EE Secret."},
+                            )
                             continue
                     data = json.loads(message)
-                    if data.get("type") == "input":
+                    msg_type = data.get("type")
+                    if msg_type == "ping":
+                        pong_payload = {"type": "pong"}
+                        if "ts" in data:
+                            pong_payload["ts"] = data["ts"]
+                        if await ws_send_control_json(websocket, pong_payload):
+                            last_outbound = time.time()
+                        else:
+                            break
+                    elif msg_type == "input":
                         os.write(fd, data["payload"].encode("utf-8"))
-                    elif data.get("type") == "paste":
+                    elif msg_type == "paste":
                         text = data.get("payload", "")
                         paste_session = data.get("session") or target_session
                         if text and paste_session:
                             asyncio.create_task(execute_bracketed_paste(paste_session, text))
-                    elif data.get("type") == "submit":
+                    elif msg_type == "submit":
                         text = data.get("payload", "")
                         logger.info(f"Executing aim-communicate for {target_session} with {text}")
                         async def execute_aim_communicate(session_name, msg_text):
@@ -979,9 +1062,9 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         
                         # Run it in the background so it doesn't block other messages
                         asyncio.create_task(execute_aim_communicate(target_session, text))
-                    elif data.get("type") == "resize":
+                    elif msg_type == "resize":
                         set_pty_size(fd, data["rows"], data["cols"])
-                    elif data.get("type") == "switch_session":
+                    elif msg_type == "switch_session":
                         next_sess = (data.get("session") or "").strip()
                         if not next_sess or not re.match(r"^[a-zA-Z0-9_.-]+$", next_sess):
                             continue
@@ -1012,39 +1095,44 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 logger.info("WebSocket disconnected")
                 break
             except Exception as e:
-                logger.error(f"PTY write error: {e}", exc_info=True)
+                if not pty_entry["cleaned_up"]:
+                    logger.error(f"PTY write error: {e}", exc_info=True)
                 break
 
     async def inactivity_monitor():
-        while True:
-            await asyncio.sleep(10)
-            if time.time() - last_activity > INACTIVITY_TIMEOUT:
+        nonlocal last_outbound
+        while not pty_entry["evict_event"].is_set():
+            sleep_step = min(5.0, max(0.02, float(ADMIN_KEEPALIVE_INTERVAL_S)))
+            await asyncio.sleep(sleep_step)
+            now_ts = time.time()
+            if now_ts - last_activity > INACTIVITY_TIMEOUT:
                 logger.warning(f"Closing websocket due to inactivity timeout ({INACTIVITY_TIMEOUT}s)")
                 await websocket.close(code=1008, reason="Inactivity timeout")
                 break
+            if now_ts - last_outbound >= float(ADMIN_KEEPALIVE_INTERVAL_S):
+                if not await ws_send_control_json(websocket, {"type": "pong", "keepalive": True}):
+                    break
+                last_outbound = time.time()
 
     task1 = asyncio.create_task(read_from_pty())
     task2 = asyncio.create_task(write_to_pty())
     task3 = asyncio.create_task(inactivity_monitor())
+    task4 = asyncio.create_task(pty_entry["evict_event"].wait())
 
-    done, pending = await asyncio.wait(
-        [task1, task2, task3],
-        return_when=asyncio.FIRST_COMPLETED
-    )
-    
-    for task in pending:
-        task.cancel()
-
-    # Cleanup the PTY and child process
     try:
-        os.close(fd)
-    except Exception as e:
-        logger.error(f"Error closing PTY fd: {e}")
-    
-    try:
-        import signal
-        os.kill(pid, signal.SIGKILL)
-        os.waitpid(pid, 0)
-    except Exception as e:
-        logger.error(f"Error killing child process {pid}: {e}")
+        done, pending = await asyncio.wait(
+            [task1, task2, task3, task4],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+    finally:
+        if pty_client_key and _ACTIVE_ADMIN_PTY_CLIENTS.get(pty_client_key) is pty_entry:
+            _ACTIVE_ADMIN_PTY_CLIENTS.pop(pty_client_key, None)
+        _cleanup_admin_pty_entry(pty_entry)
+        if pty_entry["evict_event"].is_set():
+            try:
+                await websocket.close(code=1000, reason="Replaced by reconnected tab")
+            except Exception:
+                pass
 
