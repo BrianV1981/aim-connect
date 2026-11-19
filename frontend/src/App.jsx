@@ -928,15 +928,17 @@ function App() {
     socket.init();
     
     let pingInterval;
+    let authRequestedSession = '';
 
     socket.onopen = () => {
-      // Send the API token to WS, not the original PIN, plus current activeSession on reconnect (#217)
+      // Send the API token to WS, not the original PIN, plus current activeSession on reconnect (#217, #243)
+      authRequestedSession = activeSessionRef.current || '';
       socket.send(
         JSON.stringify({
           type: 'auth',
           token: apiTokenRef.current,
           harness: harnessRef.current,
-          session: activeSessionRef.current || undefined,
+          session: authRequestedSession || undefined,
         })
       );
     };
@@ -951,13 +953,19 @@ function App() {
             reconnectAttempts.current = 0;
             setConnState('connected');
             setIsAuthenticated(true);
-            if (activeSessionRef.current) {
+            if (activeSessionRef.current && activeSessionRef.current !== authRequestedSession) {
               socket.send(
                 JSON.stringify({
                   type: 'switch_session',
                   session: activeSessionRef.current,
                 })
               );
+            }
+            if (fitAddon.current) {
+              const dims = fitAddon.current.proposeDimensions();
+              if (dims && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+              }
             }
             
             // Keep-alive ping every 10s to prevent aggressive proxy timeouts

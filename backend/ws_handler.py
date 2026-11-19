@@ -170,6 +170,23 @@ async def execute_bracketed_paste(session_name: str, paste_text: str) -> bool:
     return proc2.returncode == 0
 
 
+async def _run_tmux_cmd(*tmux_args: str) -> tuple[int, str, str]:
+    """Run a short tmux query/control command asynchronously without blocking Uvicorn (#243)."""
+    proc = await asyncio.create_subprocess_exec(
+        "tmux",
+        *tmux_args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout_b, stderr_b = await proc.communicate()
+    rc = proc.returncode if proc.returncode is not None else 0
+    return (
+        rc,
+        (stdout_b or b"").decode("utf-8", errors="replace"),
+        (stderr_b or b"").decode("utf-8", errors="replace"),
+    )
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
@@ -846,13 +863,13 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
 
     # ADMIN CONNECTIONS (RAW PTY & TMUX MODE)
     # =====================================================================
-    # Resolve target_session BEFORE forking so both parent and child processes know the session name
+    # Resolve target_session BEFORE forking so both parent and child processes know the session name (#243)
     target_session = target_session_override or requested_admin_session
     if not target_session:
         # Find a tmux session that isn't aim-connect-workspace or a tenant agent-* bwrap sandbox
-        result = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
-        if result.returncode == 0:
-            sessions_found = [s.strip() for s in result.stdout.splitlines() if s.strip()]
+        ls_rc, ls_stdout, _ = await _run_tmux_cmd("ls", "-F", "#{session_name}")
+        if ls_rc == 0:
+            sessions_found = [s.strip() for s in ls_stdout.splitlines() if s.strip()]
             for line in sessions_found:
                 if line != "aim-connect-workspace" and not line.startswith("agent-"):
                     target_session = line
@@ -861,8 +878,8 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             target_session = "aim-connect-main"
 
     is_new_session = False
-    result = subprocess.run(["tmux", "has-session", "-t", target_session], capture_output=True)
-    if result.returncode != 0:
+    has_rc, _, _ = await _run_tmux_cmd("has-session", "-t", target_session)
+    if has_rc != 0:
         is_new_session = True
         
     pid, fd = pty.fork()
@@ -965,25 +982,28 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     elif data.get("type") == "resize":
                         set_pty_size(fd, data["rows"], data["cols"])
                     elif data.get("type") == "switch_session":
-                        if data.get("session"):
-                            target_session = data["session"]
-                        # We must find the client tty attached to this specific pid
-
-                        result = subprocess.run(["tmux", "list-clients", "-F", "#{client_tty} #{client_pid}"], capture_output=True, text=True)
+                        next_sess = (data.get("session") or "").strip()
+                        if not next_sess or not re.match(r"^[a-zA-Z0-9_.-]+$", next_sess):
+                            continue
+                        target_session = next_sess
+                        # Find the client tty attached to this specific pid asynchronously (#243)
+                        _, clients_out, _ = await _run_tmux_cmd(
+                            "list-clients", "-F", "#{client_tty} #{client_pid}"
+                        )
                         client_tty = None
-                        logger.info(f"[SWITCH_SESSION] Target session: {data['session']}, our pid: {pid}")
-                        logger.info(f"[SWITCH_SESSION] tmux list-clients:\n{result.stdout.strip()}")
-                        for line in result.stdout.strip().split('\n'):
+                        for line in clients_out.strip().split("\n"):
                             if line:
                                 parts = line.split()
                                 if len(parts) >= 2 and parts[1] == str(pid):
                                     client_tty = parts[0]
                                     break
-                        
+
                         if client_tty:
-                            logger.info(f"[SWITCH_SESSION] Switching {client_tty} to {data['session']}")
-                            res = subprocess.run(["tmux", "switch-client", "-c", client_tty, "-t", data["session"]], capture_output=True, text=True)
-                            logger.info(f"[SWITCH_SESSION] Switch result: {res.returncode}, {res.stderr}")
+                            sw_rc, _, sw_err = await _run_tmux_cmd(
+                                "switch-client", "-c", client_tty, "-t", next_sess
+                            )
+                            if sw_rc != 0:
+                                logger.warning(f"[SWITCH_SESSION] Switch failed ({sw_rc}): {sw_err.strip()}")
                         else:
                             logger.warning(f"Could not find tmux client for pid {pid}")
                 except json.JSONDecodeError:
