@@ -28,6 +28,10 @@ CLOUDFLARED_BIN="${CLOUDFLARED_BIN:-$HOME/.local/bin/cloudflared}"
 CLOUDFLARED_CONFIG="${CLOUDFLARED_CONFIG:-$HOME/.cloudflared/config.yml}"
 AIM_PUBLIC_URL="${AIM_PUBLIC_URL:-http://localhost:8000}"
 AIM_MCP_PUBLIC_URL="${AIM_MCP_PUBLIC_URL:-}"
+AIM_WS_PING_INTERVAL="${AIM_WS_PING_INTERVAL:-30}"
+AIM_WS_PING_TIMEOUT="${AIM_WS_PING_TIMEOUT:-60}"
+AIM_WS_MAX_QUEUE="${AIM_WS_MAX_QUEUE:-128}"
+UVICORN_WS_ARGS=(--ws-ping-interval "$AIM_WS_PING_INTERVAL" --ws-ping-timeout "$AIM_WS_PING_TIMEOUT" --ws-max-queue "$AIM_WS_MAX_QUEUE")
 
 ensure_window() {
     local win="$1"
@@ -48,9 +52,9 @@ if [ "${1:-}" = "--foreground" ]; then
     echo -e "\033[36m[1/1] Starting FastAPI Backend in foreground (Port 8000)...\033[0m"
     cd "$DIR/backend" || exit 1
     if [ -x "$DIR/backend/venv/bin/uvicorn" ]; then
-        exec "$DIR/backend/venv/bin/python3" "$DIR/backend/venv/bin/uvicorn" main:app --host 0.0.0.0 --port 8000
+        exec "$DIR/backend/venv/bin/python3" "$DIR/backend/venv/bin/uvicorn" main:app --host 0.0.0.0 --port 8000 "${UVICORN_WS_ARGS[@]}"
     else
-        exec uvicorn main:app --host 0.0.0.0 --port 8000
+        exec uvicorn main:app --host 0.0.0.0 --port 8000 "${UVICORN_WS_ARGS[@]}"
     fi
 fi
 
@@ -76,9 +80,9 @@ if [ -n "$PID_8000" ]; then
 else
     echo -e "\033[36m[1/3] Starting FastAPI Backend (Port 8000)...\033[0m"
     if [ -x "$DIR/backend/venv/bin/uvicorn" ]; then
-        tmux send-keys -t aim-connect-workspace:servers "cd \"$DIR/backend\" && \"$DIR/backend/venv/bin/python3\" \"$DIR/backend/venv/bin/uvicorn\" main:app --host 0.0.0.0 --port 8000" Enter
+        tmux send-keys -t aim-connect-workspace:servers "cd \"$DIR/backend\" && \"$DIR/backend/venv/bin/python3\" \"$DIR/backend/venv/bin/uvicorn\" main:app --host 0.0.0.0 --port 8000 ${UVICORN_WS_ARGS[*]}" Enter
     else
-        tmux send-keys -t aim-connect-workspace:servers "cd \"$DIR/backend\" && uvicorn main:app --host 0.0.0.0 --port 8000" Enter
+        tmux send-keys -t aim-connect-workspace:servers "cd \"$DIR/backend\" && uvicorn main:app --host 0.0.0.0 --port 8000 ${UVICORN_WS_ARGS[*]}" Enter
     fi
 fi
 

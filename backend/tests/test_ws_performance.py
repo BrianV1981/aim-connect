@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import socket
 import subprocess
 import time
@@ -79,3 +80,44 @@ def test_admin_ws_write_to_pty_suppresses_per_frame_info_spam(monkeypatch, caplo
         if rec.levelno >= logging.INFO and "Processing message" in rec.getMessage()
     ]
     assert spam_records == [], f"Expected zero per-frame INFO spam records, got: {spam_records}"
+
+
+def test_runtime_requirements_and_uvicorn_ws_flags(tmp_path):
+    """Verify uvloop/httptools requirements, tuned Uvicorn WS flags, and Cloudflare HTTP/2 docs (#242)."""
+    from pathlib import Path
+    from tests.test_startup_topology import _make_mock_bin
+
+    repo_root = Path(__file__).resolve().parents[2]
+    req_txt = (repo_root / "backend" / "requirements.txt").read_text(encoding="utf-8")
+    assert "uvloop" in req_txt and "sys_platform != 'win32'" in req_txt
+    assert "httptools" in req_txt and "sys_platform != 'win32'" in req_txt
+
+    startup_sh = repo_root / "startup.sh"
+    startup_txt = startup_sh.read_text(encoding="utf-8")
+    assert "--ws-ping-interval" in startup_txt
+    assert "--ws-ping-timeout" in startup_txt
+    assert "--ws-max-queue" in startup_txt
+
+    # Verify detached tmux launch passes tuned WS flags when :8000 is down
+    bin_dir, log_file = _make_mock_bin(
+        tmp_path, lsof_8000="", lsof_8001="5311", pgrep_cf="5306", has_session=0
+    )
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    res = subprocess.run(
+        ["bash", str(startup_sh)],
+        cwd=str(repo_root),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert res.returncode == 0, res.stderr
+    calls = log_file.read_text(encoding="utf-8")
+    assert "--ws-ping-interval 30" in calls
+    assert "--ws-ping-timeout 60" in calls
+    assert "--ws-max-queue 128" in calls
+
+    readme_txt = (repo_root / "README.md").read_text(encoding="utf-8")
+    assert "protocol: http2" in readme_txt
+

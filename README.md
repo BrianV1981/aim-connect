@@ -226,6 +226,9 @@ You must bypass the Windows host's DNS cache entirely by hardcoding public DNS s
 4. Prevent WSL from overwriting it on reboot by adding `generateResolvConf = false` to your `/etc/wsl.conf` under the `[network]` block.
 This forces WSL to query the public internet directly, instantly resolving the connection.
 
+**WebSocket Stream Drops Over QUIC (`protocol: http2`):**
+By default, `cloudflared` negotiates `QUIC` (`UDP :7844`). On Linux/WSL2 hosts with default `208 KB` kernel UDP socket buffers (`net.core.rmem_max = 212992`) or aggressive residential UDP NATs, bursty full-screen terminal redraws can trigger intermittent `1006` WebSocket resets. Add `protocol: http2` to the top of your `cloudflared` `config.yml` (or raise `net.core.rmem_max` / `net.core.wmem_max` to `7500000`) for rock-solid long-lived PTY streams.
+
 ### 💡 Pro-Tip: Bypassing the 7-Day Google OAuth Expiration
 When setting up custom Google Cloud credentials for tools like Rclone or personal AI agents connected to AIM, users often hit the "token expires every 7 days" Testing restriction. You do **not** need formal verification to push personal apps to Production!
 1. Go to **APIs & Services > OAuth consent screen > Branding** and explicitly type in the App Name, Support Email, and Developer Contact (beware of the grey ghost text).
