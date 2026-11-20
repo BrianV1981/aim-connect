@@ -19,7 +19,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from main import (
     AIM_CONNECT_ROOT, BACKEND_DIR, ENABLE_E2EE, E2EE_SECRET, ALLOWED_IPS, 
     auth_attempts, LOCKOUT_TIME, MAX_AUTH_ATTEMPTS, VALID_API_TOKENS,
-    AGENT_WORKSPACES_DIR, HOME_DIR
+    AGENT_WORKSPACES_DIR, HOME_DIR, is_token_valid, touch_api_token
 )
 from e2ee import encrypt_bytes, encrypt_message, decrypt_message, derive_session_transport_key
 from harness_transcript import (
@@ -368,26 +368,22 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
             else:
                 client_byok_fingerprint = client_gemini_api_key or ""
             
-            if token in VALID_API_TOKENS:
-                token_data = VALID_API_TOKENS[token]
-                expires = token_data if isinstance(token_data, (int, float)) else token_data.get("expires", 0)
-                if time.time() > expires:
-                    del VALID_API_TOKENS[token]
-                else:
-                    authenticated = True
-                    auth_attempts[client_ip] = (0, None)
-                    req_sess = (data.get("session") or "").strip()
-                    if req_sess and re.match(r"^[a-zA-Z0-9_.-]+$", req_sess):
-                        requested_admin_session = req_sess
-                    raw_cid = str(data.get("client_id") or "").strip()
-                    if raw_cid and re.match(r"^[a-zA-Z0-9_.:-]{1,128}$", raw_cid):
-                        client_instance_id = raw_cid
-                        stale_entry = _ACTIVE_ADMIN_PTY_CLIENTS.pop((token, client_instance_id), None)
-                        if stale_entry:
-                            logger.info(
-                                f"Evicting stale admin PTY pid={stale_entry['pid']} on same-tab reconnect"
-                            )
-                            _cleanup_admin_pty_entry(stale_entry)
+            is_stale_hex_session_token = bool(re.fullmatch(r"[0-9a-f]{64}", token or ""))
+            if is_token_valid(token, tokens_store=VALID_API_TOKENS):
+                authenticated = True
+                auth_attempts[client_ip] = (0, None)
+                req_sess = (data.get("session") or "").strip()
+                if req_sess and re.match(r"^[a-zA-Z0-9_.-]+$", req_sess):
+                    requested_admin_session = req_sess
+                raw_cid = str(data.get("client_id") or "").strip()
+                if raw_cid and re.match(r"^[a-zA-Z0-9_.:-]{1,128}$", raw_cid):
+                    client_instance_id = raw_cid
+                    stale_entry = _ACTIVE_ADMIN_PTY_CLIENTS.pop((token, client_instance_id), None)
+                    if stale_entry:
+                        logger.info(
+                            f"Evicting stale admin PTY pid={stale_entry['pid']} on same-tab reconnect"
+                        )
+                        _cleanup_admin_pty_entry(stale_entry)
             elif "." in token:
                 parts = token.split(".")
                 if len(parts) == 2:
@@ -420,7 +416,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         except Exception as e:
                             logger.error(f"Failed to parse LeadDeed token: {e}")
             
-            if not authenticated:
+            if not authenticated and not is_stale_hex_session_token:
                 attempts, _ = auth_attempts.get(client_ip, (0, None))
                 attempts += 1
                 lock = now + LOCKOUT_TIME if attempts >= MAX_AUTH_ATTEMPTS else None
@@ -1044,7 +1040,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
     INACTIVITY_TIMEOUT = 86400  # 24 hours
 
     async def read_from_pty():
-        nonlocal last_activity, last_outbound
+        nonlocal last_outbound
         loop = asyncio.get_running_loop()
         while not pty_entry["evict_event"].is_set():
             try:
@@ -1054,9 +1050,7 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                 if ENABLE_E2EE and E2EE_SECRET:
                     data = encrypt_bytes(data, E2EE_SECRET)
                 await websocket.send_bytes(data)
-                now_ts = time.time()
-                last_activity = now_ts
-                last_outbound = now_ts
+                last_outbound = time.time()
             except Exception as e:
                 if not pty_entry["cleaned_up"]:
                     logger.error(f"PTY read error: {e}")
@@ -1067,7 +1061,6 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         while not pty_entry["evict_event"].is_set():
             try:
                 message = await websocket.receive_text()
-                last_activity = time.time()
                 try:
                     if ENABLE_E2EE and E2EE_SECRET and not message.strip().startswith("{"):
                         try:
@@ -1081,15 +1074,29 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                             continue
                     data = json.loads(message)
                     msg_type = data.get("type")
-                    if msg_type == "ping":
-                        pong_payload = {"type": "pong"}
-                        if "ts" in data:
-                            pong_payload["ts"] = data["ts"]
-                        if await ws_send_control_json(websocket, pong_payload):
-                            last_outbound = time.time()
-                        else:
+                    if msg_type in ("ping", "resize"):
+                        if not is_token_valid(token, tokens_store=VALID_API_TOKENS):
+                            await websocket.close(code=1008, reason="Token Expired")
                             break
-                    elif msg_type == "input":
+                        if msg_type == "ping":
+                            pong_payload = {"type": "pong"}
+                            if "ts" in data:
+                                pong_payload["ts"] = data["ts"]
+                            if await ws_send_control_json(websocket, pong_payload):
+                                last_outbound = time.time()
+                            else:
+                                break
+                        else:
+                            set_pty_size(fd, data["rows"], data["cols"])
+                        continue
+
+                    # Active user interaction: validate & slide 4h token TTL forward (#247)
+                    if not touch_api_token(token, tokens_store=VALID_API_TOKENS):
+                        await websocket.close(code=1008, reason="Token Expired")
+                        break
+                    last_activity = time.time()
+
+                    if msg_type == "input":
                         os.write(fd, data["payload"].encode("utf-8"))
                     elif msg_type == "paste":
                         text = data.get("payload", "")
@@ -1122,8 +1129,6 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         
                         # Run it in the background so it doesn't block other messages
                         asyncio.create_task(execute_aim_communicate(target_session, text))
-                    elif msg_type == "resize":
-                        set_pty_size(fd, data["rows"], data["cols"])
                     elif msg_type == "switch_session":
                         next_sess = (data.get("session") or "").strip()
                         if not next_sess or not re.match(r"^[a-zA-Z0-9_.-]+$", next_sess):
@@ -1150,6 +1155,10 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         else:
                             logger.warning(f"Could not find tmux client for pid {pid}")
                 except json.JSONDecodeError:
+                    if not touch_api_token(token, tokens_store=VALID_API_TOKENS):
+                        await websocket.close(code=1008, reason="Token Expired")
+                        break
+                    last_activity = time.time()
                     os.write(fd, message.encode("utf-8"))
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected")
@@ -1164,6 +1173,10 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
         while not pty_entry["evict_event"].is_set():
             sleep_step = min(5.0, max(0.02, float(ADMIN_KEEPALIVE_INTERVAL_S)))
             await asyncio.sleep(sleep_step)
+            if not is_token_valid(token, tokens_store=VALID_API_TOKENS):
+                logger.info("Closing admin websocket due to expired or revoked API token")
+                await websocket.close(code=1008, reason="Token Expired")
+                break
             now_ts = time.time()
             if now_ts - last_activity > INACTIVITY_TIMEOUT:
                 logger.warning(f"Closing websocket due to inactivity timeout ({INACTIVITY_TIMEOUT}s)")

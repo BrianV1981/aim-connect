@@ -276,7 +276,18 @@ if os.path.exists(TOKEN_FILE):
     except Exception:
         pass
 
-TOKEN_TTL = int(os.environ.get('TOKEN_TTL', 14400))  # 4 hours by default
+TOKEN_TTL = int(os.environ.get('TOKEN_TTL', 14400))  # 4 hours sliding active-user timeout (#247)
+TOKEN_SAVE_INTERVAL_S = 60.0
+_LAST_TOKEN_DISK_SYNC: dict[str, float] = {}
+
+# Background polling and teardown routes validate tokens without sliding expiry (#247)
+PASSIVE_TOKEN_ENDPOINTS = frozenset({
+    ("GET", "/api/sessions"),
+    ("GET", "/api/fleet/panes"),
+    ("GET", "/api/swarm/activity"),
+    ("POST", "/api/tts"),
+    ("POST", "/api/logout"),
+})
 
 def save_tokens():
     with open(TOKEN_FILE, 'w') as f:
@@ -288,7 +299,60 @@ def save_tokens():
 MAX_TOKENS = 100
 
 
-def verify_token(x_api_token: str = Header(None)):
+def _resolve_token_dict(token: str, tokens_store: dict | None = None) -> dict | None:
+    if tokens_store is not None and token in tokens_store:
+        return tokens_store
+    if token in VALID_API_TOKENS:
+        return VALID_API_TOKENS
+    return None
+
+
+def is_token_valid(token: str, tokens_store: dict | None = None) -> bool:
+    """Return True if token exists and has not expired; prune & persist if expired (#247)."""
+    if not token:
+        return False
+    store = _resolve_token_dict(token, tokens_store)
+    if store is None:
+        return False
+    token_data = store[token]
+    expires = token_data if isinstance(token_data, (int, float)) else token_data.get("expires", 0)
+    if time.time() > expires:
+        del store[token]
+        _LAST_TOKEN_DISK_SYNC.pop(token, None)
+        if store is VALID_API_TOKENS:
+            save_tokens()
+        return False
+    return True
+
+
+def touch_api_token(token: str, force_save: bool = False, tokens_store: dict | None = None) -> bool:
+    """Slide an active API token's expiry forward by TOKEN_TTL, throttling disk syncs (#247)."""
+    if not is_token_valid(token, tokens_store=tokens_store):
+        return False
+    store = _resolve_token_dict(token, tokens_store)
+    if store is None:
+        return False
+    now = time.time()
+    new_expires = now + TOKEN_TTL
+    token_data = store[token]
+    if isinstance(token_data, dict):
+        token_data["expires"] = new_expires
+    else:
+        store[token] = {
+            "expires": new_expires,
+            "user": "admin",
+            "role": "admin",
+            "prefix": "",
+        }
+    last_saved = _LAST_TOKEN_DISK_SYNC.get(token, 0.0)
+    if force_save or (now - last_saved >= TOKEN_SAVE_INTERVAL_S):
+        _LAST_TOKEN_DISK_SYNC[token] = now
+        if store is VALID_API_TOKENS:
+            save_tokens()
+    return True
+
+
+def verify_token(request: Request, x_api_token: str = Header(None)):
     if not x_api_token or x_api_token not in VALID_API_TOKENS:
         raise HTTPException(status_code=401, detail="Unauthorized API Access")
     token_data = VALID_API_TOKENS[x_api_token]
@@ -296,8 +360,11 @@ def verify_token(x_api_token: str = Header(None)):
     expires = token_data if isinstance(token_data, (int, float)) else token_data.get("expires", 0)
     if time.time() > expires:
         del VALID_API_TOKENS[x_api_token]
+        _LAST_TOKEN_DISK_SYNC.pop(x_api_token, None)
         save_tokens()
         raise HTTPException(status_code=401, detail="Token Expired")
+    if (request.method.upper(), request.url.path) not in PASSIVE_TOKEN_ENDPOINTS:
+        touch_api_token(x_api_token)
 
 def _get_user_from_token(x_api_token: str = Header(None)):
     """Extract user info from token. Returns (role, prefix) tuple."""
@@ -346,7 +413,7 @@ def verify_token_or_loopback(request: Request, x_api_token: str = Header(None)):
     """Allow valid x-api-token OR authenticated direct local loopback read access (#221, #236)."""
     if is_authorized_local_loopback(request):
         return
-    verify_token(x_api_token)
+    verify_token(request, x_api_token)
 
 
 def require_admin_or_loopback(request: Request, x_api_token: str = Header(None)):

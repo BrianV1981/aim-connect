@@ -493,20 +493,56 @@ function App() {
     };
   }, []);
 
-  // Override fetch to include token for API routes
+  const expireSession = useCallback((reason = 'Session expired — please sign in again') => {
+    authRef.current = false;
+    apiTokenRef.current = null;
+    localStorage.removeItem('aim-token');
+    if (ws.current) {
+      try {
+        if (typeof ws.current._dispose === 'function') {
+          ws.current._dispose();
+        } else {
+          ws.current.close();
+        }
+      } catch (e) {}
+      ws.current = null;
+    }
+    setConnState('disconnected');
+    setIsAuthenticated(false);
+    setPin('');
+    if (reason) {
+      setAuthError(reason);
+    }
+  }, []);
+
+  // Override fetch to include token for API routes & cleanly expire session on HTTP 401 (#247)
   useEffect(() => {
     const originalFetch = window.fetch;
     window.fetch = async (resource, config = {}) => {
-      if (typeof resource === 'string' && resource.startsWith('/api/') && resource !== '/api/auth' && apiTokenRef.current) {
-        config.headers = {
-          ...config.headers,
-          'x-api-token': apiTokenRef.current
+      const urlStr = typeof resource === 'string' ? resource : (resource?.url || '');
+      const isApiRoute = urlStr.startsWith('/api/') || urlStr.includes('/api/');
+      const isAuthBootstrap =
+        urlStr.startsWith('/api/auth') ||
+        urlStr.startsWith('/api/logout') ||
+        urlStr.startsWith('/api/webauthn/authenticate');
+      const sentToken = (!isAuthBootstrap && isApiRoute && apiTokenRef.current) ? apiTokenRef.current : null;
+      if (sentToken) {
+        config = {
+          ...config,
+          headers: {
+            ...(config.headers || {}),
+            'x-api-token': sentToken,
+          },
         };
       }
-      return originalFetch(resource, config);
+      const res = await originalFetch(resource, config);
+      if (res.status === 401 && sentToken && apiTokenRef.current === sentToken) {
+        expireSession('Session expired — please sign in again');
+      }
+      return res;
     };
     return () => { window.fetch = originalFetch; };
-  }, []);
+  }, [expireSession]);
 
   // Keep ref in sync
   useEffect(() => {
@@ -867,26 +903,20 @@ function App() {
   }, [isAuthenticated]);
 
   const handleLogout = async () => {
-    if (apiTokenRef.current) {
+    const tokenToRevoke = apiTokenRef.current;
+    expireSession('');
+    if (tokenToRevoke) {
       try {
         await window.fetch('/api/logout', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-token': apiTokenRef.current
+            'x-api-token': tokenToRevoke
           }
         });
       } catch (e) {
         console.error("Logout failed", e);
       }
-    }
-    apiTokenRef.current = null;
-    localStorage.removeItem('aim-token');
-    setIsAuthenticated(false);
-    setPin('');
-    if (ws.current) {
-      ws.current.close();
-      ws.current = null;
     }
   };
 
@@ -1064,10 +1094,7 @@ function App() {
       if (disposed) return;
       if (event.code === 1008) {
         if (term.current) term.current.writeln('\x1b[31m\n[Session expired. Please log in again.]\x1b[0m');
-        setConnState('disconnected');
-        setTimeout(() => {
-          handleLogout();
-        }, 1500);
+        expireSession('Session expired — please sign in again');
         return;
       }
       
