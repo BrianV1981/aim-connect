@@ -76,17 +76,18 @@ def compute_30pct_rule_tier(
     vessel: str = "",
     compaction_count: int = 0,
 ) -> str:
-    """Context Saturation & Sticky-Red Compaction Tiers (#209, #228):
+    """Context Saturation & Sticky-Red Compaction Tiers (#209, #228, #246):
     - Sticky-red rule: if compaction_count > 0, ALWAYS return 'critical' (never green/yellow once compacted).
-    - AGY ('agy'): backend auto-compacts around ~25% (~255k/1M), so fire warning >= 18.0% and critical >= 22.0%.
+    - AGY ('agy'): backend auto-compacts at 512,000 tokens (51.2% of 1M), so fire warning >= 30.0% (Save/Handoff)
+      and critical >= 45.0% (approaching 512k cliff / point of no return).
     - Other vessels: standard 30%-Rule (warning >= 20.0%, critical >= 30.0%).
     """
     if compaction_count and compaction_count > 0:
         return "critical"
     if (vessel or "").lower() == "agy":
-        if context_pct >= 22.0:
+        if context_pct >= 45.0:
             return "critical"
-        if context_pct >= 18.0:
+        if context_pct >= 30.0:
             return "warning"
         return "normal"
     if context_pct >= 30.0:

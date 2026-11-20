@@ -139,7 +139,7 @@ def test_get_sessions_and_fleet_panes_endpoint(client, valid_token, tmp_path):
         assert c_meta["branch"] == "fix/issue-209"
         assert c_meta["is_worktree"] is True
         assert c_meta["context_pct"] == 31.0
-        assert c_meta["tier"] == "critical"
+        assert c_meta["tier"] == "warning"
 
         resp_panes = client.get("/api/fleet/panes", headers={"x-api-token": valid_token})
         assert resp_panes.status_code == 200
@@ -309,7 +309,7 @@ def test_resolve_agy_brain_tokens_and_telemetry_enrichment(tmp_path):
         assert fleet[0]["tokens_used"] == 244297
         assert fleet[0]["tokens_limit"] == 1_000_000
         assert fleet[0]["context_pct"] == 24.4
-        assert fleet[0]["tier"] == "critical"
+        assert fleet[0]["tier"] == "normal"
 
 
 def test_parse_pane_telemetry_waiting_and_historical_idle_detection():
@@ -646,21 +646,22 @@ def test_agy_brain_tokens_override_inflated_tui_sum_and_beyond_40_rows(tmp_path)
         assert by_name["aim-ayrianna"]["tokens_used"] == 140397
         assert by_name["aim-ayrianna"]["context_pct"] == 14.0
         assert by_name["aim-ayrianna"]["tier"] == "normal"
-        # bwrap tenant session must use isolated brain transcript 219,557 (22.0% critical pre-cliff), NOT 36,700 (3.7%)
+        # bwrap tenant session must use isolated brain transcript 219,557 (22.0% normal under 512k ceiling), NOT 36,700 (3.7%)
         assert by_name["agent-op_tenant1-admin-cli"]["tokens_used"] == 219557
         assert by_name["agent-op_tenant1-admin-cli"]["context_pct"] == 22.0
-        assert by_name["agent-op_tenant1-admin-cli"]["tier"] == "critical"
+        assert by_name["agent-op_tenant1-admin-cli"]["tier"] == "normal"
 
 
 def test_agy_pre_cliff_thresholds_and_sticky_red_compaction_tier():
-    """AGY fires warning at 18% and critical at 22% ahead of ~25% cliff, and stays critical (red) whenever compacted (#228)."""
-    # AGY uncompacted pre-cliff boundaries (18% warning, 22% critical)
+    """AGY fires warning at 30% (Save/Handoff) and critical at 45% ahead of 512k (51.2%) cliff, and stays critical whenever compacted (#228, #246)."""
+    # AGY uncompacted 512k-era boundaries (<30% normal, 30-44.9% warning, >=45% critical)
     assert routes_sessions.compute_30pct_rule_tier(0.0, vessel="agy", compaction_count=0) == "normal"
-    assert routes_sessions.compute_30pct_rule_tier(17.9, vessel="agy", compaction_count=0) == "normal"
-    assert routes_sessions.compute_30pct_rule_tier(18.0, vessel="agy", compaction_count=0) == "warning"
-    assert routes_sessions.compute_30pct_rule_tier(21.9, vessel="agy", compaction_count=0) == "warning"
-    assert routes_sessions.compute_30pct_rule_tier(22.0, vessel="agy", compaction_count=0) == "critical"
-    assert routes_sessions.compute_30pct_rule_tier(25.5, vessel="agy", compaction_count=0) == "critical"
+    assert routes_sessions.compute_30pct_rule_tier(22.0, vessel="agy", compaction_count=0) == "normal"
+    assert routes_sessions.compute_30pct_rule_tier(29.9, vessel="agy", compaction_count=0) == "normal"
+    assert routes_sessions.compute_30pct_rule_tier(30.0, vessel="agy", compaction_count=0) == "warning"
+    assert routes_sessions.compute_30pct_rule_tier(44.9, vessel="agy", compaction_count=0) == "warning"
+    assert routes_sessions.compute_30pct_rule_tier(45.0, vessel="agy", compaction_count=0) == "critical"
+    assert routes_sessions.compute_30pct_rule_tier(51.2, vessel="agy", compaction_count=0) == "critical"
 
     # Non-AGY vessels keep standard 20% warning / 30% critical
     assert routes_sessions.compute_30pct_rule_tier(19.9, vessel="grok", compaction_count=0) == "normal"
@@ -676,12 +677,12 @@ def test_agy_pre_cliff_thresholds_and_sticky_red_compaction_tier():
 
 
 def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tmp_path):
-    """Count full-file CHECKPOINT compactions (>128KB before EOF), ignore non-CHECKPOINT mentions, and keep fleet tier critical (#228)."""
+    """Count full-file CHECKPOINT compactions (>128KB before EOF), verify 30%/45%/51.2% tiers & dual markers, and keep compacted fleet tier critical (#228, #246)."""
     import json
     import sqlite3
     from pathlib import Path
 
-    app_data = tmp_path / "agy_data_228"
+    app_data = tmp_path / "agy_data_246"
     app_data.mkdir(parents=True)
     db_path = app_data / "conversation_summaries.db"
     conn = sqlite3.connect(str(db_path))
@@ -690,7 +691,7 @@ def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tm
         "conversation_id TEXT, workspace_uris TEXT, nesting_depth INTEGER, last_modified_time TEXT)"
     )
 
-    # 1. Compacted session (2 real CHECKPOINTs, >150KB padding between them, plus false-positive CHECKPOINT text in USER_INPUT/GENERIC)
+    # 1. Compacted session (2 real CHECKPOINTs at ~512k, >150KB padding between them, plus false-positive CHECKPOINT text in USER_INPUT/GENERIC)
     compacted_repo = tmp_path / "aim-ld-content"
     compacted_repo.mkdir(parents=True)
     tx_compacted_dir = app_data / "brain" / "conv-compacted-2x" / ".system_generated" / "logs"
@@ -699,11 +700,11 @@ def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tm
 
     lines = [
         json.dumps({"step_index": 1, "type": "USER_INPUT", "content": "Mentioning CHECKPOINT in prompt should not count"}),
-        json.dumps({"step_index": 2, "type": "PLANNER_RESPONSE", "input_tokens": 5000, "cache_read_tokens": 248000}),
+        json.dumps({"step_index": 2, "type": "PLANNER_RESPONSE", "input_tokens": 12000, "cache_read_tokens": 500000}),
         json.dumps({"step_index": 3, "source": "SYSTEM", "type": "CHECKPOINT", "content": "# Resuming from a compaction"}),
         # >150KB of intermediate steps so CHECKPOINT #1 sits outside the 128KB tail window
         json.dumps({"step_index": 4, "type": "GENERIC", "content": "CHECKPOINT " + ("x" * 160000)}),
-        json.dumps({"step_index": 5, "type": "PLANNER_RESPONSE", "input_tokens": 4000, "cache_read_tokens": 250000}),
+        json.dumps({"step_index": 5, "type": "PLANNER_RESPONSE", "input_tokens": 14000, "cache_read_tokens": 499000}),
         json.dumps({"step_index": 6, "source": "SYSTEM", "type": "CHECKPOINT", "content": "# Resuming from a compaction"}),
         # Post-compaction window dropped down to 45,000 tokens (4.5%)
         json.dumps({"step_index": 7, "type": "PLANNER_RESPONSE", "input_tokens": 18729, "cache_read_tokens": 26271}),
@@ -714,38 +715,38 @@ def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tm
         ("conv-compacted-2x", json.dumps([f"file://{compacted_repo}"])),
     )
 
-    # 2. Uncompacted warning session at 18.6% (185,962 tokens)
+    # 2. Uncompacted warning session at 32.6% (325,962 tokens -> Save / Handoff amber zone)
     warn_repo = tmp_path / "aim-calendar"
     warn_repo.mkdir(parents=True)
-    tx_warn_dir = app_data / "brain" / "conv-warn-18pct" / ".system_generated" / "logs"
+    tx_warn_dir = app_data / "brain" / "conv-warn-32pct" / ".system_generated" / "logs"
     tx_warn_dir.mkdir(parents=True)
     (tx_warn_dir / "transcript.jsonl").write_text(
-        json.dumps({"step_index": 10, "type": "PLANNER_RESPONSE", "input_tokens": 5962, "cache_read_tokens": 180000}) + "\n",
+        json.dumps({"step_index": 10, "type": "PLANNER_RESPONSE", "input_tokens": 5962, "cache_read_tokens": 320000}) + "\n",
         encoding="utf-8",
     )
     conn.execute(
         "INSERT INTO conversation_summaries VALUES (?, ?, 0, '2026-10-31 21:00:00')",
-        ("conv-warn-18pct", json.dumps([f"file://{warn_repo}"])),
+        ("conv-warn-32pct", json.dumps([f"file://{warn_repo}"])),
     )
 
-    # 3. Uncompacted pre-cliff critical session at 22.5% (225,000 tokens)
+    # 3. Uncompacted pre-cliff critical session at 46.5% (465,000 tokens -> approaching 512k cliff)
     cliff_repo = tmp_path / "aim-office"
     cliff_repo.mkdir(parents=True)
-    tx_cliff_dir = app_data / "brain" / "conv-cliff-22pct" / ".system_generated" / "logs"
+    tx_cliff_dir = app_data / "brain" / "conv-cliff-46pct" / ".system_generated" / "logs"
     tx_cliff_dir.mkdir(parents=True)
     (tx_cliff_dir / "transcript.jsonl").write_text(
-        json.dumps({"step_index": 20, "type": "PLANNER_RESPONSE", "input_tokens": 5000, "cache_read_tokens": 220000}) + "\n",
+        json.dumps({"step_index": 20, "type": "PLANNER_RESPONSE", "input_tokens": 5000, "cache_read_tokens": 460000}) + "\n",
         encoding="utf-8",
     )
     conn.execute(
         "INSERT INTO conversation_summaries VALUES (?, ?, 0, '2026-10-31 20:00:00')",
-        ("conv-cliff-22pct", json.dumps([f"file://{cliff_repo}"])),
+        ("conv-cliff-46pct", json.dumps([f"file://{cliff_repo}"])),
     )
     conn.commit()
     conn.close()
 
     # 4. Isolated bwrap tenant workspace with 1 compaction and 22,000 tokens (2.2%)
-    aw_root = tmp_path / "agent_workspaces_228"
+    aw_root = tmp_path / "agent_workspaces_246"
     tenant_tx_dir = aw_root / "agent-op_tenant2" / "brain" / "tenant-conv-c1" / ".system_generated" / "logs"
     tenant_tx_dir.mkdir(parents=True)
     (tenant_tx_dir / "transcript.jsonl").write_text(
@@ -808,13 +809,13 @@ def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tm
         assert by_name["aim-ld-content"]["compaction_count"] == 2
         assert by_name["aim-ld-content"]["tier"] == "critical"
 
-        # 18.6% uncompacted -> early pre-cliff warning
-        assert by_name["aim-calendar"]["context_pct"] == 18.6
+        # 32.6% uncompacted -> 30% Save / Handoff amber warning
+        assert by_name["aim-calendar"]["context_pct"] == 32.6
         assert by_name["aim-calendar"]["compaction_count"] == 0
         assert by_name["aim-calendar"]["tier"] == "warning"
 
-        # 22.5% uncompacted -> early pre-cliff critical
-        assert by_name["aim-office"]["context_pct"] == 22.5
+        # 46.5% uncompacted -> >=45% pre-512k cliff critical
+        assert by_name["aim-office"]["context_pct"] == 46.5
         assert by_name["aim-office"]["compaction_count"] == 0
         assert by_name["aim-office"]["tier"] == "critical"
 
@@ -831,7 +832,7 @@ def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tm
     assert tok_c3 == 19000
     assert comp_c3 == 3
 
-    # Verify FleetSidebar.jsx & CommandPalette.jsx UI wiring (#228)
+    # Verify FleetSidebar.jsx, App.css, & CommandPalette.jsx UI wiring (#228, #246)
     repo_root = Path(__file__).resolve().parents[2]
     sidebar_jsx = (repo_root / "frontend" / "src" / "components" / "FleetSidebar.jsx").read_text(encoding="utf-8")
     palette_jsx = (repo_root / "frontend" / "src" / "components" / "CommandPalette.jsx").read_text(encoding="utf-8")
@@ -839,7 +840,14 @@ def test_agy_compaction_checkpoint_tracking_beyond_128kb_and_sticky_red_fleet(tm
 
     assert "compaction_count" in sidebar_jsx
     assert "COMPACTED" in sidebar_jsx
-    assert "25% CLIFF" in sidebar_jsx
+    assert "SAVE / HANDOFF" in sidebar_jsx
+    assert "512K CLIFF" in sidebar_jsx
+    assert "25% CLIFF" not in sidebar_jsx
+    assert "22%" not in sidebar_jsx
+    assert "51.2%" in sidebar_jsx
+    assert "fleet-context-512-marker" in sidebar_jsx
+    assert ".fleet-context-512-marker" in app_css
+    assert ".fleet-context-30-marker.agy-warn-marker" in app_css
     assert "is-compacted" in sidebar_jsx
     assert ".fleet-context-track.is-compacted" in app_css
     assert "compaction_count" in palette_jsx

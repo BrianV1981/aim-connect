@@ -197,8 +197,9 @@ export default function FleetSidebar({
             type="button"
             className={`fleet-filter-pill ${statusFilter === 'high_ctx' ? 'active' : ''}`}
             onClick={() => setStatusFilter('high_ctx')}
+            title="Sessions in Warning, Critical, or Compacted context state (>=30% AGY · >=20% others)"
           >
-            🧠 &ge;20% ({counts.warning + counts.critical})
+            🧠 &ge;30% ({counts.warning + counts.critical})
           </button>
           <button
             type="button"
@@ -304,27 +305,33 @@ export default function FleetSidebar({
                         className={`fleet-context-label tier-${effectiveTier}`}
                         title={
                           isCompacted
-                            ? `Auto-compacted ${compactionCount}x by AGY (~25% cliff) — stays RED until /handoff to a fresh session`
-                            : undefined
+                            ? `Auto-compacted ${compactionCount}x by AGY (512k cliff) — stays RED until /handoff to a fresh session`
+                            : item.vessel === 'agy' && effectiveTier === 'critical'
+                              ? 'Approaching 512k (51.2%) Point of No Return — backend auto-compaction imminent'
+                              : item.vessel === 'agy' && effectiveTier === 'warning'
+                                ? 'Crossed 30% (300k) Save / Handoff checkpoint — safe headroom before 512k cliff'
+                                : undefined
                         }
                       >
                         {isCompacted
                           ? `⚠️ COMPACTED ${compactionCount}x`
                           : effectiveTier === 'critical'
                             ? item.vessel === 'agy'
-                              ? '⚠️ 25% CLIFF'
+                              ? '🚨 512K CLIFF'
                               : '⚠️ 30% RULE'
                             : effectiveTier === 'warning'
-                              ? '⚡ WIKI SOON'
+                              ? item.vessel === 'agy'
+                                ? '⚡ SAVE / HANDOFF'
+                                : '⚡ WIKI SOON'
                               : 'CTX'}
                       </span>
                       <span
                         className={`fleet-context-pct tier-${effectiveTier}`}
                         title={
                           isCompacted
-                            ? `Compacted ${compactionCount}x (currently ${Number(item.context_pct || 0).toFixed(1)}% post-compaction)`
+                            ? `Compacted ${compactionCount}x at 512k cliff (currently ${Number(item.context_pct || 0).toFixed(1)}% post-compaction)`
                             : item.vessel === 'agy'
-                              ? 'AGY Context (18% warning · 22% critical · ~25% backend auto-compact)'
+                              ? 'AGY Context (30% Save/Handoff warning · 45% critical · 51.2% / 512k auto-compact cliff)'
                               : 'J.O.S.H.U.A. 30%-Rule Context Saturation'
                         }
                       >
@@ -337,7 +344,7 @@ export default function FleetSidebar({
                         isCompacted
                           ? `Session auto-compacted ${compactionCount}x — run /wiki & /handoff before multi-generation drift`
                           : item.vessel === 'agy'
-                            ? 'AGY Pre-Cliff Context Meter (Amber >= 18% · Red >= 22% · Backend auto-compacts ~25%)'
+                            ? 'AGY Context Meter (Amber >= 30% Save/Handoff · Red >= 45% · 51.2% / 512k Point of No Return)'
                             : 'J.O.S.H.U.A. 30%-Rule Context Saturation Meter (Red >= 30%)'
                       }
                     >
@@ -346,14 +353,21 @@ export default function FleetSidebar({
                         style={{ width: `${barWidth}%` }}
                       />
                       <div
-                        className="fleet-context-30-marker"
-                        style={{ left: item.vessel === 'agy' ? '22%' : '30%' }}
+                        className={`fleet-context-30-marker ${item.vessel === 'agy' ? 'agy-warn-marker' : ''}`}
+                        style={{ left: '30%' }}
                         title={
                           item.vessel === 'agy'
-                            ? '22% Pre-Cliff Handoff Threshold (~25% AGY auto-compact)'
+                            ? '30% Save / Handoff Warning (300k — safe headroom before 512k cliff)'
                             : '30% Amnesia Threshold'
                         }
                       />
+                      {item.vessel === 'agy' && (
+                        <div
+                          className="fleet-context-512-marker"
+                          style={{ left: '51.2%' }}
+                          title="51.2% Point of No Return (512k — hard backend auto-compaction cliff)"
+                        />
+                      )}
                     </div>
                   </div>
                 )}

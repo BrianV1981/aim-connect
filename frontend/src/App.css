@@ -1167,6 +1167,23 @@ body {
   background: rgba(248, 113, 113, 0.7);
 }
 
+.fleet-context-30-marker.agy-warn-marker {
+  width: 1.5px;
+  background: rgba(250, 204, 21, 0.85);
+  z-index: 2;
+}
+
+.fleet-context-512-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 51.2%;
+  width: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.9);
+  z-index: 2;
+}
+
 .fleet-card-preview {
   font-family: 'Fira Code', monospace;
   font-size: 10px;
