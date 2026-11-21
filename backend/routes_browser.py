@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -30,6 +31,8 @@ logger = logging.getLogger("aim-connect")
 CDP_LOOPBACK_HOST = "127.0.0.1"
 TARGET_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 LEASE_NAME_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+FAVORITE_ID_RE = re.compile(r"^[a-f0-9]{12}$")
+MAX_FAVORITES = 50
 CLOSED_TARGET_TOMBSTONE_TTL_S = 4.0
 
 # Track live screencast bridges so DELETE /api/browser/tabs/{id} can detach DevTools
@@ -111,13 +114,42 @@ def _read_hud() -> dict | None:
     return raw if isinstance(raw, dict) else None
 
 
+def _favorite_id_for_url(url: str) -> str:
+    return hashlib.sha1(url.strip().encode("utf-8")).hexdigest()[:12]
+
+
+def _default_favorite_title(url: str, raw_title: str = "") -> str:
+    cleaned = (raw_title or "").strip()
+    if cleaned and cleaned.lower() not in ("(untitled)", "about:blank", "new tab"):
+        return cleaned[:80]
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.netloc or url).replace("www.", "")
+    path = parsed.path.rstrip("/")
+    label = f"{host}{path}" if path else host
+    return (label or url)[:80]
+
+
+def _read_favorites() -> list[dict]:
+    raw = _read_json_file(os.path.join(_get_state_dir(), "favorites.json"), [])
+    if not isinstance(raw, list):
+        return []
+    return [f for f in raw if isinstance(f, dict) and f.get("id") and f.get("url")]
+
+
+def _write_favorites(favorites: list[dict]) -> None:
+    _write_json_atomic(os.path.join(_get_state_dir(), "favorites.json"), favorites[:MAX_FAVORITES])
+
+
 def _normalize_nav_url(raw_url: str) -> str:
     u = (raw_url or "").strip()
     if not u:
         return "about:blank"
+    bad_scheme = re.match(r"^(javascript|vbscript|file|data):", u, re.IGNORECASE)
+    if bad_scheme:
+        raise ValueError(f"Disallowed URL scheme: {bad_scheme.group(1)}")
     if u in ("about:blank", "chrome://version") or "://" in u:
         parsed = urllib.parse.urlparse(u)
-        if parsed.scheme.lower() in ("file", "javascript", "vbscript"):
+        if parsed.scheme.lower() not in ("http", "https", "about", "chrome"):
             raise ValueError(f"Disallowed URL scheme: {parsed.scheme}")
         return u
     if u.startswith(("localhost", "127.0.0.1", "[::1]")):
@@ -195,6 +227,7 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
 async def _collect_browser_status() -> dict:
     port = _get_cdp_port()
     hud = _read_hud()
+    favorites = _read_favorites()
     try:
         version_info = await _cdp_http_json("/json/version", timeout=1.5)
         targets = await _cdp_http_json("/json/list", timeout=1.5)
@@ -204,6 +237,7 @@ async def _collect_browser_status() -> dict:
             "cdp_port": port,
             "browser": version_info.get("Browser", "Chromium"),
             "tabs": tabs,
+            "favorites": favorites,
             "hud": hud,
         }
     except Exception:
@@ -212,6 +246,7 @@ async def _collect_browser_status() -> dict:
             "cdp_port": port,
             "browser": "",
             "tabs": [],
+            "favorites": favorites,
             "hud": hud,
         }
 
@@ -236,6 +271,62 @@ class OpenTabRequest(BaseModel):
     url: str = "about:blank"
     lease: str = ""
     actor: str = ""
+
+
+class FavoriteRequest(BaseModel):
+    url: str
+    title: str = ""
+
+
+@router.get("/api/browser/favorites", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def list_browser_favorites():
+    """Return server-persisted browser favorites (#250)."""
+    return {"favorites": _read_favorites()}
+
+
+@router.post("/api/browser/favorites", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def save_browser_favorite(req: FavoriteRequest):
+    """Upsert a browser favorite in 0600 favorites.json (#250)."""
+    try:
+        clean_url = _normalize_nav_url(req.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if clean_url == "about:blank":
+        raise HTTPException(status_code=400, detail="Cannot bookmark about:blank")
+
+    fav_id = _favorite_id_for_url(clean_url)
+    entry = {
+        "id": fav_id,
+        "title": _default_favorite_title(clean_url, req.title),
+        "url": clean_url,
+        "createdAt": int(time.time() * 1000),
+    }
+    existing = _read_favorites()
+    replaced = False
+    updated: list[dict] = []
+    for item in existing:
+        if item.get("id") == fav_id:
+            updated.append({**item, "title": entry["title"], "url": clean_url})
+            replaced = True
+        else:
+            updated.append(item)
+    if not replaced:
+        updated.append(entry)
+    _write_favorites(updated)
+    saved = next((f for f in updated if f["id"] == fav_id), entry)
+    return {"favorite": saved, "favorites": updated[:MAX_FAVORITES]}
+
+
+@router.delete("/api/browser/favorites/{fav_id}", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def delete_browser_favorite(fav_id: str):
+    """Delete a saved browser favorite by id (#250)."""
+    if not FAVORITE_ID_RE.match(fav_id or ""):
+        raise HTTPException(status_code=400, detail="Invalid favorite id")
+    existing = _read_favorites()
+    filtered = [f for f in existing if f.get("id") != fav_id]
+    if len(filtered) != len(existing):
+        _write_favorites(filtered)
+    return {"deleted": fav_id, "favorites": filtered}
 
 
 @router.get("/api/browser/status", dependencies=[Depends(verify_token), Depends(require_admin)])

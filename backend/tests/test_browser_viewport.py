@@ -204,28 +204,29 @@ def test_end_to_end_cdp_tabs_screencast_input_and_hud(admin_and_user_tokens, mon
             frame_msg = msg1 if msg1["type"] == "frame" else msg2
             assert frame_msg["data"] == "FAKE_JPEG_BASE64"
 
+            def _recv_until(expected_type: str, max_msgs: int = 6) -> dict:
+                for _ in range(max_msgs):
+                    m = json.loads(ws.receive_text())
+                    if m.get("type") == expected_type:
+                        return m
+                raise AssertionError(f"Did not receive {expected_type!r} within {max_msgs} frames")
+
             # Dynamic resize_viewport must update Emulation.setDeviceMetricsOverride without sliding TTL (#247/#249)
             fixed_exp = time.time() + 500
             main.VALID_API_TOKENS[admin_and_user_tokens["admin"]]["expires"] = fixed_exp
             ws.send_text(json.dumps({"type": "resize_viewport", "width": 920, "height": 1040}))
             ws.send_text(json.dumps({"type": "ping"}))
-            assert json.loads(ws.receive_text())["type"] == "pong"
+            assert _recv_until("pong")["type"] == "pong"
             assert main.VALID_API_TOKENS[admin_and_user_tokens["admin"]]["expires"] == fixed_exp
 
             # Send mouse click + 2FA insert_text
             ws.send_text(json.dumps({"type": "mouse", "eventType": "mousePressed", "x": 320, "y": 240, "button": "left"}))
             ws.send_text(json.dumps({"type": "insert_text", "text": "123456"}))
 
-            # Write HUD event from aim-browser -> verify live push (draining resized screencast frame)
+            # Write HUD event from aim-browser -> verify live push
             hud_file = admin_and_user_tokens["state_dir"] / "hud.json"
             hud_file.write_text(json.dumps({"seq": 1, "targetId": tid, "actor": "subagent-1", "action": "click", "label": "#login", "x": 320, "y": 240}))
-            hud_msg = None
-            for _ in range(4):
-                candidate = json.loads(ws.receive_text())
-                if candidate.get("type") == "hud":
-                    hud_msg = candidate
-                    break
-            assert hud_msg is not None
+            hud_msg = _recv_until("hud")
             assert hud_msg["hud"]["label"] == "#login"
 
             # Open a 2nd tab & close the ACTIVE attached tab (tid) WHILE /ws/browser is still connected (#249)!
@@ -262,3 +263,48 @@ def test_end_to_end_cdp_tabs_screencast_input_and_hud(admin_and_user_tokens, mon
         if "stop" in server_info:
             server_info["stop"]()
         t.join(timeout=2.0)
+
+
+def test_browser_favorites_crud_dedup_and_validation(admin_and_user_tokens, monkeypatch):
+    """Verify server-persisted favorites CRUD, URL normalization, deduplication, and admin gate (#250)."""
+    monkeypatch.setenv("AIM_BROWSER_CDP_PORT", "65432")
+    client = TestClient(main.app)
+    admin_headers = {"X-API-Token": admin_and_user_tokens["admin"]}
+    user_headers = {"X-API-Token": admin_and_user_tokens["user"]}
+
+    # Non-admin rejected
+    assert client.get("/api/browser/favorites", headers=user_headers).status_code == 403
+
+    # Disallowed schemes & about:blank rejected
+    assert client.post("/api/browser/favorites", headers=admin_headers, json={"url": "javascript:alert(1)"}).status_code == 400
+    assert client.post("/api/browser/favorites", headers=admin_headers, json={"url": "about:blank"}).status_code == 400
+
+    # Create favorite (normalizing bare host) + upsert title without duplicating
+    r1 = client.post(
+        "/api/browser/favorites",
+        headers=admin_headers,
+        json={"url": "news.ycombinator.com", "title": "HN"},
+    )
+    assert r1.status_code == 200
+    fav_id = r1.json()["favorite"]["id"]
+    assert r1.json()["favorite"]["url"] == "https://news.ycombinator.com"
+    assert len(r1.json()["favorites"]) == 1
+
+    r_upsert = client.post(
+        "/api/browser/favorites",
+        headers=admin_headers,
+        json={"url": "https://news.ycombinator.com", "title": "Hacker News"},
+    )
+    assert r_upsert.status_code == 200
+    assert len(r_upsert.json()["favorites"]) == 1
+    assert r_upsert.json()["favorites"][0]["title"] == "Hacker News"
+
+    # Included directly in /api/browser/status
+    st = client.get("/api/browser/status", headers=admin_headers).json()
+    assert len(st["favorites"]) == 1
+    assert st["favorites"][0]["id"] == fav_id
+
+    # Delete favorite
+    r_del = client.delete(f"/api/browser/favorites/{fav_id}", headers=admin_headers)
+    assert r_del.status_code == 200
+    assert r_del.json()["favorites"] == []

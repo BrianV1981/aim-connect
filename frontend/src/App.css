@@ -1746,3 +1746,62 @@ body {
   border-radius: 999px;
   white-space: nowrap;
 }
+
+/* --- Co-Pilot Browser Favorites Bar (#250) --- */
+.browser-star-active {
+  color: #fbbf24 !important;
+  border-color: rgba(251, 191, 36, 0.55) !important;
+  background: rgba(251, 191, 36, 0.14) !important;
+}
+
+.browser-favorites-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(8, 15, 30, 0.88);
+  border-bottom: 1px solid #1c305c;
+  overflow-x: auto;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.browser-favorites-label {
+  color: #fbbf24;
+  font-size: 11px;
+  margin-right: 2px;
+}
+
+.browser-favorite-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(71, 85, 105, 0.55);
+  color: #cbd5e1;
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.browser-favorite-chip:hover,
+.browser-favorite-chip.active {
+  background: rgba(59, 130, 246, 0.24);
+  border-color: #60a5fa;
+  color: #f8fafc;
+}
+
+.browser-favorite-chip.empty-hint {
+  border-style: dashed;
+  color: #94a3b8;
+}
+
+.browser-favorite-title {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

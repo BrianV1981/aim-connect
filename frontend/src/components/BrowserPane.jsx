@@ -22,6 +22,7 @@ export default function BrowserPane({
   const [daemonRunning, setDaemonRunning] = useState(false);
   const [startingDaemon, setStartingDaemon] = useState(false);
   const [tabs, setTabs] = useState([]);
+  const [favorites, setFavorites] = useState([]);
   const [activeTargetId, setActiveTargetId] = useState('');
   const [addressInput, setAddressInput] = useState('');
   const [controlMode, setControlMode] = useState(false); // false = Watch, true = Interactive Control
@@ -70,6 +71,9 @@ export default function BrowserPane({
       if (!res.ok) return null;
       const data = await res.json();
       setDaemonRunning(Boolean(data.running));
+      if (Array.isArray(data.favorites)) {
+        setFavorites(data.favorites);
+      }
       const rawTabs = Array.isArray(data.tabs) ? data.tabs : [];
       const nextTabs = rawTabs.filter((t) => !closingIdsRef.current.has(t.id));
       setTabs(nextTabs);
@@ -386,6 +390,109 @@ export default function BrowserPane({
     setQuickText('');
   };
 
+  const normalizeComparableUrl = (raw) => {
+    const u = String(raw || '').trim();
+    if (!u || u === 'about:blank') return '';
+    const withProto = u.includes('://')
+      ? u
+      : u.startsWith('localhost') || u.startsWith('127.0.0.1')
+      ? `http://${u}`
+      : `https://${u}`;
+    return withProto.replace(/\/+$/, '').toLowerCase();
+  };
+
+  const activeTabObj = tabs.find((t) => t.id === activeTargetId) || null;
+  const candidateUrl = (addressInput || activeTabObj?.url || '').trim();
+  const normCandidate = normalizeComparableUrl(candidateUrl);
+  const matchedFavorite = normCandidate
+    ? favorites.find((f) => normalizeComparableUrl(f.url) === normCandidate) || null
+    : null;
+
+  const handleToggleFavorite = async () => {
+    if (!normCandidate) return;
+    try {
+      if (matchedFavorite) {
+        const res = await fetch(`/api/browser/favorites/${encodeURIComponent(matchedFavorite.id)}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFavorites(data.favorites || []);
+        }
+      } else {
+        const res = await fetch('/api/browser/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: candidateUrl,
+            title: activeTabObj?.title || '',
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFavorites(data.favorites || []);
+        }
+      }
+    } catch {}
+  };
+
+  const handleDeleteFavoriteChip = async (e, favId) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/browser/favorites/${encodeURIComponent(favId)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFavorites(data.favorites || []);
+      }
+    } catch {}
+  };
+
+  const handleOpenFavorite = async (fav, openInNewTab = false) => {
+    if (!fav?.url) return;
+    setAddressInput(fav.url);
+    if (!daemonRunning) {
+      setStartingDaemon(true);
+      try {
+        const res = await fetch('/api/browser/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'auto', url: fav.url }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setDaemonRunning(true);
+          setTabs(data.tabs || []);
+          const tid = data.tabs?.[0]?.id || '';
+          setActiveTargetId(tid);
+          connectScreencast(tid);
+        }
+      } finally {
+        setStartingDaemon(false);
+      }
+      return;
+    }
+
+    if (openInNewTab) {
+      try {
+        const res = await fetch('/api/browser/tabs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: fav.url }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.tabs) setTabs(data.tabs.filter((t) => !closingIdsRef.current.has(t.id)));
+          if (data.tab?.id) handleSelectTab({ id: data.tab.id, url: fav.url });
+        }
+      } catch {}
+      return;
+    }
+
+    sendWs({ type: 'navigate', url: fav.url });
+  };
+
   if (!isOpen) return null;
 
   const hudVisibleOnCurrentTab =
@@ -543,10 +650,62 @@ export default function BrowserPane({
           value={addressInput}
           onChange={(e) => setAddressInput(e.target.value)}
         />
+        <button
+          type="button"
+          className={`macro-btn ${matchedFavorite ? 'browser-star-active' : ''}`}
+          style={{ padding: '4px 8px', fontSize: '12px' }}
+          disabled={!normCandidate}
+          onClick={handleToggleFavorite}
+          title={matchedFavorite ? 'Remove from Favorites' : 'Save URL to Favorites'}
+        >
+          {matchedFavorite ? '★' : '☆'}
+        </button>
         <button type="submit" className="macro-btn action" style={{ padding: '4px 10px', fontSize: '11px' }}>
           Go
         </button>
       </form>
+
+      {/* Compact Persistent Favorites Bar (#250) */}
+      <div className="browser-favorites-bar">
+        <span className="browser-favorites-label">★</span>
+        {favorites.length === 0 ? (
+          <button
+            type="button"
+            className="browser-favorite-chip empty-hint"
+            disabled={!normCandidate}
+            onClick={handleToggleFavorite}
+            title="Bookmark the current URL for 1-click access on desktop & mobile"
+          >
+            + Pin Current URL
+          </button>
+        ) : (
+          favorites.map((fav) => (
+            <div
+              key={fav.id}
+              className={`browser-favorite-chip ${
+                normCandidate && normalizeComparableUrl(fav.url) === normCandidate ? 'active' : ''
+              }`}
+              onClick={(e) => handleOpenFavorite(fav, e.ctrlKey || e.metaKey)}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  handleOpenFavorite(fav, true);
+                }
+              }}
+              title={`${fav.title}\n${fav.url}\n(Click to open · Ctrl/Cmd/Middle-click for new tab)`}
+            >
+              <span className="browser-favorite-title">{fav.title}</span>
+              <span
+                className="workspace-tab-close"
+                onClick={(e) => handleDeleteFavoriteChip(e, fav.id)}
+                title="Remove favorite"
+              >
+                ×
+              </span>
+            </div>
+          ))
+        )}
+      </div>
 
       {/* Mobile-Friendly Direct Text / 2FA Injection Bar */}
       {showTextBar && daemonRunning && (
