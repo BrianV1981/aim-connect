@@ -183,9 +183,19 @@ def test_end_to_end_cdp_tabs_screencast_input_and_hud(admin_and_user_tokens, mon
         tid = r_open.json()["tab"]["id"]
         assert r_open.json()["tabs"][0]["lease"] == "subagent-1"
 
-        # Connect /ws/browser -> verify ready, screencast frame, ack, mouse/text forwarding, and HUD push
+            # Connect /ws/browser with portrait split-pane bounds -> verify Emulation + screencast
         with client.websocket_connect("/ws/browser") as ws:
-            ws.send_text(json.dumps({"type": "auth", "token": admin_and_user_tokens["admin"], "target_id": tid}))
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "auth",
+                        "token": admin_and_user_tokens["admin"],
+                        "target_id": tid,
+                        "width": 780,
+                        "height": 980,
+                    }
+                )
+            )
             msg1 = json.loads(ws.receive_text())
             msg2 = json.loads(ws.receive_text())
             received_types = {msg1["type"], msg2["type"]}
@@ -194,30 +204,60 @@ def test_end_to_end_cdp_tabs_screencast_input_and_hud(admin_and_user_tokens, mon
             frame_msg = msg1 if msg1["type"] == "frame" else msg2
             assert frame_msg["data"] == "FAKE_JPEG_BASE64"
 
+            # Dynamic resize_viewport must update Emulation.setDeviceMetricsOverride without sliding TTL (#247/#249)
+            fixed_exp = time.time() + 500
+            main.VALID_API_TOKENS[admin_and_user_tokens["admin"]]["expires"] = fixed_exp
+            ws.send_text(json.dumps({"type": "resize_viewport", "width": 920, "height": 1040}))
+            ws.send_text(json.dumps({"type": "ping"}))
+            assert json.loads(ws.receive_text())["type"] == "pong"
+            assert main.VALID_API_TOKENS[admin_and_user_tokens["admin"]]["expires"] == fixed_exp
+
             # Send mouse click + 2FA insert_text
             ws.send_text(json.dumps({"type": "mouse", "eventType": "mousePressed", "x": 320, "y": 240, "button": "left"}))
             ws.send_text(json.dumps({"type": "insert_text", "text": "123456"}))
 
-            # Write HUD event from aim-browser -> verify live push
+            # Write HUD event from aim-browser -> verify live push (draining resized screencast frame)
             hud_file = admin_and_user_tokens["state_dir"] / "hud.json"
             hud_file.write_text(json.dumps({"seq": 1, "targetId": tid, "actor": "subagent-1", "action": "click", "label": "#login", "x": 320, "y": 240}))
-            hud_msg = json.loads(ws.receive_text())
-            assert hud_msg["type"] == "hud"
+            hud_msg = None
+            for _ in range(4):
+                candidate = json.loads(ws.receive_text())
+                if candidate.get("type") == "hud":
+                    hud_msg = candidate
+                    break
+            assert hud_msg is not None
             assert hud_msg["hud"]["label"] == "#login"
+
+            # Open a 2nd tab & close the ACTIVE attached tab (tid) WHILE /ws/browser is still connected (#249)!
+            r_open2 = client.post("/api/browser/tabs", headers=headers, json={"url": "https://example.org"})
+            assert r_open2.status_code == 200
+            tid2 = r_open2.json()["tab"]["id"]
+
+            # Simulate Chromium /json/close race where /json/list lags if DevTools wasn't detached
+            r_del = client.delete(f"/api/browser/tabs/{tid}", headers=headers)
+            assert r_del.status_code == 200
+            returned_ids = [t["id"] for t in r_del.json()["tabs"]]
+            assert tid not in returned_ids
+            assert tid2 in returned_ids
 
         # Give upstream close a brief tick to flush stopScreencast
         time.sleep(0.05)
         methods = [c["method"] for c in cdp_commands]
+        assert "Emulation.setDeviceMetricsOverride" in methods
         assert "Page.startScreencast" in methods
         assert "Page.screencastFrameAck" in methods
         assert "Input.dispatchMouseEvent" in methods
         assert "Input.insertText" in methods
         assert "Page.stopScreencast" in methods
 
-        # Delete tab and confirm lease cleanup
-        r_del = client.delete(f"/api/browser/tabs/{tid}", headers=headers)
-        assert r_del.status_code == 200
-        assert r_del.json()["tabs"] == []
+        emulation_calls = [c["params"] for c in cdp_commands if c["method"] == "Emulation.setDeviceMetricsOverride"]
+        assert any(p.get("width") == 780 and p.get("height") == 980 for p in emulation_calls)
+        assert any(p.get("width") == 920 and p.get("height") == 1040 for p in emulation_calls)
+
+        # Delete second tab and confirm cleanup
+        r_del2 = client.delete(f"/api/browser/tabs/{tid2}", headers=headers)
+        assert r_del2.status_code == 200
+        assert r_del2.json()["tabs"] == []
     finally:
         if "stop" in server_info:
             server_info["stop"]()

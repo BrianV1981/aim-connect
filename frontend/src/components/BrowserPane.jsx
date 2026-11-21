@@ -31,11 +31,27 @@ export default function BrowserPane({
   const [hudOverlay, setHudOverlay] = useState(null);
 
   const canvasRef = useRef(null);
-  const viewportMetaRef = useRef({ deviceWidth: 1280, deviceHeight: 800 });
+  const stageRef = useRef(null);
+  const stageSizeRef = useRef({ width: 1280, height: 900 });
+  const viewportMetaRef = useRef({ deviceWidth: 1280, deviceHeight: 900 });
   const wsRef = useRef(null);
   const activeTargetRef = useRef('');
+  const closingIdsRef = useRef(new Set());
   const hudTimerRef = useRef(null);
   const lastMoveSentRef = useRef(0);
+  const touchLastYRef = useRef(null);
+
+  const measureStageSize = useCallback(() => {
+    const el = stageRef.current;
+    if (!el) return stageSizeRef.current;
+    const rect = el.getBoundingClientRect();
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    if (w >= 320 && h >= 320) {
+      stageSizeRef.current = { width: w, height: h };
+    }
+    return stageSizeRef.current;
+  }, []);
 
   useEffect(() => {
     activeTargetRef.current = activeTargetId;
@@ -54,7 +70,8 @@ export default function BrowserPane({
       if (!res.ok) return null;
       const data = await res.json();
       setDaemonRunning(Boolean(data.running));
-      const nextTabs = Array.isArray(data.tabs) ? data.tabs : [];
+      const rawTabs = Array.isArray(data.tabs) ? data.tabs : [];
+      const nextTabs = rawTabs.filter((t) => !closingIdsRef.current.has(t.id));
       setTabs(nextTabs);
       if (data.hud) showHud(data.hud);
       if (nextTabs.length > 0) {
@@ -87,11 +104,14 @@ export default function BrowserPane({
       wsRef.current = socket;
 
       socket.onopen = () => {
+        const dims = measureStageSize();
         socket.send(
           JSON.stringify({
             type: 'auth',
             token,
             target_id: targetIdToAttach || activeTargetRef.current || '',
+            width: dims.width,
+            height: dims.height,
           })
         );
       };
@@ -190,6 +210,33 @@ export default function BrowserPane({
     };
   }, [isOpen, connectScreencast, refreshStatus]);
 
+  // Dynamically match Chromium viewport height & width to the full split/full pane stage (#249)
+  useEffect(() => {
+    if (!isOpen || !stageRef.current || typeof ResizeObserver === 'undefined') return undefined;
+    let resizeTimer = null;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const w = Math.round(entry.contentRect.width);
+      const h = Math.round(entry.contentRect.height);
+      if (w < 320 || h < 320) return;
+      const prev = stageSizeRef.current;
+      if (Math.abs(w - prev.width) < 4 && Math.abs(h - prev.height) < 4) return;
+      stageSizeRef.current = { width: w, height: h };
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'resize_viewport', width: w, height: h }));
+        }
+      }, 100);
+    });
+    observer.observe(stageRef.current);
+    return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      observer.disconnect();
+    };
+  }, [isOpen, daemonRunning, splitMode]);
+
   const sendWs = (payload) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(payload));
@@ -225,9 +272,11 @@ export default function BrowserPane({
 
   const handleSelectTab = (tab) => {
     setActiveTargetId(tab.id);
+    activeTargetRef.current = tab.id;
     setAddressInput(tab.url || '');
+    const dims = measureStageSize();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      sendWs({ type: 'switch_target', target_id: tab.id });
+      sendWs({ type: 'switch_target', target_id: tab.id, width: dims.width, height: dims.height });
     } else {
       connectScreencast(tab.id);
     }
@@ -242,7 +291,7 @@ export default function BrowserPane({
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.tabs) setTabs(data.tabs);
+      if (data.tabs) setTabs(data.tabs.filter((t) => !closingIdsRef.current.has(t.id)));
       if (data.tab?.id) {
         handleSelectTab({ id: data.tab.id, url: data.tab.url || 'about:blank' });
       }
@@ -251,16 +300,31 @@ export default function BrowserPane({
 
   const handleCloseTab = async (e, tabId) => {
     e.stopPropagation();
+    closingIdsRef.current.add(tabId);
+    const closedIdx = tabs.findIndex((t) => t.id === tabId);
+    const optimisticRemaining = tabs.filter((t) => t.id !== tabId);
+    setTabs(optimisticRemaining);
+
+    // Switch off the closing tab immediately BEFORE DELETE so DevTools detaches cleanly (#249)
+    if (tabId === activeTargetId && optimisticRemaining.length > 0) {
+      const nextIdx = Math.min(Math.max(0, closedIdx), optimisticRemaining.length - 1);
+      handleSelectTab(optimisticRemaining[nextIdx]);
+    }
+
     try {
       const res = await fetch(`/api/browser/tabs/${encodeURIComponent(tabId)}`, { method: 'DELETE' });
-      if (!res.ok) return;
-      const data = await res.json();
-      const remaining = data.tabs || [];
-      setTabs(remaining);
-      if (tabId === activeTargetId && remaining.length > 0) {
-        handleSelectTab(remaining[0]);
+      if (res.ok) {
+        const data = await res.json();
+        const serverTabs = (data.tabs || []).filter((t) => t.id !== tabId && !closingIdsRef.current.has(t.id));
+        setTabs(serverTabs);
       }
-    } catch {}
+    } catch {
+      /* refreshStatus will reconcile if DELETE failed */
+    } finally {
+      setTimeout(() => {
+        closingIdsRef.current.delete(tabId);
+      }, 4000);
+    }
   };
 
   const handleNavigateSubmit = (e) => {
@@ -518,7 +582,7 @@ export default function BrowserPane({
       )}
 
       {/* Live CDP Screencast Viewport + Agent Cursor HUD */}
-      <div className="browser-viewport-stage">
+      <div className="browser-viewport-stage" ref={stageRef}>
         {!daemonRunning ? (
           <div className="browser-offline-placeholder">
             <p style={{ margin: '0 0 12px 0', color: '#cbd5e1', fontSize: '14px' }}>
@@ -544,6 +608,24 @@ export default function BrowserPane({
               onMouseUp={(e) => handlePointerMouse('mouseReleased', e)}
               onMouseMove={(e) => handlePointerMouse('mouseMoved', e)}
               onWheel={handleCanvasWheel}
+              onTouchStart={(e) => {
+                if (controlMode && e.touches?.length === 1) {
+                  touchLastYRef.current = e.touches[0].clientY;
+                }
+              }}
+              onTouchMove={(e) => {
+                if (!controlMode || !daemonRunning || e.touches?.length !== 1 || touchLastYRef.current === null) return;
+                const curY = e.touches[0].clientY;
+                const dy = touchLastYRef.current - curY;
+                if (Math.abs(dy) >= 6) {
+                  touchLastYRef.current = curY;
+                  const { x, y } = mapCanvasCoords(e.touches[0].clientX, curY);
+                  sendWs({ type: 'wheel', x, y, deltaX: 0, deltaY: Math.round(dy * 1.4) });
+                }
+              }}
+              onTouchEnd={() => {
+                touchLastYRef.current = null;
+              }}
               onKeyDown={handleCanvasKeyDown}
             />
             {hudLeftPct !== null && hudTopPct !== null && (

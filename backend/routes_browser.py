@@ -30,6 +30,28 @@ logger = logging.getLogger("aim-connect")
 CDP_LOOPBACK_HOST = "127.0.0.1"
 TARGET_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 LEASE_NAME_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+CLOSED_TARGET_TOMBSTONE_TTL_S = 4.0
+
+# Track live screencast bridges so DELETE /api/browser/tabs/{id} can detach DevTools
+# before calling /json/close/{id}, and tombstone closed IDs against /json/list races (#249).
+_ACTIVE_BROWSER_BRIDGES: set["_CdpPageBridge"] = set()
+_RECENTLY_CLOSED_TARGETS: dict[str, float] = {}
+
+
+def _clamp_viewport_dim(val: Any, default: int, low: int = 320, high: int = 2560) -> int:
+    try:
+        parsed = int(float(val))
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, parsed))
+
+
+def _prune_closed_tombstones() -> set[str]:
+    now = time.monotonic()
+    expired = [tid for tid, ts in _RECENTLY_CLOSED_TARGETS.items() if now - ts > CLOSED_TARGET_TOMBSTONE_TTL_S]
+    for tid in expired:
+        _RECENTLY_CLOSED_TARGETS.pop(tid, None)
+    return set(_RECENTLY_CLOSED_TARGETS.keys())
 
 
 def _get_cdp_port() -> int:
@@ -131,7 +153,12 @@ async def _cdp_http_json(path: str, method: str = "GET", timeout: float = 2.0) -
 
 
 def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
-    pages = [t for t in (raw_targets or []) if isinstance(t, dict) and t.get("type") == "page"]
+    closed_ids = _prune_closed_tombstones()
+    pages = [
+        t
+        for t in (raw_targets or [])
+        if isinstance(t, dict) and t.get("type") == "page" and t.get("id") not in closed_ids
+    ]
     leases = _read_leases()
     live_ids = {p.get("id") for p in pages if p.get("id")}
 
@@ -320,12 +347,21 @@ async def open_browser_tab(req: OpenTabRequest):
 
 @router.delete("/api/browser/tabs/{target_id}", dependencies=[Depends(verify_token), Depends(require_admin)])
 async def close_browser_tab(target_id: str):
-    """Close a CDP tab by targetId and prune any bound lease (#240)."""
+    """Close a CDP tab by targetId, detaching active screencast bridges first (#240, #249)."""
     if not TARGET_ID_RE.match(target_id or ""):
         raise HTTPException(status_code=400, detail="Invalid target_id")
+
+    # Mark closed immediately and detach any attached DevTools screencast bridge so
+    # Chromium tears down the page target right away without waiting for a tab switch (#249).
+    _RECENTLY_CLOSED_TARGETS[target_id] = time.monotonic()
+    attached = [b for b in list(_ACTIVE_BROWSER_BRIDGES) if b.target_id == target_id]
+    for bridge in attached:
+        await bridge.close()
+
     try:
         await _cdp_http_json(f"/json/close/{target_id}", method="GET", timeout=2.5)
     except Exception as exc:
+        _RECENTLY_CLOSED_TARGETS.pop(target_id, None)
         raise HTTPException(status_code=502, detail=f"Failed to close tab: {exc}")
 
     leases = _read_leases()
@@ -340,10 +376,19 @@ async def close_browser_tab(target_id: str):
 class _CdpPageBridge:
     """Thin async CDP WebSocket session streaming Page.startScreencast & forwarding input."""
 
-    def __init__(self, ws_url: str, target_id: str, client_ws: WebSocket):
+    def __init__(
+        self,
+        ws_url: str,
+        target_id: str,
+        client_ws: WebSocket,
+        viewport_width: int = 1280,
+        viewport_height: int = 900,
+    ):
         self.ws_url = ws_url
         self.target_id = target_id
         self.client_ws = client_ws
+        self.viewport_width = _clamp_viewport_dim(viewport_width, 1280)
+        self.viewport_height = _clamp_viewport_dim(viewport_height, 900, low=320, high=2160)
         self.cdp_ws: Any = None
         self._msg_id = 0
         self._pending: dict[int, asyncio.Future] = {}
@@ -352,18 +397,44 @@ class _CdpPageBridge:
 
     async def connect_and_start(self) -> None:
         self.cdp_ws = await websockets.connect(self.ws_url, max_size=16 * 1024 * 1024)
+        _ACTIVE_BROWSER_BRIDGES.add(self)
         self._reader_task = asyncio.create_task(self._reader_loop())
         await self.send_cmd("Page.enable")
+        await self._apply_metrics_and_screencast(self.viewport_width, self.viewport_height)
+
+    async def _apply_metrics_and_screencast(self, width: int, height: int) -> None:
+        self.viewport_width = _clamp_viewport_dim(width, self.viewport_width)
+        self.viewport_height = _clamp_viewport_dim(height, self.viewport_height, low=320, high=2160)
+        await self.send_cmd(
+            "Emulation.setDeviceMetricsOverride",
+            {
+                "width": self.viewport_width,
+                "height": self.viewport_height,
+                "deviceScaleFactor": 1,
+                "mobile": False,
+            },
+        )
         await self.send_cmd(
             "Page.startScreencast",
             {
                 "format": "jpeg",
-                "quality": 65,
-                "maxWidth": 1280,
-                "maxHeight": 900,
+                "quality": 70,
+                "maxWidth": self.viewport_width,
+                "maxHeight": self.viewport_height,
                 "everyNthFrame": 1,
             },
         )
+
+    async def resize_viewport(self, width: int, height: int) -> None:
+        w = _clamp_viewport_dim(width, self.viewport_width)
+        h = _clamp_viewport_dim(height, self.viewport_height, low=320, high=2160)
+        if w == self.viewport_width and h == self.viewport_height:
+            return
+        try:
+            await self.send_cmd("Page.stopScreencast", {})
+        except Exception:
+            pass
+        await self._apply_metrics_and_screencast(w, h)
 
     async def send_cmd(self, method: str, params: dict | None = None, timeout: float = 5.0) -> dict:
         if not self.cdp_ws or self._closed:
@@ -446,6 +517,7 @@ class _CdpPageBridge:
         if self._closed:
             return
         self._closed = True
+        _ACTIVE_BROWSER_BRIDGES.discard(self)
         try:
             if self.cdp_ws:
                 self._msg_id += 1
@@ -521,9 +593,17 @@ async def browser_viewport_ws(websocket: WebSocket):
             return
 
         requested_target = (auth_msg.get("target_id") or "").strip()
+        vp_width = _clamp_viewport_dim(auth_msg.get("width"), 1280)
+        vp_height = _clamp_viewport_dim(auth_msg.get("height"), 900, low=320, high=2160)
         try:
             tid, ws_url, meta = await _resolve_target_ws(requested_target)
-            bridge = _CdpPageBridge(ws_url=ws_url, target_id=tid, client_ws=websocket)
+            bridge = _CdpPageBridge(
+                ws_url=ws_url,
+                target_id=tid,
+                client_ws=websocket,
+                viewport_width=vp_width,
+                viewport_height=vp_height,
+            )
             await bridge.connect_and_start()
             await websocket.send_text(
                 json.dumps(
@@ -582,16 +662,31 @@ async def browser_viewport_ws(websocket: WebSocket):
                 await websocket.send_text(json.dumps({"type": "pong"}))
                 continue
 
+            if mtype == "resize_viewport":
+                vp_width = _clamp_viewport_dim(msg.get("width"), vp_width)
+                vp_height = _clamp_viewport_dim(msg.get("height"), vp_height, low=320, high=2160)
+                if bridge and not bridge._closed:
+                    await bridge.resize_viewport(vp_width, vp_height)
+                continue
+
             # Active Operator interaction slides 4h session TTL (#247)
             touch_api_token(token)
 
             if mtype == "switch_target":
                 next_tid = (msg.get("target_id") or "").strip()
+                vp_width = _clamp_viewport_dim(msg.get("width"), vp_width)
+                vp_height = _clamp_viewport_dim(msg.get("height"), vp_height, low=320, high=2160)
                 if bridge:
                     await bridge.close()
                     bridge = None
                 tid, ws_url, meta = await _resolve_target_ws(next_tid)
-                bridge = _CdpPageBridge(ws_url=ws_url, target_id=tid, client_ws=websocket)
+                bridge = _CdpPageBridge(
+                    ws_url=ws_url,
+                    target_id=tid,
+                    client_ws=websocket,
+                    viewport_width=vp_width,
+                    viewport_height=vp_height,
+                )
                 await bridge.connect_and_start()
                 await websocket.send_text(
                     json.dumps(
