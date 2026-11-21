@@ -26,6 +26,7 @@ export default function CommandPalette({
   onSendSessionCommand,
   onSendRawCommand,
   onToggleFiles,
+  onToggleBrowser,
   onToggleFleetSidebar,
   onOpenTokenGrabber,
   onOpenForensics,
@@ -162,6 +163,14 @@ export default function CommandPalette({
       keywords: 'files explorer editor monaco handoff memory wiki',
       badge: 'Workspace',
       action: () => onToggleFiles?.(),
+    });
+    items.push({
+      id: 'browser:toggle',
+      category: 'BRAIN & FILES',
+      label: '🌐 Toggle Co-Pilot Live Browser Split-Pane',
+      keywords: 'browser cdp screencast viewport login 2fa tabs subagent',
+      badge: 'Co-Pilot',
+      action: () => onToggleBrowser?.(),
     });
     items.push({
       id: 'files:scrollback',

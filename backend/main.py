@@ -106,7 +106,7 @@ async def add_security_headers(request: Request, call_next):
         "script-src 'self' https://cdn.jsdelivr.net blob:; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "connect-src 'self' wss: ws:; "
-        "img-src 'self' data:; "
+        "img-src 'self' data: blob:; "
         "media-src 'self' blob: data:; "
         "font-src 'self' https://cdn.jsdelivr.net data:; "
         "worker-src 'self' blob:; "
@@ -285,6 +285,7 @@ PASSIVE_TOKEN_ENDPOINTS = frozenset({
     ("GET", "/api/sessions"),
     ("GET", "/api/fleet/panes"),
     ("GET", "/api/swarm/activity"),
+    ("GET", "/api/browser/status"),
     ("POST", "/api/tts"),
     ("POST", "/api/logout"),
 })
@@ -432,6 +433,7 @@ from routes_webauthn import router as webauthn_router
 from ws_handler import router as ws_router
 from routes_api import router as api_router
 from routes_forensics import router as forensics_router
+from routes_browser import router as browser_router
 
 app.include_router(auth_router)
 app.include_router(sessions_router)
@@ -442,6 +444,7 @@ app.include_router(webauthn_router)
 app.include_router(ws_router)
 app.include_router(api_router)
 app.include_router(forensics_router)
+app.include_router(browser_router)
 
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 

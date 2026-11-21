@@ -16,6 +16,7 @@ import FleetSidebar from './components/FleetSidebar';
 import CommandPalette from './components/CommandPalette';
 import TokenGrabberModal from './components/TokenGrabberModal';
 import FileExplorer from './components/FileExplorer';
+import BrowserPane from './components/BrowserPane';
 import ForensicsModal from './components/ForensicsModal';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
 import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelection';
@@ -97,6 +98,7 @@ function App() {
   const [showTokenGrabber, setShowTokenGrabber] = useState(false);
   const [showForensics, setShowForensics] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [showBrowser, setShowBrowser] = useState(false);
   const [fileSelectMode, setFileSelectMode] = useState(false);
   const [splitMode, setSplitMode] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
@@ -1731,14 +1733,34 @@ function App() {
         <button
           className={`macro-btn ${showFiles ? 'action' : ''}`}
           onClick={() => {
-            setShowFiles((prev) => !prev);
+            setShowFiles((prev) => {
+              const next = !prev;
+              if (next) setShowBrowser(false);
+              return next;
+            });
             setTimeout(() => {
               try { fitAddon.current?.fit(); } catch (e) {}
             }, 80);
           }}
           title="Toggle File Explorer, Brain (HANDOFF.md / memory-wiki/), and Git DiffEditor"
         >
-          {showFiles ? (splitMode ? '◫ Split' : '💻 Terminal') : '📁 Files'}
+          {showFiles ? (splitMode ? '◫ Files' : '💻 Terminal') : '📁 Files'}
+        </button>
+        <button
+          className={`macro-btn ${showBrowser ? 'action' : ''}`}
+          onClick={() => {
+            setShowBrowser((prev) => {
+              const next = !prev;
+              if (next) setShowFiles(false);
+              return next;
+            });
+            setTimeout(() => {
+              try { fitAddon.current?.fit(); } catch (e) {}
+            }, 80);
+          }}
+          title="Toggle Live CDP Co-Pilot Browser Split-Pane (Operator + Subagent Tabs)"
+        >
+          {showBrowser ? (splitMode ? '◫ Browser' : '💻 Terminal') : '🌐 Browser'}
         </button>
         <button
           className="macro-btn action"
@@ -1847,7 +1869,7 @@ function App() {
           onSendSessionCommand={sendSessionCommand}
         />
 
-      <div style={{ display: (!showFiles || splitMode) ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+      <div style={{ display: ((!showFiles && !showBrowser) || splitMode) ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
         {!showKeyboard && (
           <div className="commander-toolbar">
             <div className="macro-group">
@@ -1958,6 +1980,24 @@ function App() {
         }}
         editorRef={editorRef}
       />
+
+      <BrowserPane
+        isOpen={showBrowser}
+        splitMode={splitMode}
+        apiToken={apiTokenRef.current}
+        onToggleSplitMode={() => {
+          setSplitMode((prev) => !prev);
+          setTimeout(() => {
+            try { fitAddon.current?.fit(); } catch (e) {}
+          }, 80);
+        }}
+        onClose={() => {
+          setShowBrowser(false);
+          setTimeout(() => {
+            try { fitAddon.current?.fit(); } catch (e) {}
+          }, 80);
+        }}
+      />
       </div>
 
         {showKeyboard && (
@@ -2066,7 +2106,20 @@ function App() {
         onKillSession={killSession}
         onSendSessionCommand={sendSessionCommand}
         onSendRawCommand={sendCommand}
-        onToggleFiles={() => setShowFiles((prev) => !prev)}
+        onToggleFiles={() => {
+          setShowFiles((prev) => {
+            const next = !prev;
+            if (next) setShowBrowser(false);
+            return next;
+          });
+        }}
+        onToggleBrowser={() => {
+          setShowBrowser((prev) => {
+            const next = !prev;
+            if (next) setShowFiles(false);
+            return next;
+          });
+        }}
         onToggleFleetSidebar={toggleFleetSidebar}
         onOpenTokenGrabber={() => setShowTokenGrabber(true)}
         onOpenForensics={() => setShowForensics(true)}
