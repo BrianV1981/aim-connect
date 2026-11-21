@@ -128,14 +128,21 @@ def test_end_to_end_cdp_tabs_screencast_input_and_hud(admin_and_user_tokens, mon
             if path.startswith("/json/close/"):
                 tid = path.rsplit("/", 1)[-1]
                 tabs_store[:] = [t for t in tabs_store if t["id"] != tid]
-                return Response(200, "OK", Headers([("Content-Type", "application/json")]), b"{}")
+                # Emulate real Chromium plain-text "Target is closing" response (#251)
+                return Response(200, "OK", Headers([("Content-Type", "text/plain")]), b"Target is closing")
             return Response(404, "Not Found", Headers(), b"{}")
 
         async def ws_handler(ws):
+            req_path = ws.request.path if getattr(ws, "request", None) else ""
+            attached_tid = req_path.rsplit("/", 1)[-1] if "/devtools/page/" in req_path else ""
             async for raw in ws:
                 msg = json.loads(raw)
                 method = msg.get("method")
                 cdp_commands.append(msg)
+                if method == "Page.bringToFront" and attached_tid:
+                    idx = next((i for i, t in enumerate(tabs_store) if t["id"] == attached_tid), None)
+                    if idx is not None and idx > 0:
+                        tabs_store.insert(0, tabs_store.pop(idx))
                 if "id" in msg and method != "Page.screencastFrameAck":
                     await ws.send(json.dumps({"id": msg["id"], "result": {}}))
                 if method == "Page.startScreencast":
@@ -229,12 +236,20 @@ def test_end_to_end_cdp_tabs_screencast_input_and_hud(admin_and_user_tokens, mon
             hud_msg = _recv_until("hud")
             assert hud_msg["hud"]["label"] == "#login"
 
-            # Open a 2nd tab & close the ACTIVE attached tab (tid) WHILE /ws/browser is still connected (#249)!
+            # Open a 2nd tab, switch_target to it, verify Page.bringToFront + stable tab order (#251)
             r_open2 = client.post("/api/browser/tabs", headers=headers, json={"url": "https://example.org"})
             assert r_open2.status_code == 200
             tid2 = r_open2.json()["tab"]["id"]
 
-            # Simulate Chromium /json/close race where /json/list lags if DevTools wasn't detached
+            ws.send_text(json.dumps({"type": "switch_target", "target_id": tid2, "width": 920, "height": 1040}))
+            ready2 = _recv_until("ready")
+            assert ready2["target_id"] == tid2
+
+            # Even though /json/activate moved tid2 to index 0 in tabs_store, /api/browser/status preserves [tid, tid2]
+            st_tabs = client.get("/api/browser/status", headers=headers).json()["tabs"]
+            assert [t["id"] for t in st_tabs] == [tid, tid2]
+
+            # Close the tab via plain-text "Target is closing" response without JSONDecodeError 502 (#251)
             r_del = client.delete(f"/api/browser/tabs/{tid}", headers=headers)
             assert r_del.status_code == 200
             returned_ids = [t["id"] for t in r_del.json()["tabs"]]
@@ -244,6 +259,8 @@ def test_end_to_end_cdp_tabs_screencast_input_and_hud(admin_and_user_tokens, mon
         # Give upstream close a brief tick to flush stopScreencast
         time.sleep(0.05)
         methods = [c["method"] for c in cdp_commands]
+        assert "Page.bringToFront" in methods
+        assert "Page.captureScreenshot" not in methods
         assert "Emulation.setDeviceMetricsOverride" in methods
         assert "Page.startScreencast" in methods
         assert "Page.screencastFrameAck" in methods

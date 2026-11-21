@@ -94,7 +94,11 @@ export default function BrowserPane({
 
   const connectScreencast = useCallback(
     (targetIdToAttach = '') => {
-      const token = apiToken || localStorage.getItem('aim-api-token') || '';
+      const token =
+        apiToken ||
+        localStorage.getItem('aim-token') ||
+        localStorage.getItem('aim-api-token') ||
+        '';
       if (!token) return;
       if (wsRef.current) {
         try {
@@ -126,20 +130,28 @@ export default function BrowserPane({
           if (msg.type === 'ready') {
             setDaemonRunning(true);
             setStatusMsg('');
-            if (msg.target_id) setActiveTargetId(msg.target_id);
-            if (msg.url) setAddressInput(msg.url);
+            if (msg.target_id) {
+              activeTargetRef.current = msg.target_id;
+              setActiveTargetId(msg.target_id);
+            }
+            if (msg.url !== undefined) setAddressInput(msg.url);
             refreshStatus();
           } else if (msg.type === 'daemon_offline') {
             setDaemonRunning(false);
             setStatusMsg('Browser daemon stopped — tap Launch Browser to start.');
           } else if (msg.type === 'navigated') {
-            if (msg.url) setAddressInput(msg.url);
+            if (!msg.target_id || msg.target_id === activeTargetRef.current) {
+              if (msg.url) setAddressInput(msg.url);
+            }
             refreshStatus();
           } else if (msg.type === 'hud' && msg.hud) {
             showHud(msg.hud);
           } else if (msg.type === 'error') {
             setStatusMsg(msg.message || 'Browser error');
           } else if (msg.type === 'frame' && msg.data) {
+            if (msg.target_id && activeTargetRef.current && msg.target_id !== activeTargetRef.current) {
+              return;
+            }
             const meta = msg.metadata || {};
             const dw = Number(meta.deviceWidth) || 1280;
             const dh = Number(meta.deviceHeight) || 800;

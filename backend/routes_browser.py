@@ -39,6 +39,7 @@ CLOSED_TARGET_TOMBSTONE_TTL_S = 4.0
 # before calling /json/close/{id}, and tombstone closed IDs against /json/list races (#249).
 _ACTIVE_BROWSER_BRIDGES: set["_CdpPageBridge"] = set()
 _RECENTLY_CLOSED_TARGETS: dict[str, float] = {}
+_KNOWN_TAB_ORDER: list[str] = []
 
 
 def _clamp_viewport_dim(val: Any, default: int, low: int = 320, high: int = 2560) -> int:
@@ -171,13 +172,21 @@ def _validate_cdp_ws_url(ws_url: str, expected_port: int) -> str:
     return f"ws://{CDP_LOOPBACK_HOST}:{expected_port}{parsed.path}"
 
 
-def _cdp_http_json_sync(path: str, method: str = "GET", timeout: float = 2.0) -> Any:
+def _cdp_http_text_sync(path: str, method: str = "GET", timeout: float = 2.0) -> str:
     port = _get_cdp_port()
     url = f"http://{CDP_LOOPBACK_HOST}:{port}{path}"
     req = urllib.request.Request(url, method=method)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8", errors="replace")
-        return json.loads(raw) if raw.strip() else {}
+        return resp.read().decode("utf-8", errors="replace")
+
+
+def _cdp_http_json_sync(path: str, method: str = "GET", timeout: float = 2.0) -> Any:
+    raw = _cdp_http_text_sync(path, method=method, timeout=timeout)
+    return json.loads(raw) if raw.strip() else {}
+
+
+async def _cdp_http_text(path: str, method: str = "GET", timeout: float = 2.0) -> str:
+    return await asyncio.to_thread(_cdp_http_text_sync, path, method, timeout)
 
 
 async def _cdp_http_json(path: str, method: str = "GET", timeout: float = 2.0) -> Any:
@@ -191,8 +200,18 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
         for t in (raw_targets or [])
         if isinstance(t, dict) and t.get("type") == "page" and t.get("id") not in closed_ids
     ]
+    live_by_id = {p.get("id"): p for p in pages if p.get("id")}
+    live_ids = set(live_by_id.keys())
+
+    # Preserve stable creation order across Page.bringToFront MRU shuffles (#251)
+    _KNOWN_TAB_ORDER[:] = [tid for tid in _KNOWN_TAB_ORDER if tid in live_ids]
+    for p in pages:
+        tid = p.get("id")
+        if tid and tid not in _KNOWN_TAB_ORDER:
+            _KNOWN_TAB_ORDER.append(tid)
+    ordered_pages = [live_by_id[tid] for tid in _KNOWN_TAB_ORDER if tid in live_by_id]
+
     leases = _read_leases()
-    live_ids = {p.get("id") for p in pages if p.get("id")}
 
     # Prune stale leases whose tabs were closed
     pruned = {k: v for k, v in leases.items() if isinstance(v, dict) and v.get("targetId") in live_ids}
@@ -207,7 +226,7 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
             lease_by_target[tid] = {"lease": lease_name, "actor": meta.get("actor") or lease_name}
 
     enriched = []
-    for idx, p in enumerate(pages):
+    for idx, p in enumerate(ordered_pages):
         tid = p.get("id", "")
         lmeta = lease_by_target.get(tid, {})
         enriched.append(
@@ -450,10 +469,14 @@ async def close_browser_tab(target_id: str):
         await bridge.close()
 
     try:
-        await _cdp_http_json(f"/json/close/{target_id}", method="GET", timeout=2.5)
+        # Note: Chromium /json/close/{id} returns plain text "Target is closing", not JSON (#251)
+        await _cdp_http_text(f"/json/close/{target_id}", method="GET", timeout=2.5)
     except Exception as exc:
         _RECENTLY_CLOSED_TARGETS.pop(target_id, None)
         raise HTTPException(status_code=502, detail=f"Failed to close tab: {exc}")
+
+    if target_id in _KNOWN_TAB_ORDER:
+        _KNOWN_TAB_ORDER.remove(target_id)
 
     leases = _read_leases()
     filtered = {k: v for k, v in leases.items() if v.get("targetId") != target_id}
@@ -491,6 +514,10 @@ class _CdpPageBridge:
         _ACTIVE_BROWSER_BRIDGES.add(self)
         self._reader_task = asyncio.create_task(self._reader_loop())
         await self.send_cmd("Page.enable")
+        try:
+            await self.send_cmd("Page.bringToFront", {}, timeout=2.0)
+        except Exception:
+            pass
         await self._apply_metrics_and_screencast(self.viewport_width, self.viewport_height)
 
     async def _apply_metrics_and_screencast(self, width: int, height: int) -> None:
