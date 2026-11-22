@@ -606,6 +606,27 @@ function App() {
   const [showMacroLibrary, setShowMacroLibrary] = useState(false);
   const [macroReturnToVoice, setMacroReturnToVoice] = useState(false);
   const [showBoltPopover, setShowBoltPopover] = useState(false);
+  useEffect(() => {
+    if (!showBoltPopover) return undefined;
+    const handleOutsideOrEsc = (ev) => {
+      if (ev.type === 'keydown' && ev.key === 'Escape') {
+        setShowBoltPopover(false);
+      } else if (ev.type === 'pointerdown') {
+        if (
+          !ev.target?.closest?.('.quick-actions-popover') &&
+          !ev.target?.closest?.('.ld-bolt-btn')
+        ) {
+          setShowBoltPopover(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleOutsideOrEsc);
+    window.addEventListener('pointerdown', handleOutsideOrEsc);
+    return () => {
+      window.removeEventListener('keydown', handleOutsideOrEsc);
+      window.removeEventListener('pointerdown', handleOutsideOrEsc);
+    };
+  }, [showBoltPopover]);
   const [showKeybar, setShowKeybar] = useState(
     () => localStorage.getItem('aim-show-keybar') === 'true'
   );
@@ -2238,6 +2259,7 @@ function App() {
             flex: 1,
             minHeight: 0,
             minWidth: 0,
+            overflow: 'hidden',
           }}
         >
           {activeSession && (() => {
@@ -2377,41 +2399,6 @@ function App() {
               </div>
             );
           })()}
-
-          {activeSession && showKeybar && !showKeyboard && (
-            <div className="commander-toolbar">
-              <div className="macro-group">
-                {macroLibrary
-                  .filter((m) => m.isPinned)
-                  .map((macro) => (
-                    <button
-                      key={macro.id}
-                      type="button"
-                      className="macro-btn action"
-                      onClick={() => sendCommand(macro.cmd)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        toggleMacroPin(macro.id);
-                      }}
-                    >
-                      {macro.isServer ? '☁ ' : ''}
-                      {macro.label}
-                    </button>
-                  ))}
-                <button
-                  type="button"
-                  className="macro-btn action add-macro"
-                  onClick={() => {
-                    setMacroReturnToVoice(false);
-                    setShowMacroLibrary(true);
-                  }}
-                  title="Open Macro Studio"
-                >
-                  <Icon name="settings" size={13} />
-                </button>
-              </div>
-            </div>
-          )}
 
           <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
             {!activeSession && !showHistory && (
@@ -2684,6 +2671,11 @@ function App() {
                           setShowKeybar((prev) => {
                             const next = !prev;
                             localStorage.setItem('aim-show-keybar', String(next));
+                            setTimeout(() => {
+                              try {
+                                fitAddon.current?.fit();
+                              } catch {}
+                            }, 50);
                             return next;
                           });
                         }}
@@ -2774,6 +2766,41 @@ function App() {
                       <Icon name="settings" size={13} />
                       <span>MACRO STUDIO // CREATE, EDIT &amp; SYNC ({macroLibrary.length})</span>
                     </button>
+                  </div>
+                )}
+
+                {showKeybar && !showKeyboard && (
+                  <div className="commander-toolbar composer-keybar">
+                    <div className="macro-group">
+                      {macroLibrary
+                        .filter((m) => m.isPinned)
+                        .map((macro) => (
+                          <button
+                            key={macro.id}
+                            type="button"
+                            className="macro-btn action"
+                            onClick={() => sendCommand(macro.cmd)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              toggleMacroPin(macro.id);
+                            }}
+                          >
+                            {macro.isServer ? '☁ ' : ''}
+                            {macro.label}
+                          </button>
+                        ))}
+                      <button
+                        type="button"
+                        className="macro-btn action add-macro"
+                        onClick={() => {
+                          setMacroReturnToVoice(false);
+                          setShowMacroLibrary(true);
+                        }}
+                        title="Open Macro Studio"
+                      >
+                        <Icon name="settings" size={13} />
+                      </button>
+                    </div>
                   </div>
                 )}
 
