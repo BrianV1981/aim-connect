@@ -103,6 +103,15 @@ function App() {
   const [splitMode, setSplitMode] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
+  const [splitWidthPct, setSplitWidthPct] = useState(() => {
+    if (typeof window === 'undefined') return 52;
+    const saved = Number(localStorage.getItem('aim-split-pane-pct'));
+    return Number.isFinite(saved) && saved >= 20 && saved <= 80 ? saved : 52;
+  });
+  const [isDraggingSplit, setIsDraggingSplit] = useState(false);
+  const cockpitBodyRef = useRef(null);
+  const terminalColumnRef = useRef(null);
+  const splitFitRafRef = useRef(null);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [currentPath, setCurrentPath] = useState('');
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
@@ -669,6 +678,86 @@ function App() {
       return next;
     });
   };
+
+  const scheduleTerminalRefit = useCallback(() => {
+    if (splitFitRafRef.current) return;
+    splitFitRafRef.current = window.requestAnimationFrame(() => {
+      splitFitRafRef.current = null;
+      if (fitAddon.current) {
+        try {
+          fitAddon.current.fit();
+        } catch (e) {}
+      }
+    });
+  }, []);
+
+  const handleSplitDividerPointerDown = useCallback(
+    (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      const bodyEl = cockpitBodyRef.current;
+      if (!bodyEl) return;
+      e.preventDefault();
+      setIsDraggingSplit(true);
+
+      let latestPct = splitWidthPct;
+
+      const updateFromClientX = (clientX) => {
+        const bodyRect = bodyEl.getBoundingClientRect();
+        if (bodyRect.width < 600) return;
+        const termLeft = terminalColumnRef.current
+          ? terminalColumnRef.current.getBoundingClientRect().left
+          : bodyRect.left;
+        const minBrowserPx = 320;
+        const minTerminalPx = 260;
+        const availablePx = Math.max(minBrowserPx + minTerminalPx, bodyRect.right - termLeft);
+        const maxBrowserPx = Math.max(minBrowserPx, availablePx - minTerminalPx);
+        const clampedBrowserPx = Math.max(
+          minBrowserPx,
+          Math.min(maxBrowserPx, bodyRect.right - clientX)
+        );
+        const nextPct = Number(((clampedBrowserPx / bodyRect.width) * 100).toFixed(2));
+        latestPct = nextPct;
+        setSplitWidthPct(nextPct);
+        scheduleTerminalRefit();
+      };
+
+      const onPointerMove = (ev) => {
+        updateFromClientX(ev.clientX);
+      };
+
+      const finishDrag = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', finishDrag);
+        window.removeEventListener('pointercancel', finishDrag);
+        setIsDraggingSplit(false);
+        try {
+          localStorage.setItem('aim-split-pane-pct', String(latestPct));
+        } catch {}
+        setTimeout(() => {
+          try {
+            fitAddon.current?.fit();
+          } catch {}
+        }, 60);
+      };
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', finishDrag);
+      window.addEventListener('pointercancel', finishDrag);
+    },
+    [scheduleTerminalRefit, splitWidthPct]
+  );
+
+  const handleSplitDividerDoubleClick = useCallback(() => {
+    setSplitWidthPct(52);
+    try {
+      localStorage.setItem('aim-split-pane-pct', '52');
+    } catch {}
+    setTimeout(() => {
+      try {
+        fitAddon.current?.fit();
+      } catch {}
+    }, 60);
+  }, []);
 
   const createSession = async () => {
     const name = window.prompt("New Session Name:");
@@ -1855,7 +1944,11 @@ function App() {
         <div className={`status-indicator ${connState}`}></div>
       </header>
       
-      <div className="cockpit-body">
+      <div
+        className={`cockpit-body ${isDraggingSplit ? 'is-resizing-split' : ''}`}
+        ref={cockpitBodyRef}
+        style={{ '--split-pane-width': `${splitWidthPct}%` }}
+      >
         <FleetSidebar
           isOpen={showFleetSidebar}
           onClose={toggleFleetSidebar}
@@ -1869,7 +1962,7 @@ function App() {
           onSendSessionCommand={sendSessionCommand}
         />
 
-      <div style={{ display: ((!showFiles && !showBrowser) || splitMode) ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+      <div ref={terminalColumnRef} style={{ display: ((!showFiles && !showBrowser) || splitMode) ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
         {!showKeyboard && (
           <div className="commander-toolbar">
             <div className="macro-group">
@@ -1958,6 +2051,20 @@ function App() {
           )}
         </div>
       </div>
+
+      {splitMode && (showFiles || showBrowser) && (
+        <div
+          className={`split-pane-resizer ${isDraggingSplit ? 'dragging' : ''}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Drag vertical divider to resize split panel"
+          title="Drag to resize panel · Double-click to reset"
+          onPointerDown={handleSplitDividerPointerDown}
+          onDoubleClick={handleSplitDividerDoubleClick}
+        >
+          <span className="split-pane-resizer-grip" />
+        </div>
+      )}
 
       <FileExplorer
         isOpen={showFiles}
