@@ -8,8 +8,10 @@ import subprocess
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from main import (
+    AGENT_WORKSPACES_DIR,
     AIM_CONNECT_ROOT,
     HOME_DIR,
+    SESSION_NAME_RE,
     require_admin,
     require_admin_or_loopback,
     verify_token,
@@ -21,6 +23,7 @@ from routes_sessions import (
     SESSION_WORKSPACE_ALIASES,
     _normalize_workspace_root,
     _read_transcript_telemetry,
+    extract_spoken_summary,
 )
 
 router = APIRouter()
@@ -788,5 +791,190 @@ def get_history_record_turns(record_id: str):
         "record": matched,
         "turn_count": len(paired_turns),
         "turns": paired_turns,
+    }
+
+
+USER_REQUEST_BLOCK_RE = re.compile(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", re.DOTALL | re.IGNORECASE)
+STRIP_META_BLOCKS_RE = re.compile(
+    r"<(?:CONTEXT_SUMMARY|ADDITIONAL_METADATA|SYSTEM_MESSAGE)>.*?</(?:CONTEXT_SUMMARY|ADDITIONAL_METADATA|SYSTEM_MESSAGE)>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _clean_user_prompt_for_chat(raw_text: str) -> str:
+    """Extract clean human Operator text from AGY/Grok transcript prompts, stripping XML envelopes (#260)."""
+    text = str(raw_text or "").strip()
+    if not text:
+        return ""
+    m_req = USER_REQUEST_BLOCK_RE.search(text)
+    if m_req:
+        return m_req.group(1).strip()
+    cleaned = STRIP_META_BLOCKS_RE.sub("", text).strip()
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r"</?[A-Z_]{3,}>", "", cleaned).strip()
+    return cleaned
+
+
+def _split_agent_body_and_spoken(raw_content: str) -> tuple[str, str]:
+    """Separate main assistant text from trailing 🔊 spoken summary for structured Chat cards (#260)."""
+    text = str(raw_content or "").strip()
+    if not text:
+        return "", ""
+    spoken = extract_spoken_summary(text, fallback=False)
+    lines = text.splitlines()
+    body_lines: list[str] = []
+    for ln in lines:
+        if ln.strip().startswith("🔊"):
+            break
+        body_lines.append(ln)
+    body = "\n".join(body_lines).strip()
+    return body, spoken
+
+
+def _format_concise_tool_pill(tc: dict) -> str:
+    name = str(tc.get("name") or "tool").strip()
+    raw_args = str(tc.get("args") or "").strip()
+    detail = raw_args
+    try:
+        parsed = json.loads(raw_args)
+        if isinstance(parsed, dict):
+            for key in ("CommandLine", "Path", "query", "toolSummary", "url", "Target"):
+                if parsed.get(key):
+                    detail = str(parsed[key])
+                    break
+    except Exception:
+        pass
+    detail = re.sub(r"\s+", " ", detail).strip()
+    if len(detail) > 92:
+        detail = detail[:89] + "..."
+    return f"{name}({detail})" if detail else name
+
+
+@router.get("/api/sessions/{session_name}/live-turns", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_session_live_turns(session_name: str, limit: int = Query(24)):
+    """Return structured live Operator + J.O.S.H.U.A. chat turns for the active session (#260)."""
+    if not SESSION_NAME_RE.match(session_name):
+        raise HTTPException(status_code=400, detail="Invalid session name.")
+
+    clamped_limit = max(1, min(80, int(limit)))
+    all_records = _collect_project_history_records()
+    matched_rec = next((r for r in all_records if r["session"] == session_name), None)
+
+    log_path = matched_rec["log_path"] if matched_rec else ""
+    vessel = matched_rec["vessel"] if matched_rec else "AGY"
+
+    if not log_path and session_name.startswith("agent-") and os.path.isdir(AGENT_WORKSPACES_DIR):
+        parts = session_name.split("-")
+        tenant_key = "-".join(parts[:2]) if len(parts) >= 2 else session_name
+        brain_glob = os.path.join(
+            AGENT_WORKSPACES_DIR, tenant_key, "brain", "*", ".system_generated", "logs", "transcript.jsonl"
+        )
+        cands = [p for p in glob.glob(brain_glob) if os.path.isfile(p)]
+        if cands:
+            cands.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            log_path = cands[0]
+
+    paired: list[dict] = []
+    source_label = log_path
+
+    if log_path and os.path.isfile(log_path):
+        raw_steps = parse_jsonl_transcript(log_path, max_turns=240)
+        pending_user: dict | None = None
+        for step in raw_steps:
+            if step["role"] == "user":
+                clean_u = _clean_user_prompt_for_chat(step.get("content") or "")
+                if not clean_u:
+                    continue
+                if pending_user is not None:
+                    paired.append(
+                        {
+                            "idx": len(paired) + 1,
+                            "stamp": str(pending_user.get("created_at") or "")[11:19] or "LIVE",
+                            "user": pending_user["clean_user"],
+                            "tools": [],
+                            "body": "",
+                            "spoken": "",
+                        }
+                    )
+                pending_user = {**step, "clean_user": clean_u}
+            else:
+                tools = [_format_concise_tool_pill(tc) for tc in (step.get("tool_calls") or [])[:8]]
+                body, spoken = _split_agent_body_and_spoken(step.get("content") or "")
+                if pending_user is not None:
+                    paired.append(
+                        {
+                            "idx": len(paired) + 1,
+                            "stamp": str(step.get("created_at") or pending_user.get("created_at") or "")[11:19] or "LIVE",
+                            "user": pending_user["clean_user"],
+                            "tools": tools,
+                            "body": body,
+                            "spoken": spoken,
+                        }
+                    )
+                    pending_user = None
+                elif paired:
+                    prev = paired[-1]
+                    for t_pill in tools:
+                        if t_pill not in prev["tools"] and len(prev["tools"]) < 12:
+                            prev["tools"].append(t_pill)
+                    if body:
+                        prev["body"] = body
+                    if spoken:
+                        prev["spoken"] = spoken
+                elif body or spoken or tools:
+                    paired.append(
+                        {
+                            "idx": 1,
+                            "stamp": str(step.get("created_at") or "")[11:19] or "INIT",
+                            "user": "(Session attached)",
+                            "tools": tools,
+                            "body": body,
+                            "spoken": spoken,
+                        }
+                    )
+        if pending_user is not None:
+            paired.append(
+                {
+                    "idx": len(paired) + 1,
+                    "stamp": str(pending_user.get("created_at") or "")[11:19] or "LIVE",
+                    "user": pending_user["clean_user"],
+                    "tools": [],
+                    "body": "",
+                    "spoken": "",
+                }
+            )
+
+    # Fallback to live tmux scrollback if no JSONL turns matched
+    if not paired:
+        cap = subprocess.run(
+            ["tmux", "capture-pane", "-t", session_name, "-S", "-400", "-p"],
+            capture_output=True,
+            text=True,
+        )
+        if cap.returncode == 0 and cap.stdout.strip():
+            source_label = f"tmux:{session_name}"
+            blocks = parse_scrollback_tool_blocks(cap.stdout)
+            spoken_fb = extract_spoken_summary(cap.stdout, fallback=False)
+            for idx, blk in enumerate(blocks, start=1):
+                body, sp = _split_agent_body_and_spoken(blk.get("content") or "")
+                paired.append(
+                    {
+                        "idx": idx,
+                        "stamp": "TMUX LIVE",
+                        "user": f"Active terminal stream ({session_name})",
+                        "tools": [_format_concise_tool_pill(tc) for tc in (blk.get("tool_calls") or [])[:8]],
+                        "body": body,
+                        "spoken": sp or spoken_fb,
+                    }
+                )
+
+    sliced = paired[-clamped_limit:]
+    return {
+        "session": session_name,
+        "vessel": vessel,
+        "source": source_label,
+        "turn_count": len(sliced),
+        "turns": sliced,
     }
 

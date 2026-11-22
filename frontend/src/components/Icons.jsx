@@ -362,6 +362,56 @@ export function Icon({ name, size, style }) {
           <polygon points="5 3 19 12 5 21 5 3" />
         </svg>
       );
+    case 'message':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      );
+    case 'grid':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+        </svg>
+      );
+    case 'folder':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+        </svg>
+      );
+    case 'file':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+      );
+    case 'arrowUp':
+      return (
+        <svg className="lucide" style={s || { width: '12px', height: '12px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <line x1="12" y1="19" x2="12" y2="5" />
+          <polyline points="5 12 12 5 19 12" />
+        </svg>
+      );
+    case 'alert':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+      );
+    case 'radio':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="2" />
+          <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
+        </svg>
+      );
     case 'settings':
     default:
       return (

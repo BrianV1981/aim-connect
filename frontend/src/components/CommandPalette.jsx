@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Icon from './Icons';
 
 function fuzzyMatch(query, text) {
   if (!query) return true;
   const q = query.toLowerCase();
   const t = (text || '').toLowerCase();
   if (t.includes(q)) return true;
-  // Subsequence match
   let qi = 0;
   for (let i = 0; i < t.length && qi < q.length; i++) {
     if (t[i] === q[qi]) qi++;
@@ -30,6 +30,8 @@ export default function CommandPalette({
   onToggleFleetSidebar,
   onOpenTokenGrabber,
   onOpenForensics,
+  onOpenHistory,
+  onToggleChatMode,
   onEnterScrollMode,
   onOpenSearch,
   onToggleKeyboard,
@@ -45,7 +47,6 @@ export default function CommandPalette({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
-  const listRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -67,16 +68,16 @@ export default function CommandPalette({
       const meta = fleetByName.get(s);
       const compCnt = Number(meta?.compaction_count || 0);
       const badge = meta
-        ? `${(meta.vessel || 'sh').toUpperCase()}${meta.branch ? ` • ${meta.branch}` : ''}${
-            meta.tokens_used > 0 ? ` • ${meta.context_pct}% ctx` : ''
-          }${compCnt > 0 ? ` • ♻️ ${compCnt}x` : ''}`
-        : 'Session';
+        ? `${(meta.vessel || 'tmux').toUpperCase()}${meta.branch ? ` · ${meta.branch}` : ''}${
+            meta.tokens_used > 0 ? ` · ${meta.context_pct}%` : ''
+          }${compCnt > 0 ? ` · COMP ${compCnt}X` : ''}`
+        : 'SESSION';
       items.push({
         id: `session:${s}`,
         category: 'SESSIONS',
-        label: `Switch to ${s}`,
+        label: `Switch Node // ${s}`,
         keywords: `${s} ${meta?.vessel || ''} ${meta?.branch || ''} session switch`,
-        badge: s === activeSession ? `ACTIVE • ${badge}` : badge,
+        badge: s === activeSession ? `ACTIVE · ${badge}` : badge,
         action: () => onSelectSession?.(s),
       });
     });
@@ -84,9 +85,9 @@ export default function CommandPalette({
     items.push({
       id: 'session:create',
       category: 'SESSIONS',
-      label: '➕ Spawn New Tmux Session...',
+      label: '+ Spawn New Isolated Tmux Session...',
       keywords: 'new create spawn session tmux',
-      badge: 'Session',
+      badge: 'TMUX',
       action: () => onCreateSession?.(),
     });
 
@@ -94,9 +95,9 @@ export default function CommandPalette({
       items.push({
         id: 'session:kill',
         category: 'SESSIONS',
-        label: `🗑️ Terminate Session (${activeSession})`,
+        label: `Terminate Session // ${activeSession}`,
         keywords: 'kill delete terminate session close',
-        badge: 'Danger',
+        badge: 'DANGER',
         action: () => onKillSession?.(),
       });
     }
@@ -106,88 +107,102 @@ export default function CommandPalette({
       items.push({
         id: 'joshua:wiki',
         category: 'JOSHUA ACTIONS',
-        label: `🧠 Inject /aim-memory-wiki into ${activeSession}`,
+        label: `Inject /aim-memory-wiki into ${activeSession}`,
         keywords: 'wiki memory ingest checkpoint joshua skill',
-        badge: '30% Rule',
+        badge: '30% RULE',
         action: () => onSendSessionCommand?.(activeSession, '/aim-memory-wiki'),
       });
       items.push({
         id: 'joshua:handoff',
         category: 'JOSHUA ACTIONS',
-        label: `🤝 Inject /aim-handoff into ${activeSession}`,
+        label: `Inject /aim-handoff into ${activeSession}`,
         keywords: 'handoff baton pass relay amnesia joshua skill',
-        badge: '30% Rule',
+        badge: '30% RULE',
         action: () => onSendSessionCommand?.(activeSession, '/aim-handoff'),
       });
       items.push({
         id: 'joshua:board',
         category: 'JOSHUA ACTIONS',
-        label: `📊 Run ./aim projects board in ${activeSession}`,
+        label: `Run ./aim projects board in ${activeSession}`,
         keywords: 'projects board kanban github issues',
-        badge: 'GitOps',
+        badge: 'GITOPS',
         action: () => onSendSessionCommand?.(activeSession, './aim projects board'),
       });
     }
 
     items.push({
-      id: 'joshua:token-grabber',
-      category: 'JOSHUA ACTIONS',
-      label: '🔗 Open Scrollback Token & URL Grabber',
-      keywords: 'token url path ip sha grabber copy extract scrollback',
-      badge: 'Grabber',
-      action: () => onOpenTokenGrabber?.(),
-    });
-
-    items.push({
       id: 'joshua:forensics',
       category: 'JOSHUA ACTIONS',
-      label: '🔬 Open Forensic Tool Inspector, SQLite FTS5 Search & Swarm Feed',
+      label: 'Open Forensics, SQLite FTS5 & Swarm Feed',
       keywords: 'forensics tool call fts5 search lancedb swarm aim-communicate',
-      badge: 'Forensics',
+      badge: 'FORENSICS',
       action: () => onOpenForensics?.(),
     });
-
+    items.push({
+      id: 'joshua:token-grabber',
+      category: 'JOSHUA ACTIONS',
+      label: 'Open Scrollback Token & URL Grabber',
+      keywords: 'token url path ip sha grabber copy extract scrollback',
+      badge: 'GRAB',
+      action: () => onOpenTokenGrabber?.(),
+    });
+    items.push({
+      id: 'joshua:history',
+      category: 'JOSHUA ACTIONS',
+      label: 'Open Session & Reincarnations History Vault',
+      keywords: 'history notebook reincarnations baton flight record',
+      badge: 'HISTORY',
+      action: () => onOpenHistory?.(),
+    });
+    items.push({
+      id: 'joshua:chat-mode',
+      category: 'JOSHUA ACTIONS',
+      label: 'Toggle Center Stage: Raw Terminal vs Live Chat Bubbles',
+      keywords: 'chat bubbles transcript stream xterm view mode',
+      badge: 'STAGE',
+      action: () => onToggleChatMode?.(),
+    });
     items.push({
       id: 'joshua:toggle-fleet',
       category: 'JOSHUA ACTIONS',
-      label: '🧭 Toggle Multi-Session Fleet Sidebar',
+      label: 'Toggle Multi-Session Fleet Sidebar',
       keywords: 'fleet sidebar sessions toggle drawer',
-      badge: 'Layout',
+      badge: 'RAIL',
       action: () => onToggleFleetSidebar?.(),
     });
 
-    // 3. BRAIN & FILES
-    items.push({
-      id: 'files:toggle',
-      category: 'BRAIN & FILES',
-      label: '📁 Toggle File Explorer / Terminal View',
-      keywords: 'files explorer editor monaco handoff memory wiki',
-      badge: 'Workspace',
-      action: () => onToggleFiles?.(),
-    });
+    // 3. BRAIN & WORKSPACE
     items.push({
       id: 'browser:toggle',
-      category: 'BRAIN & FILES',
-      label: '🌐 Toggle Co-Pilot Live Browser Split-Pane',
+      category: 'BRAIN & WORKSPACE',
+      label: 'Toggle Co-Pilot Live Browser Split-Pane',
       keywords: 'browser cdp screencast viewport login 2fa tabs subagent',
-      badge: 'Co-Pilot',
+      badge: 'CDP :9222',
       action: () => onToggleBrowser?.(),
     });
     items.push({
-      id: 'files:scrollback',
-      category: 'BRAIN & FILES',
-      label: '🔍 Open Native Scroll / Copy Overlay',
-      keywords: 'scroll copy history ansi overlay',
-      badge: 'Scrollback',
-      action: () => onEnterScrollMode?.(),
+      id: 'files:toggle',
+      category: 'BRAIN & WORKSPACE',
+      label: 'Toggle Workspace Files & Git Diff Explorer',
+      keywords: 'files explorer editor monaco handoff memory wiki',
+      badge: 'MONACO',
+      action: () => onToggleFiles?.(),
     });
     items.push({
       id: 'files:find',
-      category: 'BRAIN & FILES',
-      label: '🔎 Find Text in Active Terminal',
-      keywords: 'find search terminal xterm',
-      badge: 'Search',
+      category: 'BRAIN & WORKSPACE',
+      label: 'Search Full Terminal Scrollback (2,000+ lines in Scroll/Copy)',
+      keywords: 'find search terminal xterm scrollback',
+      badge: 'CTRL+F',
       action: () => onOpenSearch?.(),
+    });
+    items.push({
+      id: 'files:scrollback',
+      category: 'BRAIN & WORKSPACE',
+      label: 'Open Full Scroll / Copy Overlay',
+      keywords: 'scroll copy history ansi overlay',
+      badge: 'SCROLL',
+      action: () => onEnterScrollMode?.(),
     });
 
     // 4. MACROS
@@ -195,133 +210,133 @@ export default function CommandPalette({
       items.push({
         id: `macro:${m.id}`,
         category: 'MACROS',
-        label: `⚡ Run Macro: ${m.label}`,
+        label: `Run Macro // ${m.label}`,
         keywords: `macro ${m.label} ${m.voiceTrigger || ''}`,
-        badge: m.isServer ? '☁️ Server Macro' : '📱 Local Macro',
+        badge: m.isServer ? 'SERVER' : 'LOCAL',
         action: () => onSendRawCommand?.(m.cmd),
       });
     });
 
-    // 5. LAYOUT & THEME
+    // 5. SETTINGS & THEME
     items.push(
       {
         id: 'uitheme:emerald',
-        category: 'LAYOUT & THEME',
-        label: '🟢 UI Scheme: Emerald Matrix (Default)',
+        category: 'SETTINGS & THEME',
+        label: 'UI Scheme // Emerald Matrix (Default)',
         keywords: 'theme emerald matrix mint obsidian dark',
-        badge: 'UI Scheme',
+        badge: '#00FFA3',
         action: () => onSetUiTheme?.('emerald'),
       },
       {
         id: 'uitheme:oled',
-        category: 'LAYOUT & THEME',
-        label: '⚫ UI Scheme: Pure OLED Black',
+        category: 'SETTINGS & THEME',
+        label: 'UI Scheme // Pure OLED Black',
         keywords: 'theme oled black contrast',
-        badge: 'UI Scheme',
+        badge: '#000000',
         action: () => onSetUiTheme?.('oled'),
       },
       {
         id: 'uitheme:light',
-        category: 'LAYOUT & THEME',
-        label: '☀️ UI Scheme: Daylight Crisp',
+        category: 'SETTINGS & THEME',
+        label: 'UI Scheme // Daylight Crisp',
         keywords: 'theme light white day outdoor',
-        badge: 'UI Scheme',
+        badge: '#F8FAFC',
         action: () => onSetUiTheme?.('light'),
       },
       {
         id: 'uitheme:navy',
-        category: 'LAYOUT & THEME',
-        label: '🌊 UI Scheme: Classic AIM Navy',
+        category: 'SETTINGS & THEME',
+        label: 'UI Scheme // Classic AIM Navy',
         keywords: 'theme classic aim navy orange',
-        badge: 'UI Scheme',
+        badge: '#050A14',
         action: () => onSetUiTheme?.('navy'),
       },
       {
         id: 'theme:standard',
-        category: 'LAYOUT & THEME',
-        label: '🎨 Terminal Theme: Standard Navy',
+        category: 'SETTINGS & THEME',
+        label: 'Terminal Palette // Standard Navy',
         keywords: 'theme standard navy dark',
-        badge: 'Theme',
+        badge: 'PALETTE',
         action: () => onSetTermTheme?.('standard'),
       },
       {
         id: 'theme:hacker',
-        category: 'LAYOUT & THEME',
-        label: '🎨 Terminal Theme: Hacker Matrix Green',
+        category: 'SETTINGS & THEME',
+        label: 'Terminal Palette // Hacker Matrix Green',
         keywords: 'theme hacker matrix green',
-        badge: 'Theme',
+        badge: 'PALETTE',
         action: () => onSetTermTheme?.('hacker'),
       },
       {
         id: 'theme:contrast',
-        category: 'LAYOUT & THEME',
-        label: '🎨 Terminal Theme: High Contrast',
+        category: 'SETTINGS & THEME',
+        label: 'Terminal Palette // High Contrast',
         keywords: 'theme high contrast white',
-        badge: 'Theme',
+        badge: 'PALETTE',
         action: () => onSetTermTheme?.('high-contrast'),
       },
       {
         id: 'font:inc',
-        category: 'LAYOUT & THEME',
-        label: '🔤 Increase Terminal Font Size (+2px)',
+        category: 'SETTINGS & THEME',
+        label: 'Increase Terminal Font Size (+2px)',
         keywords: 'font size zoom in bigger',
-        badge: 'Font',
+        badge: 'FONT +',
         action: () => onChangeFontSize?.(2),
       },
       {
         id: 'font:dec',
-        category: 'LAYOUT & THEME',
-        label: '🔡 Decrease Terminal Font Size (-2px)',
+        category: 'SETTINGS & THEME',
+        label: 'Decrease Terminal Font Size (-2px)',
         keywords: 'font size zoom out smaller',
-        badge: 'Font',
+        badge: 'FONT -',
         action: () => onChangeFontSize?.(-2),
       },
       {
         id: 'ui:keyboard',
-        category: 'LAYOUT & THEME',
-        label: '⌨️ Toggle Sovereign On-Screen Keyboard',
+        category: 'SETTINGS & THEME',
+        label: 'Toggle Sovereign On-Screen Keyboard',
         keywords: 'keyboard mobile touch keys',
-        badge: 'Input',
+        badge: 'KB',
         action: () => onToggleKeyboard?.(),
       },
       {
         id: 'ui:voice',
-        category: 'LAYOUT & THEME',
-        label: '🎤 Toggle Voice Dictation',
+        category: 'SETTINGS & THEME',
+        label: 'Toggle Voice Dictation',
         keywords: 'voice dictation speech microphone',
-        badge: 'Voice',
+        badge: 'MIC',
         action: () => onToggleVoice?.(),
       },
       {
         id: 'ui:speak',
-        category: 'LAYOUT & THEME',
-        label: '🔊 Speak Latest Agent Summary',
+        category: 'SETTINGS & THEME',
+        label: 'Speak Latest Agent Summary',
         keywords: 'speak readback tts voice summary speaker',
         badge: 'TTS',
         action: () => onSpeakSummary?.(),
       },
       {
         id: 'ui:voice-autoread',
-        category: 'LAYOUT & THEME',
-        label: '🗣️ Toggle Voice Auto-Playback',
+        category: 'SETTINGS & THEME',
+        label: 'Toggle Voice Auto-Playback',
         keywords: 'voice auto playback readback tts spoken summary',
-        badge: 'TTS',
+        badge: 'TTS AUTO',
         action: () => onToggleVoiceAutoRead?.(),
       },
       {
         id: 'ui:integrations',
-        category: 'LAYOUT & THEME',
-        label: '🔌 Open Integrations Vault',
+        category: 'SETTINGS & THEME',
+        label: 'Open Outbound Email Integrations Vault',
         keywords: 'integrations vault api keys secrets',
-        badge: 'Vault',
+        badge: 'VAULT',
         action: () => onOpenIntegrations?.(),
       },
       {
         id: 'ui:settings',
-        category: 'LAYOUT & THEME',
-        label: '⚙️ Open Settings Modal',
+        category: 'SETTINGS & THEME',
+        label: 'Open System Settings (Themes, Voice, Passkeys)',
         keywords: 'settings preferences e2ee',
-        badge: 'Config',
+        badge: 'CONFIG',
         action: () => onOpenSettings?.(),
       }
     );
@@ -338,14 +353,21 @@ export default function CommandPalette({
     onSendSessionCommand,
     onSendRawCommand,
     onToggleFiles,
+    onToggleBrowser,
     onToggleFleetSidebar,
     onOpenTokenGrabber,
+    onOpenForensics,
+    onOpenHistory,
+    onToggleChatMode,
     onEnterScrollMode,
     onOpenSearch,
     onToggleKeyboard,
     onToggleVoice,
+    onSpeakSummary,
+    onToggleVoiceAutoRead,
     onOpenSettings,
     onOpenIntegrations,
+    onSetUiTheme,
     onSetTermTheme,
     onChangeFontSize,
   ]);
@@ -391,57 +413,99 @@ export default function CommandPalette({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay command-palette-overlay" onClick={onClose}>
+    <div className="modal-veil" onClick={onClose}>
       <div
-        className="modal-card command-palette-card"
+        className="ld-modal-card wide"
+        style={{ width: 'min(620px, 94%)' }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <div className="command-palette-search-row">
-          <span style={{ fontSize: '16px', color: '#60a5fa' }}>⌘</span>
+        <div
+          style={{
+            padding: '14px 16px',
+            borderBottom: '1px solid var(--border-hairline)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          <span style={{ color: 'var(--accent)', display: 'flex' }}>
+            <Icon name="search" size={15} />
+          </span>
           <input
             ref={inputRef}
             type="text"
-            className="command-palette-input"
-            placeholder="Type a command, session name, /wiki, /handoff, or macro..."
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12.5px',
+            }}
+            placeholder="Search sessions, /wiki, /handoff, forensics, macros, settings..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <span className="command-palette-kbd">ESC</span>
+          <span className="mono-kbd">ESC</span>
         </div>
 
-        <div className="command-palette-list" ref={listRef}>
+        <div
+          style={{
+            padding: '8px',
+            maxHeight: '58vh',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px',
+          }}
+        >
           {filtered.length === 0 ? (
             <div className="fleet-empty-state">No matching commands</div>
           ) : (
             filtered.map((item, idx) => {
-              const prevCategory = idx > 0 ? filtered[idx - 1].category : null;
-              const showCategoryHeader = item.category !== prevCategory;
+              const showCat = idx === 0 || filtered[idx - 1].category !== item.category;
               const isSelected = idx === selectedIndex;
 
               return (
                 <div key={item.id}>
-                  {showCategoryHeader && (
-                    <div className="command-palette-category">{item.category}</div>
+                  {showCat && (
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '9.5px',
+                        fontWeight: 700,
+                        letterSpacing: '0.14em',
+                        color: 'var(--accent)',
+                        padding: '8px 10px 3px',
+                      }}
+                    >
+                      {item.category}
+                    </div>
                   )}
-                  <div
-                    className={`command-palette-item ${isSelected ? 'selected' : ''}`}
+                  <button
+                    type="button"
+                    className={`pop-item ${isSelected ? 'selected' : ''}`}
+                    style={{ width: '100%' }}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     onClick={() => executeItem(item)}
                   >
-                    <span className="command-palette-label">{item.label}</span>
-                    {item.badge && <span className="command-palette-badge">{item.badge}</span>}
-                  </div>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.label}
+                    </span>
+                    {item.badge && <span className="mono-kbd">{item.badge}</span>}
+                  </button>
                 </div>
               );
             })
           )}
         </div>
 
-        <div className="command-palette-footer">
-          <span>↑↓ Navigate</span>
-          <span>↵ Execute</span>
-          <span>⌘K / Ctrl+K Toggle</span>
+        <div className="modal-footer-bar" style={{ padding: '8px 16px', fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+          <span>↑↓ NAVIGATE</span>
+          <span>↵ EXECUTE</span>
+          <span>⌘K / CTRL+K TOGGLE</span>
         </div>
       </div>
     </div>

@@ -20,6 +20,8 @@ import ForensicsModal from './components/ForensicsModal';
 import HistoryVault from './components/HistoryVault';
 import SpawnSessionModal from './components/SpawnSessionModal';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
+import LiveTranscriptStage from './components/LiveTranscriptStage';
+import TmuxServerStage from './components/TmuxServerStage';
 import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelection';
 import { E2EESocketWrapper } from './e2ee';
 import { getAgentColor } from './agentColors';
@@ -202,6 +204,18 @@ function App() {
   const [scrollFocusSearch, setScrollFocusSearch] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
+  const [preferredBrowserTargetId, setPreferredBrowserTargetId] = useState('');
+  const [agentStageMode, setAgentStageModeState] = useState(() =>
+    localStorage.getItem('aim-agent-stage-mode') === 'chat' ? 'chat' : 'pty'
+  );
+  const setAgentStageMode = useCallback((mode) => {
+    const next = mode === 'chat' ? 'chat' : 'pty';
+    setAgentStageModeState(next);
+    localStorage.setItem('aim-agent-stage-mode', next);
+  }, []);
+  const [tmuxStageMode, setTmuxStageMode] = useState('grid'); // grid | pty
+  const [optimisticChatBySession, setOptimisticChatBySession] = useState({});
+  const [pasteFlash, setPasteFlash] = useState(false);
   const [fileSelectMode, setFileSelectMode] = useState(false);
   const [splitMode, setSplitMode] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
@@ -1022,9 +1036,24 @@ function App() {
     if (matchedFleet) {
       lastChimedDigestRef.current[newSession] =
         matchedFleet.turn_digest || matchedFleet.spoken_summary || '';
-      // Auto-collapse Co-Pilot Browser when switching onto a CLI-only / raw tmux session without a browser lease (#257)
-      if (!matchedFleet.has_browser_lease && showBrowser) {
-        setShowBrowser(false);
+      const isRawTarget =
+        matchedFleet.vessel === 'service' ||
+        (matchedFleet.vessel === 'shell' && !matchedFleet.tokens_used);
+      if (isRawTarget) {
+        setTmuxStageMode((matchedFleet.window_count || matchedFleet.pane_count || 1) > 1 ? 'grid' : 'pty');
+      }
+      // Auto-open & focus leased Co-Pilot Browser tab when selecting a leased agent; auto-collapse on non-leased (#257, #260)
+      if (matchedFleet.has_browser_lease) {
+        setPreferredBrowserTargetId(matchedFleet.browser_tab_id || '');
+        if (!showFiles && (typeof window === 'undefined' || window.innerWidth >= 768)) {
+          setShowBrowser(true);
+          setSplitMode(true);
+        }
+      } else {
+        setPreferredBrowserTargetId('');
+        if (showBrowser) {
+          setShowBrowser(false);
+        }
       }
     }
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -1880,10 +1909,18 @@ function App() {
     if (!target) return;
     const attachments = stagedAttachments[target] || [];
     const attRefs = attachments.map((a) => `@${a.path}`).join(' ');
-    const combined = [composerText.trim(), attRefs].filter(Boolean).join(' ');
+    const cleanText = composerText.trim();
+    const combined = [cleanText, attRefs].filter(Boolean).join(' ');
     if (!combined) return;
     pasteToTerminal(combined);
     setTimeout(() => sendCommand('\r'), 90);
+    setOptimisticChatBySession((prev) => ({
+      ...prev,
+      [target]: [
+        ...(prev[target] || []).slice(-4),
+        { id: `opt-${Date.now()}`, text: cleanText, attachments },
+      ],
+    }));
     setComposerText('');
     if (attachments.length > 0) {
       setStagedAttachments((prev) => ({ ...prev, [target]: [] }));
@@ -2127,7 +2164,9 @@ function App() {
       </header>
 
       <div
-        className={`cockpit-body ${isDraggingSplit ? 'is-resizing-split' : ''}`}
+        className={`cockpit-body ${isDraggingSplit ? 'is-resizing-split' : ''} ${
+          splitMode && (showFiles || showBrowser) ? 'has-split' : ''
+        }`}
         ref={cockpitBodyRef}
         style={{ '--split-pane-width': `${splitWidthPct}%` }}
       >
@@ -2138,6 +2177,7 @@ function App() {
           fleet={fleet}
           activeSession={activeSession}
           unreadSessions={unreadSessions}
+          historyCounts={historyCounts}
           onSelectSession={switchToSession}
           onCreateSession={createSession}
           onKillSession={killSession}
@@ -2163,7 +2203,7 @@ function App() {
             const histCount = historyCounts[activeSession] || 0;
             return (
               <div className="node-subbar">
-                <div className="node-title-tag">
+                <div className="node-title-tag" style={{ minWidth: 0, overflow: 'hidden' }}>
                   <Icon name={isRawTmux ? 'terminal' : 'shield'} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {activeSession}
@@ -2175,21 +2215,68 @@ function App() {
                   )}
                 </div>
                 <div className="subbar-tools-row">
+                  {isRawTmux ? (
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${tmuxStageMode === 'grid' ? 'active' : ''}`}
+                      onClick={() => {
+                        setTmuxStageMode((prev) => {
+                          const next = prev === 'grid' ? 'pty' : 'grid';
+                          if (next === 'pty') {
+                            setTimeout(() => {
+                              try {
+                                fitAddon.current?.fit();
+                              } catch {}
+                            }, 60);
+                          }
+                          return next;
+                        });
+                      }}
+                      title="Toggle Simultaneous Multi-Window Tmux Split Grid vs Interactive Xterm"
+                    >
+                      <Icon name={tmuxStageMode === 'grid' ? 'grid' : 'terminal'} size={12} />
+                      <span>{tmuxStageMode === 'grid' ? 'SPLIT GRID' : 'RAW TERM'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${agentStageMode === 'chat' ? 'active' : ''}`}
+                      onClick={() => {
+                        const next = agentStageMode === 'chat' ? 'pty' : 'chat';
+                        setAgentStageMode(next);
+                        if (next === 'pty') {
+                          setTimeout(() => {
+                            try {
+                              fitAddon.current?.fit();
+                            } catch {}
+                          }, 60);
+                        }
+                      }}
+                      title="Toggle Live Structured Chat Bubbles (Operator Highlight/Dot) vs Raw Interactive Xterm"
+                    >
+                      <Icon name={agentStageMode === 'chat' ? 'message' : 'terminal'} size={12} />
+                      <span>{agentStageMode === 'chat' ? 'CHAT VIEW' : 'RAW TERM'}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="subbar-util-btn"
+                    className={`subbar-util-btn ${pasteFlash ? 'active' : ''}`}
                     onClick={async () => {
                       try {
                         const text = await navigator.clipboard.readText();
-                        if (text) pasteToTerminal(text);
+                        if (text) {
+                          pasteToTerminal(text);
+                          setPasteFlash(true);
+                          setTimeout(() => setPasteFlash(false), 1400);
+                        }
                       } catch (e) {
                         console.error('Paste failed', e);
                       }
                     }}
                     title="Bracketed Paste from Clipboard"
                   >
-                    <Icon name="clipboard" />
-                    <span>PASTE</span>
+                    <Icon name={pasteFlash ? 'check' : 'clipboard'} />
+                    <span>{pasteFlash ? 'PASTED!' : 'PASTE'}</span>
                   </button>
                   <button
                     type="button"
@@ -2220,7 +2307,7 @@ function App() {
                       title="Forensic Tool Inspector, SQLite FTS5 Search & Swarm Dispatcher"
                     >
                       <Icon name="microscope" />
-                      <span>FORENSICS</span>
+                      <span className="subbar-lbl-collapse">FORENSICS</span>
                     </button>
                   )}
                   <button
@@ -2236,25 +2323,8 @@ function App() {
                     title="Project Session Notebook & Baton-Pass Reincarnations"
                   >
                     <Icon name="history" />
-                    <span>{isRawTmux ? 'FLEET HISTORY' : `HISTORY${histCount ? ` (${histCount})` : ''}`}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`subbar-util-btn ${isListening ? 'active' : ''}`}
-                    onClick={startDictation}
-                    title={isListening ? 'Stop Voice Dictation' : 'Start Voice Dictation'}
-                  >
-                    <Icon name={isListening ? 'mic' : 'micOff'} />
-                    <span>{isListening ? 'MIC ON' : 'MIC'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`subbar-util-btn ${isSpeaking || voiceAutoRead ? 'active' : ''}`}
-                    onClick={handleSpeakSummary}
-                    title="Speak latest 🔊 agent summary"
-                  >
-                    <Icon name={isSpeaking ? 'volumeOff' : 'volume'} />
-                    <span>{isSpeaking ? 'STOP' : voiceAutoRead ? 'AUTO' : 'SPEAK'}</span>
+                    <span className="subbar-lbl-collapse">{isRawTmux ? 'FLEET HISTORY' : 'HISTORY'}</span>
+                    {!isRawTmux && histCount > 0 && <span>({histCount})</span>}
                   </button>
                 </div>
               </div>
@@ -2430,15 +2500,76 @@ function App() {
               </div>
             )}
 
-            <div
-              className="terminal-container"
-              ref={terminalRef}
-              style={{
-                height: '100%',
-                pointerEvents: isNativeScrollMode || showHistory ? 'none' : 'auto',
-                visibility: showHistory ? 'hidden' : 'visible',
-              }}
-            />
+            {(() => {
+              const activeFleetItem = fleet.find((f) => f.session_name === activeSession);
+              const isRawTmux =
+                Boolean(activeSession) &&
+                activeFleetItem &&
+                (activeFleetItem.vessel === 'service' ||
+                  (activeFleetItem.vessel === 'shell' && !activeFleetItem.tokens_used));
+              const showLiveChat =
+                Boolean(activeSession) &&
+                !isRawTmux &&
+                agentStageMode === 'chat' &&
+                !showHistory &&
+                !isNativeScrollMode;
+              const showTmuxGrid =
+                Boolean(activeSession) &&
+                Boolean(isRawTmux) &&
+                tmuxStageMode === 'grid' &&
+                !showHistory &&
+                !isNativeScrollMode;
+              const hideXterm = showHistory || showLiveChat || showTmuxGrid;
+
+              return (
+                <>
+                  <div
+                    className="terminal-container"
+                    ref={terminalRef}
+                    style={{
+                      height: '100%',
+                      pointerEvents: isNativeScrollMode || hideXterm ? 'none' : 'auto',
+                      visibility: hideXterm ? 'hidden' : 'visible',
+                    }}
+                  />
+                  {showLiveChat && (
+                    <LiveTranscriptStage
+                      activeSession={activeSession}
+                      fleetItem={activeFleetItem}
+                      operatorStyle={operatorStyle}
+                      operatorSide={operatorSide}
+                      termFontSize={termFontSize}
+                      termTheme={termTheme}
+                      optimisticMessages={optimisticChatBySession[activeSession] || []}
+                      onSpeakText={(txt) => speakSummaryText(txt)}
+                      onSendRawCommand={sendCommand}
+                      onSwitchToTerminal={() => {
+                        setAgentStageMode('pty');
+                        setTimeout(() => {
+                          try {
+                            fitAddon.current?.fit();
+                          } catch {}
+                        }, 60);
+                      }}
+                    />
+                  )}
+                  {showTmuxGrid && (
+                    <TmuxServerStage
+                      activeSession={activeSession}
+                      termFontSize={termFontSize}
+                      onSwitchToInteractiveTerm={() => {
+                        setTmuxStageMode('pty');
+                        setTimeout(() => {
+                          try {
+                            fitAddon.current?.fit();
+                          } catch {}
+                        }, 60);
+                      }}
+                    />
+                  )}
+                </>
+              );
+            })()}
             {showHistory && (
               <HistoryVault
                 activeSession={activeSession}
@@ -2714,6 +2845,7 @@ function App() {
           splitMode={splitMode}
           apiToken={apiTokenRef.current}
           activeSession={activeSession}
+          preferredTargetId={preferredBrowserTargetId}
           fleet={fleet}
           onAttachToComposer={attachToActiveComposer}
           onToggleSplitMode={() => {
@@ -2978,6 +3110,13 @@ function App() {
         onToggleFleetSidebar={toggleFleetSidebar}
         onOpenTokenGrabber={() => setShowTokenGrabber(true)}
         onOpenForensics={() => setShowForensics(true)}
+        onOpenHistory={() => {
+          closeNativeScrollMode();
+          setShowHistory(true);
+        }}
+        onToggleChatMode={() =>
+          setAgentStageMode(agentStageMode === 'chat' ? 'pty' : 'chat')
+        }
         onEnterScrollMode={() => enterNativeScrollMode({ focusSearch: false })}
         onOpenSearch={() => enterNativeScrollMode({ focusSearch: true })}
         onToggleKeyboard={() => setShowKeyboard((prev) => !prev)}

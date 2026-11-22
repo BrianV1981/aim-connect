@@ -280,7 +280,7 @@ TOKEN_TTL = int(os.environ.get('TOKEN_TTL', 14400))  # 4 hours sliding active-us
 TOKEN_SAVE_INTERVAL_S = 60.0
 _LAST_TOKEN_DISK_SYNC: dict[str, float] = {}
 
-# Background polling and teardown routes validate tokens without sliding expiry (#247)
+# Background polling and teardown routes validate tokens without sliding expiry (#247, #260)
 PASSIVE_TOKEN_ENDPOINTS = frozenset({
     ("GET", "/api/sessions"),
     ("GET", "/api/fleet/panes"),
@@ -289,6 +289,18 @@ PASSIVE_TOKEN_ENDPOINTS = frozenset({
     ("POST", "/api/tts"),
     ("POST", "/api/logout"),
 })
+
+
+def _is_passive_token_request(method: str, path: str) -> bool:
+    m = (method or "").upper()
+    p = path or ""
+    if (m, p) in PASSIVE_TOKEN_ENDPOINTS:
+        return True
+    if m == "GET" and p.startswith("/api/sessions/") and p.endswith("/live-turns"):
+        return True
+    if m == "GET" and p.startswith("/api/tmux/") and p.endswith("/windows"):
+        return True
+    return False
 
 def save_tokens():
     with open(TOKEN_FILE, 'w') as f:
@@ -364,7 +376,7 @@ def verify_token(request: Request, x_api_token: str = Header(None)):
         _LAST_TOKEN_DISK_SYNC.pop(x_api_token, None)
         save_tokens()
         raise HTTPException(status_code=401, detail="Token Expired")
-    if (request.method.upper(), request.url.path) not in PASSIVE_TOKEN_ENDPOINTS:
+    if not _is_passive_token_request(request.method, request.url.path):
         touch_api_token(x_api_token)
 
 def _get_user_from_token(x_api_token: str = Header(None)):
@@ -508,9 +520,11 @@ if os.path.exists(frontend_path):
     # Mount Vite static assets
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
 
-    # Catch-all for SPA routing
+    # Catch-all for SPA routing (never mask unmatched /api/* routes with 200 index.html)
     @app.get("/{catchall:path}")
     def serve_frontend(catchall: str):
+        if catchall == "api" or catchall.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
         return _render_frontend_file(frontend_path, catchall)
 else:
     @app.get("/")

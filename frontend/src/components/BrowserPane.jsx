@@ -19,6 +19,7 @@ export default function BrowserPane({
   splitMode,
   apiToken,
   activeSession = '',
+  preferredTargetId = '',
   fleet = [],
   onAttachToComposer,
   onToggleSplitMode,
@@ -30,7 +31,7 @@ export default function BrowserPane({
   const [favorites, setFavorites] = useState([]);
   const [activeTargetId, setActiveTargetId] = useState('');
   const [addressInput, setAddressInput] = useState('');
-  const [controlMode, setControlMode] = useState(false); // false = Watch, true = Interactive Control
+  const [controlMode, setControlMode] = useState(false);
   const [showTextBar, setShowTextBar] = useState(false);
   const [quickText, setQuickText] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
@@ -52,6 +53,7 @@ export default function BrowserPane({
   const lastHudSeqRef = useRef(-1);
   const lastMoveSentRef = useRef(0);
   const touchLastYRef = useRef(null);
+  const lastAutoSyncedSessionRef = useRef('');
 
   const measureStageSize = useCallback(() => {
     const el = stageRef.current;
@@ -201,12 +203,59 @@ export default function BrowserPane({
         }
       };
     },
-    [apiToken, refreshStatus, showHud]
+    [apiToken, measureStageSize, refreshStatus, showHud]
   );
+
+  const sendWs = (payload) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(payload));
+    }
+  };
+
+  const handleSelectTab = useCallback(
+    (tab) => {
+      if (!tab?.id) return;
+      setActiveTargetId(tab.id);
+      activeTargetRef.current = tab.id;
+      setAddressInput(tab.url || '');
+      const dims = measureStageSize();
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: 'switch_target', target_id: tab.id, width: dims.width, height: dims.height })
+        );
+      } else {
+        connectScreencast(tab.id);
+      }
+    },
+    [connectScreencast, measureStageSize]
+  );
+
+  // Auto-focus active session's leased tab when switching nodes (#260)
+  useEffect(() => {
+    if (!isOpen || tabs.length === 0 || !activeSession) return;
+    const syncKey = `${activeSession}:${preferredTargetId}`;
+    if (lastAutoSyncedSessionRef.current === syncKey) return;
+
+    const byId = preferredTargetId ? tabs.find((t) => t.id === preferredTargetId) : null;
+    const byOwner =
+      byId ||
+      tabs.find((t) => {
+        const info = resolveTabAgentInfo(t, hudOverlay, fleet);
+        return info?.agentKey && info.agentKey.toLowerCase() === activeSession.toLowerCase();
+      });
+
+    if (byOwner) {
+      lastAutoSyncedSessionRef.current = syncKey;
+      if (byOwner.id !== activeTargetRef.current) {
+        handleSelectTab(byOwner);
+      }
+    }
+  }, [isOpen, tabs, activeSession, preferredTargetId, hudOverlay, fleet, handleSelectTab]);
 
   // Zero CPU / bandwidth when pane is closed; attach on open
   useEffect(() => {
     if (!isOpen) {
+      lastAutoSyncedSessionRef.current = '';
       if (wsRef.current) {
         try {
           wsRef.current.close();
@@ -220,8 +269,12 @@ export default function BrowserPane({
     (async () => {
       const st = await refreshStatus();
       if (!cancelled && st?.running) {
-        const firstId = st.tabs?.[0]?.id || '';
-        connectScreencast(activeTargetRef.current || firstId);
+        const pref =
+          (preferredTargetId && st.tabs?.find((t) => t.id === preferredTargetId)?.id) ||
+          activeTargetRef.current ||
+          st.tabs?.[0]?.id ||
+          '';
+        connectScreencast(pref);
       }
     })();
 
@@ -243,7 +296,7 @@ export default function BrowserPane({
         wsRef.current = null;
       }
     };
-  }, [isOpen, connectScreencast, refreshStatus]);
+  }, [isOpen, connectScreencast, preferredTargetId, refreshStatus]);
 
   // Dynamically match Chromium viewport height & width to the full split/full pane stage (#249)
   useEffect(() => {
@@ -272,15 +325,9 @@ export default function BrowserPane({
     };
   }, [isOpen, daemonRunning, splitMode]);
 
-  const sendWs = (payload) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(payload));
-    }
-  };
-
   const handleStartBrowser = async () => {
     setStartingDaemon(true);
-    setStatusMsg('Starting loopback Chromium CDP...');
+    setStatusMsg('Starting headless loopback Chromium CDP...');
     try {
       const res = await fetch('/api/browser/start', {
         method: 'POST',
@@ -302,18 +349,6 @@ export default function BrowserPane({
       setStatusMsg(`Start failed: ${err.message}`);
     } finally {
       setStartingDaemon(false);
-    }
-  };
-
-  const handleSelectTab = (tab) => {
-    setActiveTargetId(tab.id);
-    activeTargetRef.current = tab.id;
-    setAddressInput(tab.url || '');
-    const dims = measureStageSize();
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      sendWs({ type: 'switch_target', target_id: tab.id, width: dims.width, height: dims.height });
-    } else {
-      connectScreencast(tab.id);
     }
   };
 
@@ -340,7 +375,6 @@ export default function BrowserPane({
     const optimisticRemaining = tabs.filter((t) => t.id !== tabId);
     setTabs(optimisticRemaining);
 
-    // Switch off the closing tab immediately BEFORE DELETE so DevTools detaches cleanly (#249)
     if (tabId === activeTargetId && optimisticRemaining.length > 0) {
       const nextIdx = Math.min(Math.max(0, closedIdx), optimisticRemaining.length - 1);
       handleSelectTab(optimisticRemaining[nextIdx]);
@@ -427,8 +461,8 @@ export default function BrowserPane({
     const withProto = u.includes('://')
       ? u
       : u.startsWith('localhost') || u.startsWith('127.0.0.1')
-      ? `http://${u}`
-      : `https://${u}`;
+        ? `http://${u}`
+        : `https://${u}`;
     return withProto.replace(/\/+$/, '').toLowerCase();
   };
 
@@ -599,18 +633,25 @@ export default function BrowserPane({
     ? getAgentColor(hudOverlay.session || hudOverlay.actor || hudOverlay.lease)
     : null;
 
+  const activeFleetEntry = activeSession
+    ? fleet.find((f) => f && f.session_name === activeSession)
+    : null;
+  const sessionLacksLease = Boolean(activeSession && activeFleetEntry && !activeFleetEntry.has_browser_lease);
+
   return (
     <div
       className={`file-explorer-pane browser-copilot-pane ${splitMode ? 'split-mode' : 'full-mode'}`}
       style={{ position: 'relative' }}
     >
-      <div className="brain-quick-bar">
+      <div className="copilot-top-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
           <span
             className="pulse-led"
             style={!daemonRunning ? { background: '#6b7280', boxShadow: 'none' } : undefined}
           />
-          <span className="brain-bar-label">CO-PILOT // :9222</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em' }}>
+            CO-PILOT // :9222
+          </span>
           {!daemonRunning ? (
             <button
               type="button"
@@ -624,20 +665,22 @@ export default function BrowserPane({
             <>
               <button
                 type="button"
-                className={`subbar-util-btn ${controlMode ? 'active browser-control-active' : ''}`}
+                className={`fav-chip ${controlMode ? 'active' : ''}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', ...(controlMode ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }}
                 onClick={() => setControlMode((prev) => !prev)}
                 title="Toggle Watch-Only vs Interactive Pointer/Keyboard Takeover (aim-login-hold)"
               >
-                <Icon name={controlMode ? 'gamepad' : 'eye'} size={13} />
+                <Icon name={controlMode ? 'gamepad' : 'eye'} size={12} />
                 <span>{controlMode ? 'CONTROL ON' : 'WATCH ONLY'}</span>
               </button>
               <button
                 type="button"
-                className={`subbar-util-btn ${showTextBar ? 'active' : ''}`}
+                className={`fav-chip ${showTextBar ? 'active' : ''}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 onClick={() => setShowTextBar((prev) => !prev)}
                 title="Type or paste 2FA / password text directly into the focused browser input"
               >
-                <Icon name="key" size={13} />
+                <Icon name="key" size={12} />
                 <span>TYPE / 2FA</span>
               </button>
             </>
@@ -689,7 +732,7 @@ export default function BrowserPane({
 
           <button
             type="button"
-            className={`subbar-util-btn desktop-only ${!splitMode ? 'active' : ''}`}
+            className={`pane-full-upgrade-btn desktop-only ${!splitMode ? 'is-full' : ''}`}
             onClick={onToggleSplitMode}
             title={splitMode ? 'Upgrade Browser to Full View' : 'Return Browser to Split Screen'}
           >
@@ -733,8 +776,7 @@ export default function BrowserPane({
             {visibleDownloads.some((d) => d.status === 'done') && (
               <button
                 type="button"
-                className="subbar-util-btn"
-                style={{ height: '22px', fontSize: '10px' }}
+                className="fav-chip"
                 onClick={() =>
                   setDismissedDownloadIds((prev) => [
                     ...prev,
@@ -792,8 +834,7 @@ export default function BrowserPane({
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button
                         type="button"
-                        className="subbar-util-btn"
-                        style={{ height: '22px', fontSize: '10px' }}
+                        className="fav-chip"
                         onClick={() => {
                           onAttachToComposer?.({
                             id: d.id,
@@ -810,8 +851,7 @@ export default function BrowserPane({
                       </button>
                       <button
                         type="button"
-                        className="subbar-util-btn"
-                        style={{ height: '22px', fontSize: '10px' }}
+                        className="fav-chip"
                         onClick={async () => {
                           try {
                             const tok = apiToken || localStorage.getItem('aim-token') || '';
@@ -845,50 +885,69 @@ export default function BrowserPane({
         </div>
       )}
 
-      {/* Multi-Tab Co-Pilot Strip (Operator + Subagent targetId Leases) */}
-      <div className="workspace-tabs-bar">
+      {sessionLacksLease && (
+        <div
+          style={{
+            padding: '5px 12px',
+            background: 'rgba(245, 158, 11, 0.1)',
+            borderBottom: '1px solid rgba(245, 158, 11, 0.35)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '10px',
+            color: '#fbbf24',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span>{activeSession.toUpperCase()} HAS NO OPEN BROWSER LEASE · Showing shared fleet tabs</span>
+          <button type="button" className="fav-chip" onClick={onClose}>
+            TERMINAL ONLY
+          </button>
+        </div>
+      )}
+
+      {/* Multi-Tab Co-Pilot Strip (Emerald Matrix Lucide Chrome — #260) */}
+      <div className="copilot-tabs-row">
         {tabs.map((t) => {
           const isSelected = t.id === activeTargetId;
           const tabAgent = resolveTabAgentInfo(t, hudOverlay, fleet);
-          const badge = tabAgent
-            ? `🤖 ${tabAgent.agentKey}${tabAgent.sublabel ? ` · ${tabAgent.sublabel}` : ''}`
-            : t.lease === 'operator'
-            ? '👤 you'
-            : `Tab ${t.index + 1}`;
           const chipStyle = tabAgent
             ? { '--agent-color': tabAgent.color.hex, '--agent-rgb': tabAgent.color.rgb }
             : undefined;
+          const tabLabel = tabAgent
+            ? `${tabAgent.agentKey}${tabAgent.sublabel ? ` // ${tabAgent.sublabel}` : ''}`
+            : (t.title || 'Operator Tab').slice(0, 24);
+
           return (
             <div
               key={t.id}
-              className={`workspace-tab-chip ${isSelected ? 'active' : ''} ${
-                tabAgent ? `agent-leased ${tabAgent.isWorking ? 'agent-working' : ''}` : ''
-              }`}
+              className={`cp-tab ${isSelected ? 'active' : ''} ${tabAgent ? 'agent-tab' : ''}`}
               style={chipStyle}
               onClick={() => handleSelectTab(t)}
-              title={`${t.title}\n${t.url}${
+              title={`${t.title || ''}\n${t.url || ''}${
                 tabAgent
                   ? `\nAgent: ${tabAgent.agentKey} (${tabAgent.color.name})${
                       tabAgent.sublabel ? ` · Lease: ${tabAgent.sublabel}` : ''
                     }${tabAgent.isWorking ? ' — ACTIVE' : ''}`
-                  : t.lease
-                  ? `\nLease: ${t.lease}`
                   : ''
               }`}
             >
-              {tabAgent && (
+              {tabAgent ? (
                 <span
-                  className={`browser-tab-agent-dot ${tabAgent.isWorking ? 'working' : ''}`}
-                  aria-hidden="true"
+                  className="project-pill-dot"
+                  style={{
+                    background: tabAgent.color.hex,
+                    boxShadow: `0 0 8px ${tabAgent.color.hex}`,
+                  }}
                 />
+              ) : (
+                <Icon name="globe" size={12} />
               )}
-              <span className="browser-tab-lease-badge">{badge}</span>
-              <span style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {t.title || '(untitled)'}
-              </span>
+              <span>{tabLabel}</span>
               {tabs.length > 1 && (
                 <span
-                  className="workspace-tab-close"
+                  style={{ opacity: 0.65, paddingLeft: '3px' }}
                   onClick={(e) => handleCloseTab(e, t.id)}
                   title="Close browser tab"
                 >
@@ -900,21 +959,22 @@ export default function BrowserPane({
         })}
         <button
           type="button"
-          className="workspace-tab-chip"
+          className="fav-chip"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
           onClick={handleNewTab}
           disabled={!daemonRunning}
           title="Open new isolated browser tab"
         >
-          ➕ Tab
+          <Icon name="plus" size={11} />
+          <span>TAB</span>
         </button>
       </div>
 
       {/* Address & Navigation Bar */}
-      <form className="file-toolbar" onSubmit={handleNavigateSubmit} style={{ gap: '4px' }}>
+      <form className="cp-url-bar" onSubmit={handleNavigateSubmit}>
         <button
           type="button"
-          className="macro-btn"
-          style={{ padding: '4px 7px', fontSize: '11px' }}
+          className="fav-chip"
           disabled={!daemonRunning}
           onClick={() => sendWs({ type: 'back' })}
           title="Back"
@@ -923,8 +983,7 @@ export default function BrowserPane({
         </button>
         <button
           type="button"
-          className="macro-btn"
-          style={{ padding: '4px 7px', fontSize: '11px' }}
+          className="fav-chip"
           disabled={!daemonRunning}
           onClick={() => sendWs({ type: 'forward' })}
           title="Forward"
@@ -933,56 +992,64 @@ export default function BrowserPane({
         </button>
         <button
           type="button"
-          className="macro-btn"
-          style={{ padding: '4px 7px', fontSize: '11px' }}
+          className="fav-chip"
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
           disabled={!daemonRunning}
           onClick={() => sendWs({ type: 'reload' })}
           title="Reload page"
         >
-          🔄
+          <Icon name="refresh" size={11} />
         </button>
         <input
           type="text"
-          className="browser-url-input"
+          className="cp-url-input"
           placeholder="https://... or localhost:5173"
           value={addressInput}
           onChange={(e) => setAddressInput(e.target.value)}
         />
         <button
           type="button"
-          className={`macro-btn ${matchedFavorite ? 'browser-star-active' : ''}`}
-          style={{ padding: '4px 8px', fontSize: '12px' }}
+          className="fav-chip"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            ...(matchedFavorite ? { color: '#eab308', borderColor: '#eab308' } : {}),
+          }}
           disabled={!normCandidate}
           onClick={handleToggleFavorite}
           title={matchedFavorite ? 'Remove from Favorites' : 'Save URL to Favorites'}
         >
-          {matchedFavorite ? '★' : '☆'}
+          <Icon name="star" size={12} />
         </button>
-        <button type="submit" className="macro-btn action" style={{ padding: '4px 10px', fontSize: '11px' }}>
-          Go
+        <button type="submit" className="subbar-util-btn active">
+          GO
         </button>
       </form>
 
       {/* Compact Persistent Favorites Bar (#250) */}
-      <div className="browser-favorites-bar">
-        <span className="browser-favorites-label">★</span>
+      <div className="cp-fav-bar">
+        <span style={{ color: '#eab308', display: 'inline-flex' }}>
+          <Icon name="star" size={12} />
+        </span>
         {favorites.length === 0 ? (
           <button
             type="button"
-            className="browser-favorite-chip empty-hint"
+            className="fav-chip"
             disabled={!normCandidate}
             onClick={handleToggleFavorite}
             title="Bookmark the current URL for 1-click access on desktop & mobile"
           >
-            + Pin Current URL
+            + PIN CURRENT URL
           </button>
         ) : (
           favorites.map((fav) => (
-            <div
+            <span
               key={fav.id}
-              className={`browser-favorite-chip ${
+              className={`fav-chip ${
                 normCandidate && normalizeComparableUrl(fav.url) === normCandidate ? 'active' : ''
               }`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={(e) => handleOpenFavorite(fav, e.ctrlKey || e.metaKey)}
               onAuxClick={(e) => {
                 if (e.button === 1) {
@@ -992,36 +1059,44 @@ export default function BrowserPane({
               }}
               title={`${fav.title}\n${fav.url}\n(Click to open · Ctrl/Cmd/Middle-click for new tab)`}
             >
-              <span className="browser-favorite-title">{fav.title}</span>
+              <span>{fav.title}</span>
               <span
-                className="workspace-tab-close"
+                style={{ opacity: 0.55 }}
                 onClick={(e) => handleDeleteFavoriteChip(e, fav.id)}
                 title="Remove favorite"
               >
                 ×
               </span>
-            </div>
+            </span>
           ))
         )}
       </div>
 
-      {/* Mobile-Friendly Direct Text / 2FA Injection Bar */}
+      {/* Direct Text / 2FA Injection Bar */}
       {showTextBar && daemonRunning && (
-        <form className="file-toolbar" onSubmit={handleSendQuickText} style={{ gap: '6px', background: 'rgba(15, 23, 42, 0.95)' }}>
+        <form
+          onSubmit={handleSendQuickText}
+          style={{
+            display: 'flex',
+            gap: '6px',
+            padding: '6px 12px',
+            borderBottom: '1px solid var(--border-hairline)',
+            background: 'var(--bg-subtle)',
+          }}
+        >
           <input
             type="text"
-            className="browser-url-input"
-            placeholder="Type or paste text / 2FA code into focused browser field..."
+            className="cp-url-input"
+            placeholder="Type or paste 2FA code / password into focused browser input..."
             value={quickText}
             onChange={(e) => setQuickText(e.target.value)}
           />
-          <button type="submit" className="macro-btn action" style={{ padding: '4px 10px', fontSize: '11px' }}>
-            Send Text
+          <button type="submit" className="subbar-util-btn active">
+            SEND TEXT
           </button>
           <button
             type="button"
-            className="macro-btn"
-            style={{ padding: '4px 8px', fontSize: '11px' }}
+            className="fav-chip"
             onClick={() =>
               sendWs({
                 type: 'key',
@@ -1033,17 +1108,15 @@ export default function BrowserPane({
               })
             }
           >
-            ⏎ Enter
+            ENTER ⏎
           </button>
         </form>
       )}
 
-      {/* Live CDP Screencast Viewport + Agent Cursor HUD */}
+      {/* Live CDP Screencast Viewport + Agent Lease Strip & Cursor HUD */}
       <div
-        className={`browser-viewport-stage ${
-          activeAgentInfo
-            ? `agent-tab-active ${activeAgentInfo.isWorking ? 'agent-tab-working' : ''}`
-            : ''
+        className={`cp-viewport-frame ${
+          activeAgentInfo ? `has-agent ${activeAgentInfo.isWorking ? 'is-working' : ''}` : ''
         }`}
         style={
           activeAgentInfo
@@ -1055,22 +1128,39 @@ export default function BrowserPane({
         }
         ref={stageRef}
       >
+        {activeAgentInfo && (
+          <div className="agent-hud-corner">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span className="project-pill-dot" style={{ background: activeAgentInfo.color.hex }} />
+              <span>LEASED TAB // {activeAgentInfo.agentKey.toUpperCase()}</span>
+            </span>
+            <span style={{ color: activeAgentInfo.color.hex }}>
+              {activeAgentInfo.hudAction
+                ? activeAgentInfo.hudAction.toUpperCase()
+                : activeAgentInfo.isWorking
+                  ? 'WORKING'
+                  : 'IDLE · LEASE HELD'}
+            </span>
+          </div>
+        )}
+
         {!daemonRunning ? (
-          <div className="browser-offline-placeholder">
-            <p style={{ margin: '0 0 12px 0', color: '#cbd5e1', fontSize: '14px' }}>
-              {statusMsg || 'Loopback CDP browser daemon is currently idle (0% RAM/CPU).'}
+          <div className="browser-offline-placeholder" style={{ margin: 'auto', textAlign: 'center', padding: '24px' }}>
+            <p style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: '12.5px', fontFamily: 'var(--font-mono)' }}>
+              {statusMsg || 'Headless CDP browser daemon is idle on :9222 (0% RAM/CPU).'}
             </p>
             <button
               type="button"
-              className="macro-btn action"
+              className="neon-cta-btn"
               disabled={startingDaemon}
               onClick={handleStartBrowser}
             >
-              {startingDaemon ? '⏳ Launching Chromium...' : '🚀 Launch Shared Co-Pilot Browser'}
+              <Icon name="globe" size={14} />
+              <span>{startingDaemon ? 'LAUNCHING CHROMIUM...' : 'LAUNCH CO-PILOT BROWSER'}</span>
             </button>
           </div>
         ) : (
-          <div className="browser-canvas-wrap">
+          <div className="browser-canvas-wrap" style={{ flex: 1, minHeight: 0, position: 'relative' }}>
             <canvas
               ref={canvasRef}
               tabIndex={0}
@@ -1100,25 +1190,7 @@ export default function BrowserPane({
               }}
               onKeyDown={handleCanvasKeyDown}
             />
-            {activeAgentInfo && (
-              <div
-                className={`browser-agent-border-badge ${
-                  activeAgentInfo.isWorking ? 'working' : ''
-                }`}
-                title={`Tab owned by ${activeAgentInfo.agentKey} (${activeAgentInfo.color.name})`}
-              >
-                <span
-                  className={`browser-tab-agent-dot ${
-                    activeAgentInfo.isWorking ? 'working' : ''
-                  }`}
-                />
-                <span>
-                  {activeAgentInfo.agentKey}
-                  {activeAgentInfo.sublabel ? ` · ${activeAgentInfo.sublabel}` : ''}
-                  {activeAgentInfo.isWorking ? ' · WORKING' : ' · AGENT TAB'}
-                </span>
-              </div>
-            )}
+
             {hudLeftPct !== null && hudTopPct !== null && (
               <div
                 className="browser-agent-hud-cursor"
@@ -1131,7 +1203,7 @@ export default function BrowserPane({
               >
                 <span className="browser-agent-hud-dot" />
                 <span className="browser-agent-hud-pill">
-                  🤖 {hudOverlay.session || hudOverlay.actor || 'agent'} · {hudOverlay.action}
+                  {(hudOverlay.session || hudOverlay.actor || 'agent').toUpperCase()} // {hudOverlay.action}
                   {hudOverlay.label ? ` "${hudOverlay.label}"` : ''}
                 </span>
               </div>

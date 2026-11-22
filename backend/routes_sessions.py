@@ -743,6 +743,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 "turn_digest": "",
                 "has_browser_lease": bool(leased_tid),
                 "browser_tab_id": leased_tid,
+                "window_count": 0,
                 "pane_count": 0,
                 "panes": [],
             })
@@ -783,6 +784,7 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "has_browser_lease": bool(leased_tid),
             "browser_tab_id": leased_tid,
             "attached": primary["attached"],
+            "window_count": len({p["window_index"] for p in sess_panes}),
             "pane_count": len(sess_panes),
             "panes": sess_panes,
         })
@@ -876,6 +878,154 @@ async def get_fleet_panes(request: Request, x_api_token: str = Header(None)) -> 
 
 class SessionCommandRequest(BaseModel):
     command: str
+
+
+TMUX_PANE_TARGET_RE = re.compile(r"^\d+(?:\.\d+)?$")
+
+
+def _format_tmux_uptime(created_epoch_str: str) -> str:
+    try:
+        created_ts = int(str(created_epoch_str or "").strip())
+    except ValueError:
+        return "ONLINE"
+    if created_ts <= 0:
+        return "ONLINE"
+    elapsed = max(0, int(time.time()) - created_ts)
+    days, rem = divmod(elapsed, 86400)
+    hours, rem = divmod(rem, 3600)
+    mins = rem // 60
+    if days > 0:
+        return f"UP {days}d {hours:02d}h {mins:02d}m"
+    if hours > 0:
+        return f"UP {hours}h {mins:02d}m"
+    return f"UP {mins}m"
+
+
+@router.get("/api/tmux/{name}/windows", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_tmux_session_windows(name: str) -> dict:
+    """Return multi-window / multi-pane topology and recent scrollback for raw tmux server sessions (#260)."""
+    if not SESSION_NAME_RE.match(name):
+        raise HTTPException(status_code=400, detail="Invalid session name.")
+
+    fmt = (
+        "#{window_index}@@@#{window_name}@@@#{window_active}@@@"
+        "#{pane_index}@@@#{pane_active}@@@#{pane_current_command}@@@"
+        "#{pane_current_path}@@@#{pane_pid}"
+    )
+    listed = subprocess.run(
+        ["tmux", "list-panes", "-s", "-t", name, "-F", fmt],
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        raise HTTPException(status_code=404, detail=f"Tmux session '{name}' not found.")
+
+    created_res = subprocess.run(
+        ["tmux", "display-message", "-p", "-t", name, "#{session_created}"],
+        capture_output=True,
+        text=True,
+    )
+    uptime_str = _format_tmux_uptime(created_res.stdout if created_res.returncode == 0 else "")
+
+    raw_rows = [ln for ln in listed.stdout.splitlines() if ln.strip()]
+    win_counts: dict[str, int] = {}
+    parsed_rows = []
+    for ln in raw_rows[:8]:
+        parts = ln.split("@@@")
+        if len(parts) < 8:
+            continue
+        win_idx, win_name, win_act, pane_idx, pane_act, cmd, cwd, pid_str = parts[:8]
+        win_counts[win_idx] = win_counts.get(win_idx, 0) + 1
+        parsed_rows.append((win_idx, win_name, win_act, pane_idx, pane_act, cmd, cwd, pid_str))
+
+    windows = []
+    for win_idx, win_name, win_act, pane_idx, pane_act, cmd, cwd, pid_str in parsed_rows:
+        target_rel = f"{win_idx}.{pane_idx}"
+        full_target = f"{name}:{target_rel}"
+        cap = subprocess.run(
+            ["tmux", "capture-pane", "-t", full_target, "-p", "-J", "-S", "-80"],
+            capture_output=True,
+            text=True,
+        )
+        raw_cap = ANSI_ESCAPE_RE.sub("", cap.stdout if cap.returncode == 0 else "")
+        cap_lines = [line.rstrip() for line in raw_cap.splitlines()]
+        while cap_lines and not cap_lines[-1]:
+            cap_lines.pop()
+
+        multi_pane_in_win = win_counts.get(win_idx, 1) > 1
+        pill_id = f"{win_idx}.{pane_idx}:{win_name}" if multi_pane_in_win else f"{win_idx}:{win_name}"
+        is_focused = win_act == "1" and pane_act == "1"
+        windows.append(
+            {
+                "id": pill_id,
+                "target": target_rel,
+                "window_index": int(win_idx) if win_idx.isdigit() else 0,
+                "pane_index": int(pane_idx) if pane_idx.isdigit() else 0,
+                "title": f"{pill_id}{'*' if is_focused else ''} ({cmd or 'shell'})",
+                "active": is_focused,
+                "cmd": cmd or "bash",
+                "cwd": cwd or "",
+                "pid": pid_str or "",
+                "lines": cap_lines[-60:],
+            }
+        )
+
+    return {
+        "session": name,
+        "uptime": uptime_str,
+        "window_count": len(win_counts),
+        "pane_count": len(windows),
+        "windows": windows,
+    }
+
+
+class TmuxWindowExecRequest(BaseModel):
+    target: str = "0.0"
+    command: str = ""
+    select_only: bool = False
+
+
+@router.post("/api/tmux/{name}/exec", dependencies=[Depends(verify_token), Depends(require_admin)])
+def exec_tmux_window_command(name: str, req: TmuxWindowExecRequest) -> dict:
+    """Focus a tmux window/pane and optionally execute a raw shell command via 2-step buffer paste (#260)."""
+    if not SESSION_NAME_RE.match(name):
+        raise HTTPException(status_code=400, detail="Invalid session name.")
+    target_rel = (req.target or "0.0").strip()
+    if not TMUX_PANE_TARGET_RE.match(target_rel):
+        raise HTTPException(status_code=400, detail="Invalid window/pane target.")
+
+    win_idx = target_rel.split(".", 1)[0]
+    full_target = f"{name}:{target_rel}"
+    try:
+        subprocess.run(
+            ["tmux", "select-window", "-t", f"{name}:{win_idx}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        if "." in target_rel:
+            subprocess.run(
+                ["tmux", "select-pane", "-t", full_target],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        cmd_text = (req.command or "").strip()
+        dispatched = False
+        if cmd_text and not req.select_only:
+            subprocess.run(["tmux", "set-buffer", "--", cmd_text], capture_output=True, text=True, check=True)
+            subprocess.run(["tmux", "paste-buffer", "-t", full_target], capture_output=True, text=True, check=True)
+            time.sleep(0.08)
+            subprocess.run(["tmux", "send-keys", "-t", full_target, "Enter"], capture_output=True, text=True, check=True)
+            dispatched = True
+        return {
+            "status": "ok",
+            "session": name,
+            "target": target_rel,
+            "dispatched": dispatched,
+        }
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Tmux window exec failed: {e.stderr or str(e)}")
 
 
 @router.post("/api/sessions/{name}/command", dependencies=[Depends(verify_token), Depends(require_admin)])

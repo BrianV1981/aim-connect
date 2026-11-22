@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Icon from './Icons';
 
 export default function ForensicsModal({
   isOpen,
@@ -12,13 +13,11 @@ export default function ForensicsModal({
   const [loadingTurns, setLoadingTurns] = useState(false);
   const [expandedTools, setExpandedTools] = useState({});
 
-  // Search state (FTS5 vs Brain Wiki)
   const [searchMode, setSearchMode] = useState('fts5'); // fts5 | brain
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
 
-  // Swarm state
   const [dispatches, setDispatches] = useState([]);
   const [selectedDispatch, setSelectedDispatch] = useState(null);
   const [dispatchTarget, setDispatchTarget] = useState('');
@@ -105,88 +104,84 @@ export default function ForensicsModal({
 
     const sender = activeSession || 'aim-connect';
     const formatted = `To: ${target} | From: ${sender} | REPLY_TO: ${sender} — ${body}`;
-    setDispatchStatus('Sending...');
+    setDispatchStatus('SENDING...');
     try {
       await onSendSessionCommand(target, formatted);
-      setDispatchStatus('✓ Delivered via 2-Step Tmux Buffer');
+      setDispatchStatus('DELIVERED VIA 2-STEP TMUX BUFFER ✓');
       setDispatchMessage('');
       setTimeout(() => setDispatchStatus(''), 2500);
-    } catch (err) {
-      setDispatchStatus('✗ Delivery failed');
+    } catch {
+      setDispatchStatus('DELIVERY FAILED');
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-card forensics-modal-card"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '820px', width: '95%', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+    <div className="modal-veil" onClick={onClose}>
+      <div className="ld-modal-card wide" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header-bar">
           <div>
-            <h3 style={{ color: '#e2e8f0', fontSize: '16px', margin: 0 }}>
-              🔬 Forensic Tool Inspector, FTS5 Search &amp; Swarm Feed
-            </h3>
-            <p style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px', fontFamily: 'Fira Code, monospace' }}>
-              Active Session: {activeSession || 'None'} • On-Demand Lazy Inspector (Zero Background Overhead)
-            </p>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: 'var(--accent)', display: 'flex' }}>
+                <Icon name="microscope" size={15} />
+              </span>
+              <span>FORENSICS, SQLITE FTS5 &amp; SWARM MATRIX</span>
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', letterSpacing: '0.14em', color: 'var(--accent)', marginTop: '3px' }}>
+              ACTIVE NODE: {(activeSession || 'NONE').toUpperCase()} // ON-DEMAND TOOL TRACE &amp; INTER-AGENT COMMS
+            </div>
           </div>
-          <button className="macro-btn" onClick={onClose} style={{ color: '#f87171' }}>
-            ✖
+          <button type="button" className="ghost-btn" style={{ padding: '0 6px' }} onClick={onClose}>
+            <Icon name="close" size={14} />
           </button>
         </div>
 
-        <div className="token-grabber-tabs" style={{ borderBottom: '1px solid #1c305c', paddingBottom: '8px' }}>
+        <div className="modal-tabs-rail">
           <button
             type="button"
-            className={`fleet-filter-pill ${activeTab === 'turns' ? 'active' : ''}`}
-            style={{ padding: '5px 12px', fontSize: '12px' }}
+            className={`modal-tab-btn ${activeTab === 'turns' ? 'active' : ''}`}
             onClick={() => setActiveTab('turns')}
           >
-            🛠️ Turn &amp; Tool Inspector ({turnsData.tool_call_count || 0})
+            1. TURN &amp; TOOL INSPECTOR ({turnsData.tool_call_count || 0})
           </button>
           <button
             type="button"
-            className={`fleet-filter-pill ${activeTab === 'search' ? 'active' : ''}`}
-            style={{ padding: '5px 12px', fontSize: '12px' }}
+            className={`modal-tab-btn ${activeTab === 'search' ? 'active' : ''}`}
             onClick={() => setActiveTab('search')}
           >
-            🔎 FTS5 &amp; Brain Search
+            2. SQLITE FTS5 &amp; BRAIN SEARCH
           </button>
           <button
             type="button"
-            className={`fleet-filter-pill ${activeTab === 'swarm' ? 'active' : ''}`}
-            style={{ padding: '5px 12px', fontSize: '12px' }}
+            className={`modal-tab-btn ${activeTab === 'swarm' ? 'active' : ''}`}
             onClick={() => setActiveTab('swarm')}
           >
-            📡 Swarm (aim-communicate)
+            3. SWARM (AIM-COMMUNICATE)
           </button>
         </div>
 
-        {/* TAB 1: Lazy-Loaded Turn & Tool-Call Inspector */}
-        {activeTab === 'turns' && (
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontFamily: 'Fira Code, monospace', fontSize: '11px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Source: {turnsData.source || 'None'}
-              </span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button className="macro-btn" style={{ padding: '3px 8px', fontSize: '11px' }} onClick={() => expandAllTools(true)}>
-                  ➕ Expand All Tools
-                </button>
-                <button className="macro-btn" style={{ padding: '3px 8px', fontSize: '11px' }} onClick={() => expandAllTools(false)}>
-                  ➖ Collapse All
-                </button>
-                <button className="macro-btn action" style={{ padding: '3px 8px', fontSize: '11px' }} onClick={fetchSessionForensics}>
-                  🔄 Refresh
-                </button>
+        <div className="modal-body-scroll">
+          {activeTab === 'turns' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  SOURCE: {turnsData.source || 'NONE'}
+                </span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button type="button" className="subbar-util-btn" onClick={() => expandAllTools(true)}>
+                    EXPAND ALL
+                  </button>
+                  <button type="button" className="subbar-util-btn" onClick={() => expandAllTools(false)}>
+                    COLLAPSE ALL
+                  </button>
+                  <button type="button" className="subbar-util-btn active" onClick={fetchSessionForensics}>
+                    <Icon name="refresh" size={12} />
+                    <span>REFRESH</span>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="forensics-turn-list">
               {!activeSession ? (
                 <div className="fleet-empty-state">Select a tmux session first to inspect its turns and tool calls.</div>
               ) : loadingTurns ? (
@@ -195,57 +190,90 @@ export default function ForensicsModal({
                 <div className="fleet-empty-state">No structured turns or collapsed tool calls found for this session.</div>
               ) : (
                 turnsData.turns.map((turn, tIdx) => (
-                  <div key={tIdx} className={`forensic-turn-card role-${turn.role}`}>
-                    <div className="forensic-turn-header">
-                      <span className="fleet-vessel-badge">
-                        {turn.role === 'user' ? '👤 OPERATOR / DISPATCH' : '🤖 AGENT TURN'} #{turn.step_index ?? tIdx + 1}
+                  <div key={tIdx} className="settings-group-card" style={{ gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <span className="settings-group-title">
+                        {turn.role === 'user' ? 'OPERATOR // DISPATCH' : 'J.O.S.H.U.A. // AGENT TURN'} #{turn.step_index ?? tIdx + 1}
                       </span>
                       {turn.created_at && (
-                        <span style={{ fontFamily: 'Fira Code, monospace', fontSize: '10px', color: '#64748b' }}>
-                          {turn.created_at}
-                        </span>
+                        <span className="mono-kbd">{turn.created_at}</span>
                       )}
                     </div>
 
                     {turn.content && (
-                      <pre className="forensic-turn-content">{turn.content}</pre>
+                      <pre
+                        style={{
+                          margin: 0,
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11.5px',
+                          color: 'var(--text-primary)',
+                          whiteSpace: 'pre-wrap',
+                          overflowWrap: 'anywhere',
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        {turn.content}
+                      </pre>
                     )}
 
                     {(turn.tool_calls || []).length > 0 && (
-                      <div className="forensic-tool-list">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         {turn.tool_calls.map((tc, tcIdx) => {
                           const key = `${tIdx}:${tc.id || tcIdx}`;
-                          const isExpanded = !!expandedTools[key];
+                          const isExpanded = Boolean(expandedTools[key]);
                           return (
-                            <div key={key} className="forensic-tool-block">
+                            <div
+                              key={key}
+                              style={{
+                                padding: '9px 11px',
+                                borderRadius: '9px',
+                                background: 'var(--bg-term)',
+                                border: '1px solid var(--border-hairline)',
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '11px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px',
+                              }}
+                            >
                               <div
-                                className="forensic-tool-summary"
+                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
                                 onClick={() => toggleToolExpand(key)}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>
-                                    {isExpanded ? '▼' : '▶'} ● {tc.name}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: 1 }}>
+                                  <span style={{ color: 'var(--accent)', fontWeight: 700, flexShrink: 0 }}>
+                                    {isExpanded ? '▼' : '▶'} {tc.name}
                                   </span>
-                                  <span className="forensic-tool-args" title={tc.args}>
+                                  <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     ({tc.args})
                                   </span>
                                 </div>
-                                <span className="fleet-count-pill">{tc.status || 'DONE'}</span>
+                                <span className="mono-kbd">{tc.status || 'DONE'}</span>
                               </div>
                               {isExpanded && (
-                                <div className="forensic-tool-details">
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                    <span style={{ fontSize: '10px', color: '#94a3b8' }}>Tool Arguments &amp; Output:</span>
+                                <div style={{ paddingTop: '6px', borderTop: '1px dashed var(--border-hairline)', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>ARGUMENTS &amp; OUTPUT</span>
                                     <button
                                       type="button"
-                                      className="macro-btn"
-                                      style={{ padding: '2px 6px', fontSize: '10px' }}
+                                      className="subbar-util-btn"
+                                      style={{ height: '22px' }}
                                       onClick={() => navigator.clipboard.writeText(`${tc.name}(${tc.args})\n\n${tc.output || ''}`)}
                                     >
-                                      📋 Copy
+                                      <Icon name="copyText" size={11} />
+                                      <span>COPY</span>
                                     </button>
                                   </div>
-                                  <pre className="forensic-tool-output">
+                                  <pre
+                                    style={{
+                                      margin: 0,
+                                      maxHeight: '220px',
+                                      overflowY: 'auto',
+                                      whiteSpace: 'pre-wrap',
+                                      overflowWrap: 'anywhere',
+                                      color: 'var(--text-secondary)',
+                                    }}
+                                  >
                                     {tc.output || '(No stdout/stderr captured in transcript line)'}
                                   </pre>
                                 </div>
@@ -258,162 +286,181 @@ export default function ForensicsModal({
                   </div>
                 ))
               )}
-            </div>
-          </div>
-        )}
+            </>
+          )}
 
-        {/* TAB 2: SQLite WAL FTS5 & Deduplicated Brain Search */}
-        {activeTab === 'search' && (
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: '10px' }}>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                type="button"
-                className={`fleet-filter-pill ${searchMode === 'fts5' ? 'active' : ''}`}
-                style={{ padding: '4px 10px', fontSize: '11px' }}
-                onClick={() => {
-                  setSearchMode('fts5');
-                  setSearchResults([]);
-                }}
-              >
-                🗄️ Cross-Fleet SQLite FTS5 (Transcripts &amp; Vault)
-              </button>
-              <button
-                type="button"
-                className={`fleet-filter-pill ${searchMode === 'brain' ? 'active' : ''}`}
-                style={{ padding: '4px 10px', fontSize: '11px' }}
-                onClick={() => {
-                  setSearchMode('brain');
-                  setSearchResults([]);
-                }}
-              >
-                🧠 Session Brain Search (Deduplicated memory-wiki/ + HANDOFF.md)
-              </button>
-            </div>
-
-            <form onSubmit={handleSearch} style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                className="modal-input"
-                style={{ marginBottom: 0, flex: 1 }}
-                placeholder={
-                  searchMode === 'fts5'
-                    ? 'Search across all agent transcripts & tool calls (SQLite FTS5)...'
-                    : 'Search memory-wiki/, HANDOFF.md, and AGENTS.md (per-file deduplicated)...'
-                }
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button type="submit" className="macro-btn action" disabled={searching}>
-                {searching ? 'Searching...' : '🔎 Search'}
-              </button>
-            </form>
-
-            <div className="forensics-turn-list">
-              {searchResults.length === 0 ? (
-                <div className="fleet-empty-state">
-                  {searching ? 'Querying index...' : 'Enter a query above to search.'}
-                </div>
-              ) : (
-                searchResults.map((hit, idx) => (
-                  <div key={idx} className="forensic-turn-card">
-                    <div className="forensic-turn-header">
-                      <span className="fleet-vessel-badge">
-                        {searchMode === 'fts5' ? `📜 ${hit.session_name || 'transcript'}` : `📄 ${hit.rel_path}`}
-                      </span>
-                      <span style={{ fontFamily: 'Fira Code, monospace', fontSize: '10px', color: '#94a3b8' }}>
-                        {searchMode === 'fts5'
-                          ? `${hit.role || ''}${hit.tool_names ? ` • Tools: ${hit.tool_names}` : ''}`
-                          : `Score: ${hit.score} • ${hit.title}`}
-                      </span>
-                    </div>
-                    <pre className="forensic-turn-content">{hit.snippet}</pre>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: Live aim-communicate Swarm Feed & Dispatcher */}
-        {activeTab === 'swarm' && (
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: '10px' }}>
-            <form onSubmit={handleSendSwarmDispatch} className="swarm-composer-box">
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontFamily: 'Fira Code, monospace', fontSize: '11px', color: '#60a5fa' }}>
-                  📡 Dispatch To:
-                </span>
-                <select
-                  className="session-select"
-                  value={dispatchTarget || activeSession}
-                  onChange={(e) => setDispatchTarget(e.target.value)}
+          {activeTab === 'search' && (
+            <>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`subbar-util-btn ${searchMode === 'fts5' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSearchMode('fts5');
+                    setSearchResults([]);
+                  }}
                 >
-                  <option value="">-- Target Session --</option>
-                  {sessions.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                {dispatchStatus && (
-                  <span style={{ fontFamily: 'Fira Code, monospace', fontSize: '11px', color: '#34d399' }}>
-                    {dispatchStatus}
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                <input
-                  type="text"
-                  className="modal-input"
-                  style={{ marginBottom: 0, flex: 1 }}
-                  placeholder="Send verified aim-communicate message via 2-step tmux buffer..."
-                  value={dispatchMessage}
-                  onChange={(e) => setDispatchMessage(e.target.value)}
-                />
-                <button type="submit" className="macro-btn action">
-                  📤 Send
+                  CROSS-FLEET SQLITE FTS5
+                </button>
+                <button
+                  type="button"
+                  className={`subbar-util-btn ${searchMode === 'brain' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSearchMode('brain');
+                    setSearchResults([]);
+                  }}
+                >
+                  DEDUPED SESSION BRAIN
                 </button>
               </div>
-            </form>
 
-            <div className="forensics-turn-list">
-              {dispatches.length === 0 ? (
-                <div className="fleet-empty-state">No chalkboard dispatches found on disk.</div>
-              ) : (
-                dispatches.map((d) => {
-                  const isOpenDispatch = selectedDispatch === d.id;
-                  return (
-                    <div
-                      key={d.id}
-                      className="forensic-turn-card"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => setSelectedDispatch(isOpenDispatch ? null : d.id)}
-                    >
-                      <div className="forensic-turn-header">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span className="fleet-vessel-badge vessel-agy">From: {d.sender}</span>
-                          <span style={{ color: '#94a3b8', fontSize: '11px' }}>→</span>
-                          <span className="fleet-vessel-badge vessel-opencode">To: {d.recipient}</span>
-                          <span className="fleet-branch-badge">REPLY_TO: {d.reply_to}</span>
-                        </div>
-                        <span style={{ fontFamily: 'Fira Code, monospace', fontSize: '10px', color: '#64748b' }}>
-                          {d.filename}
+              <form onSubmit={handleSearch} style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  className="ld-text-input"
+                  style={{ flex: 1 }}
+                  placeholder={
+                    searchMode === 'fts5'
+                      ? 'Query transcripts & tool outputs across fleet (SQLite FTS5)...'
+                      : 'Query memory-wiki/, HANDOFF.md, and AGENTS.md (deduplicated)...'
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <button type="submit" className="neon-cta-btn" disabled={searching}>
+                  <Icon name="search" size={13} />
+                  <span>{searching ? 'QUERYING...' : 'SEARCH'}</span>
+                </button>
+              </form>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {searchResults.length === 0 ? (
+                  <div className="fleet-empty-state">
+                    {searching ? 'Querying index...' : 'Enter a query above to search transcripts or session brain.'}
+                  </div>
+                ) : (
+                  searchResults.map((hit, idx) => (
+                    <div key={idx} className="settings-group-card" style={{ gap: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: '10.5px' }}>
+                        <span style={{ color: 'var(--accent)', fontWeight: 700 }}>
+                          {searchMode === 'fts5' ? hit.session_name || 'transcript' : hit.rel_path}
+                        </span>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {searchMode === 'fts5'
+                            ? `${hit.role || ''}${hit.tool_names ? ` · ${hit.tool_names}` : ''}`
+                            : `SCORE ${hit.score} · ${hit.title}`}
                         </span>
                       </div>
-                      <div style={{ fontSize: '12px', color: '#cbd5e1', fontFamily: 'Fira Code, monospace' }}>
-                        {d.preview}
-                      </div>
-                      {isOpenDispatch && (
-                        <pre className="forensic-tool-output" style={{ marginTop: '8px' }}>
-                          {d.content}
-                        </pre>
-                      )}
+                      <pre
+                        style={{
+                          margin: 0,
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11.5px',
+                          color: 'var(--text-primary)',
+                          whiteSpace: 'pre-wrap',
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {hit.snippet}
+                      </pre>
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
+          {activeTab === 'swarm' && (
+            <>
+              <form onSubmit={handleSendSwarmDispatch} className="settings-group-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <span className="settings-group-title">2-STEP TMUX BUFFER SWARM DISPATCHER (AIM-COMMUNICATE)</span>
+                  {dispatchStatus && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--accent)' }}>
+                      {dispatchStatus}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr auto', gap: '8px' }}>
+                  <select
+                    className="ld-select"
+                    value={dispatchTarget || activeSession}
+                    onChange={(e) => setDispatchTarget(e.target.value)}
+                  >
+                    <option value="">-- Target Node --</option>
+                    {sessions.map((s) => (
+                      <option key={s} value={s}>
+                        -&gt; {s}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    className="ld-text-input"
+                    placeholder="Transmit verified 1-hop agent directive (set-buffer + Enter)..."
+                    value={dispatchMessage}
+                    onChange={(e) => setDispatchMessage(e.target.value)}
+                  />
+                  <button type="submit" className="neon-cta-btn" style={{ height: '34px' }}>
+                    <Icon name="send" size={13} />
+                    <span>DISPATCH</span>
+                  </button>
+                </div>
+              </form>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {dispatches.length === 0 ? (
+                  <div className="fleet-empty-state">No chalkboard dispatches found on disk.</div>
+                ) : (
+                  dispatches.map((d) => {
+                    const isOpenDispatch = selectedDispatch === d.id;
+                    return (
+                      <div
+                        key={d.id}
+                        className="settings-group-card"
+                        style={{ gap: '6px', cursor: 'pointer' }}
+                        onClick={() => setSelectedDispatch(isOpenDispatch ? null : d.id)}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontFamily: 'var(--font-mono)', fontSize: '10.5px' }}>
+                          <span>
+                            <strong style={{ color: 'var(--accent)' }}>{d.sender}</strong>
+                            {' -> '}
+                            <strong style={{ color: 'var(--accent-secondary)' }}>{d.recipient}</strong>
+                            <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>
+                              (REPLY_TO: {d.reply_to})
+                            </span>
+                          </span>
+                          <span className="mono-kbd">{d.filename}</span>
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                          {d.preview}
+                        </div>
+                        {isOpenDispatch && (
+                          <pre
+                            style={{
+                              margin: '4px 0 0',
+                              padding: '10px',
+                              borderRadius: '8px',
+                              background: 'var(--bg-term)',
+                              border: '1px solid var(--border-hairline)',
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '11px',
+                              color: 'var(--text-secondary)',
+                              whiteSpace: 'pre-wrap',
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {d.content}
+                          </pre>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

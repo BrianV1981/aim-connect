@@ -22,6 +22,35 @@ const VESSEL_LABELS = {
   shell: 'TMUX',
 };
 
+function deriveTaskChip(item, isRawTmux, effectiveTier, isCompacted, histCount) {
+  if (isRawTmux) {
+    const wCnt = item.window_count || 1;
+    const pCnt = item.pane_count || 1;
+    return {
+      kind: 'server',
+      label: wCnt > 1 ? `${wCnt}W · ${pCnt}P DAEMONS` : `${pCnt}P DAEMON`,
+    };
+  }
+  if (item.status === 'WAITING') {
+    return { kind: 'gate', label: 'GATE HOLD [y/n]' };
+  }
+  if (item.status === 'THINKING') {
+    return item.has_browser_lease
+      ? { kind: 'mapping', label: 'ACTIVE · WEB' }
+      : { kind: 'typing', label: 'THINKING' };
+  }
+  if (isCompacted) {
+    return { kind: 'gate', label: 'HANDOFF NOW' };
+  }
+  if (effectiveTier === 'critical') {
+    return { kind: 'gate', label: item.vessel === 'agy' ? '512K SOON' : '30% LIMIT' };
+  }
+  if (!item.has_browser_lease) {
+    return { kind: 'cli', label: histCount > 0 ? `CLI · ${histCount} SESS` : 'CLI · NO WEB' };
+  }
+  return { kind: 'idle', label: histCount > 0 ? `IDLE · ${histCount} SESS` : 'LEASE HELD' };
+}
+
 export default function FleetSidebar({
   isOpen,
   onClose,
@@ -29,6 +58,7 @@ export default function FleetSidebar({
   fleet = [],
   activeSession = '',
   unreadSessions = [],
+  historyCounts = {},
   onSelectSession,
   onCreateSession,
   onKillSession,
@@ -63,6 +93,7 @@ export default function FleetSidebar({
           preview: '',
           has_browser_lease: false,
           browser_tab_id: '',
+          window_count: 1,
           pane_count: 1,
         }
       );
@@ -121,12 +152,12 @@ export default function FleetSidebar({
     e.stopPropagation();
     if (!onSendSessionCommand) return;
     const key = `${sessionName}:${label}`;
-    setCommandFeedback((prev) => ({ ...prev, [key]: 'Sending...' }));
+    setCommandFeedback((prev) => ({ ...prev, [key]: 'SENDING...' }));
     try {
       await onSendSessionCommand(sessionName, command);
-      setCommandFeedback((prev) => ({ ...prev, [key]: '✓ Sent' }));
+      setCommandFeedback((prev) => ({ ...prev, [key]: 'SENT ✓' }));
     } catch {
-      setCommandFeedback((prev) => ({ ...prev, [key]: '✗ Failed' }));
+      setCommandFeedback((prev) => ({ ...prev, [key]: 'FAILED' }));
     }
     setTimeout(() => {
       setCommandFeedback((prev) => {
@@ -147,16 +178,11 @@ export default function FleetSidebar({
             <Icon name="cpu" size={14} />
             <span>FLEET // {String(counts.total).padStart(2, '0')} NODES</span>
           </span>
-          {counts.waiting > 0 && (
-            <span className="fleet-waiting-pill" title="Sessions waiting for user approval or input">
-              ✋ {counts.waiting}
-            </span>
-          )}
         </div>
         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
           <button
             type="button"
-            className="subbar-util-btn"
+            className="ghost-btn"
             style={{ height: '24px', padding: '0 8px' }}
             onClick={onCreateSession}
             title="Spawn new isolated tmux session"
@@ -169,9 +195,9 @@ export default function FleetSidebar({
             className="ghost-btn mobile-only-close"
             style={{ height: '24px', padding: '0 6px' }}
             onClick={onClose}
-            title="Collapse Fleet Sidebar"
+            title="Close Fleet Sidebar"
           >
-            ◀
+            <Icon name="close" size={13} />
           </button>
         </div>
       </div>
@@ -254,6 +280,13 @@ export default function FleetSidebar({
             const agentColor = getAgentColor(item.session_name);
             const wikiKey = `${item.session_name}:wiki`;
             const handoffKey = `${item.session_name}:handoff`;
+            const histCnt = Number(historyCounts[item.session_name] || 0);
+            const taskChip = deriveTaskChip(item, isRawTmux, effectiveTier, isCompacted, histCnt);
+            const branchDisplay =
+              item.branch ||
+              (isRawTmux
+                ? `${item.window_count || 1} windows · ${item.pane_count || 1}p`
+                : 'workspace');
 
             return (
               <div
@@ -285,11 +318,6 @@ export default function FleetSidebar({
                     >
                       {item.session_name}
                     </span>
-                    {item.status === 'WAITING' && (
-                      <span className="fleet-waiting-badge" title="Agent paused waiting for permission or answer">
-                        GATE
-                      </span>
-                    )}
                     {isUnread && (
                       <span className="fleet-unread-badge" title="Completed turn while in background">
                         NEW
@@ -304,10 +332,12 @@ export default function FleetSidebar({
                           color: 'var(--accent)',
                           borderColor: 'rgba(var(--accent-rgb), 0.45)',
                           background: 'rgba(var(--accent-rgb), 0.1)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
                         }}
                         title="Leased Co-Pilot Browser Tab Open"
                       >
-                        🌐
+                        <Icon name="globe" size={11} />
                       </span>
                     )}
                     <span className={`fleet-vessel-badge vessel-${item.vessel || 'shell'}`}>
@@ -328,23 +358,17 @@ export default function FleetSidebar({
                   </div>
                 </div>
 
-                {(item.branch || item.pane_count > 1) && (
-                  <div className="fleet-card-meta">
-                    {item.branch && (
-                      <span
-                        className={`fleet-branch-badge ${item.is_worktree ? 'worktree' : ''}`}
-                        title={item.path || item.branch}
-                      >
-                        <Icon name="gitBranch" size={11} /> {item.branch}
-                      </span>
-                    )}
-                    {item.pane_count > 1 && (
-                      <span className="fleet-pane-badge" title={`${item.pane_count} tmux panes`}>
-                        {item.pane_count}p
-                      </span>
-                    )}
-                  </div>
-                )}
+                <div className="card-branch-row">
+                  <span
+                    className={`fleet-branch-badge ${item.is_worktree ? 'worktree' : ''}`}
+                    style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={item.path || branchDisplay}
+                  >
+                    <Icon name="gitBranch" size={11} /> {branchDisplay}
+                    {item.pane_count > 1 && !isRawTmux ? ` · ${item.pane_count}p` : ''}
+                  </span>
+                  <span className={`task-mode-chip ${taskChip.kind}`}>{taskChip.label}</span>
+                </div>
 
                 {isRawTmux ? (
                   <div className="fleet-context-section">

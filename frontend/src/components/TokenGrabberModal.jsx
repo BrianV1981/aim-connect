@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-
-const TYPE_META = {
-  url: { icon: '🌐', label: 'URL' },
-  path: { icon: '📄', label: 'Path' },
-  ip: { icon: '🖧', label: 'IP/Port' },
-  sha: { icon: '🔖', label: 'Git SHA' },
-};
+import Icon from './Icons';
 
 export default function TokenGrabberModal({ isOpen, onClose, activeSession }) {
   const [tokens, setTokens] = useState([]);
@@ -28,7 +22,7 @@ export default function TokenGrabberModal({ isOpen, onClose, activeSession }) {
       } else {
         setTokens(Array.isArray(data.tokens) ? data.tokens : []);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to fetch scrollback tokens');
       setTokens([]);
     } finally {
@@ -76,116 +70,149 @@ export default function TokenGrabberModal({ isOpen, onClose, activeSession }) {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-veil" onClick={onClose}>
       <div
-        className="modal-card token-grabber-modal"
+        className="ld-modal-card wide"
+        style={{ width: 'min(680px, 95%)' }}
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '680px', width: '94%' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div className="modal-header-bar">
           <div>
-            <h3 style={{ color: '#e2e8f0', fontSize: '16px', margin: 0 }}>
-              🔗 Scrollback Token &amp; URL Grabber
-            </h3>
-            <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px', fontFamily: 'Fira Code, monospace' }}>
-              Session: {activeSession || 'None selected'} (last 2,000 lines)
-            </p>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: 'var(--accent)', display: 'flex' }}>
+                <Icon name="link" size={15} />
+              </span>
+              <span>SCROLLBACK TOKEN &amp; URL GRABBER</span>
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', letterSpacing: '0.14em', color: 'var(--accent)', marginTop: '3px' }}>
+              LAST 2,000 LINES OF {(activeSession || 'NONE').toUpperCase()} // AUTO-MASKS QUERY SECRETS IN PREVIEW
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button className="macro-btn" onClick={fetchTokens} disabled={loading || !activeSession}>
-              🔄 Refresh
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              type="button"
+              className="subbar-util-btn"
+              onClick={fetchTokens}
+              disabled={loading || !activeSession}
+              title="Re-scan terminal scrollback"
+            >
+              <Icon name="refresh" size={12} />
+              <span>REFRESH</span>
             </button>
-            <button className="macro-btn" onClick={onClose} style={{ color: '#f87171' }}>
-              ✖
+            <button type="button" className="ghost-btn" style={{ padding: '0 6px' }} onClick={onClose}>
+              <Icon name="close" size={14} />
             </button>
           </div>
         </div>
 
-        <input
-          type="text"
-          className="modal-input"
-          placeholder="Filter extracted URLs, file paths, IPs, or Git SHAs..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          autoFocus
-        />
-
-        <div className="token-grabber-tabs">
+        <div className="modal-tabs-rail">
           {[
-            { id: 'all', label: `All (${counts.all})` },
-            { id: 'url', label: `🌐 URLs (${counts.url})` },
-            { id: 'path', label: `📄 Paths (${counts.path})` },
-            { id: 'ip', label: `🖧 IPs (${counts.ip})` },
-            { id: 'sha', label: `🔖 SHAs (${counts.sha})` },
-          ].map((tab) => (
+            ['all', `ALL (${counts.all})`],
+            ['url', `URLS (${counts.url})`],
+            ['path', `PATHS (${counts.path})`],
+            ['ip', `IPS/PORTS (${counts.ip})`],
+            ['sha', `GIT SHAS (${counts.sha})`],
+          ].map(([id, label]) => (
             <button
-              key={tab.id}
+              key={id}
               type="button"
-              className={`fleet-filter-pill ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-              style={{ padding: '4px 10px', fontSize: '11px' }}
+              className={`modal-tab-btn ${activeTab === id ? 'active' : ''}`}
+              onClick={() => setActiveTab(id)}
             >
-              {tab.label}
+              {label}
             </button>
           ))}
         </div>
 
-        <div className="token-grabber-list">
-          {!activeSession ? (
-            <div className="fleet-empty-state">Select an active tmux session first.</div>
-          ) : loading ? (
-            <div className="fleet-empty-state">Scanning terminal scrollback...</div>
-          ) : error ? (
-            <div className="fleet-empty-state" style={{ color: '#f87171' }}>{error}</div>
-          ) : filteredTokens.length === 0 ? (
-            <div className="fleet-empty-state">No matching tokens found in scrollback.</div>
-          ) : (
-            filteredTokens.map((item, idx) => {
-              const meta = TYPE_META[item.type] || { icon: '🔹', label: item.type };
-              const key = `${item.type}:${idx}`;
-              const isCopied = copiedKey === key;
+        <div className="modal-body-scroll">
+          <input
+            type="text"
+            className="ld-text-input"
+            placeholder="Filter extracted URLs, file paths, IPs, or Git SHAs..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoFocus
+          />
 
-              return (
-                <div key={key} className="token-grabber-item">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                    <span className="fleet-vessel-badge" title={meta.label}>
-                      {meta.icon} {meta.label}
-                    </span>
-                    <span className="token-grabber-value" title={item.display_value}>
-                      {item.display_value}
-                    </span>
-                    {item.redacted && (
-                      <span className="token-redacted-badge" title="Query secret masked in preview; Copy still copies full URL">
-                        🔒 MASKED
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                    {item.type === 'url' && (
-                      <a
-                        href={item.value}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="macro-btn"
-                        style={{ textDecoration: 'none', padding: '4px 8px', fontSize: '11px' }}
-                        title="Open URL in new tab"
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+            {!activeSession ? (
+              <div className="fleet-empty-state">Select an active tmux session first.</div>
+            ) : loading ? (
+              <div className="fleet-empty-state">Scanning terminal scrollback...</div>
+            ) : error ? (
+              <div className="fleet-empty-state" style={{ color: '#f87171' }}>{error}</div>
+            ) : filteredTokens.length === 0 ? (
+              <div className="fleet-empty-state">No matching tokens found in scrollback.</div>
+            ) : (
+              filteredTokens.map((item, idx) => {
+                const key = `${item.type}:${idx}`;
+                const isCopied = copiedKey === key;
+
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      padding: '9px 11px',
+                      borderRadius: '9px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-hairline)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                      <span className="mono-kbd">{(item.type || 'TOK').toUpperCase()}</span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11.5px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={item.display_value}
                       >
-                        ↗ Open
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      className="macro-btn action"
-                      style={{ padding: '4px 10px', fontSize: '11px' }}
-                      onClick={() => handleCopy(item, idx)}
-                    >
-                      {isCopied ? '✓ Copied' : '📋 Copy'}
-                    </button>
+                        {item.display_value}
+                      </span>
+                      {item.redacted && (
+                        <span
+                          className="card-new-badge"
+                          title="Query secret masked in preview; Copy copies full URL"
+                        >
+                          MASKED
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                      {item.type === 'url' && (
+                        <a
+                          href={item.value}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="subbar-util-btn"
+                          style={{ textDecoration: 'none' }}
+                          title="Open URL in new tab"
+                        >
+                          <span>OPEN</span>
+                          <Icon name="externalLink" size={11} />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        className={`subbar-util-btn ${isCopied ? 'active' : ''}`}
+                        onClick={() => handleCopy(item, idx)}
+                      >
+                        <Icon name={isCopied ? 'check' : 'copyText'} size={12} />
+                        <span>{isCopied ? 'COPIED' : 'COPY'}</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
     </div>
