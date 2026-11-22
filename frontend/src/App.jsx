@@ -563,6 +563,12 @@ function App() {
 
   const [showMacroLibrary, setShowMacroLibrary] = useState(false);
   const [macroReturnToVoice, setMacroReturnToVoice] = useState(false);
+  const [showBoltPopover, setShowBoltPopover] = useState(false);
+  const [showKeybar, setShowKeybar] = useState(
+    () => localStorage.getItem('aim-show-keybar') === 'true'
+  );
+  const [composerText, setComposerText] = useState('');
+  const [stagedAttachments, setStagedAttachments] = useState({});
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
 
@@ -1852,6 +1858,38 @@ function App() {
     }
   };
 
+  const attachToActiveComposer = useCallback((attachment) => {
+    if (!attachment) return;
+    const target = activeSessionRef.current || activeSession || 'default';
+    setStagedAttachments((prev) => ({
+      ...prev,
+      [target]: [...(prev[target] || []), attachment],
+    }));
+  }, [activeSession]);
+
+  const removeStagedAttachment = useCallback((sessionKey, attId) => {
+    setStagedAttachments((prev) => ({
+      ...prev,
+      [sessionKey]: (prev[sessionKey] || []).filter((item) => item.id !== attId),
+    }));
+  }, []);
+
+  const handleComposerSubmit = (e) => {
+    e.preventDefault();
+    const target = activeSessionRef.current || activeSession;
+    if (!target) return;
+    const attachments = stagedAttachments[target] || [];
+    const attRefs = attachments.map((a) => `@${a.path}`).join(' ');
+    const combined = [composerText.trim(), attRefs].filter(Boolean).join(' ');
+    if (!combined) return;
+    pasteToTerminal(combined);
+    setTimeout(() => sendCommand('\r'), 90);
+    setComposerText('');
+    if (attachments.length > 0) {
+      setStagedAttachments((prev) => ({ ...prev, [target]: [] }));
+    }
+  };
+
   const openSettingsModal = (tab = 'appearance') => {
     setSettingsInitialTab(tab);
     setShowSettings(true);
@@ -2223,7 +2261,7 @@ function App() {
             );
           })()}
 
-          {activeSession && !showKeyboard && (
+          {activeSession && showKeybar && !showKeyboard && (
             <div className="commander-toolbar">
               <div className="macro-group">
                 {macroLibrary
@@ -2250,7 +2288,7 @@ function App() {
                     setMacroReturnToVoice(false);
                     setShowMacroLibrary(true);
                   }}
-                  title="Open Macro Library"
+                  title="Open Macro Studio"
                 >
                   <Icon name="settings" size={13} />
                 </button>
@@ -2427,6 +2465,207 @@ function App() {
               />
             )}
           </div>
+
+          {activeSession && (() => {
+            const isControlKeyMacro = (m) =>
+              m.id.startsWith('pre-') || m.id === '1';
+            const pinnedKeys = macroLibrary.filter((m) => m.isPinned && isControlKeyMacro(m));
+            const pinnedCmds = macroLibrary.filter((m) => m.isPinned && !isControlKeyMacro(m));
+            const curStaged = stagedAttachments[activeSession] || [];
+
+            return (
+              <div className="ld-composer-shell">
+                {showBoltPopover && (
+                  <div className="quick-actions-popover" onClick={(e) => e.stopPropagation()}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        paddingBottom: '6px',
+                        borderBottom: '1px solid var(--border-hairline)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          letterSpacing: '0.14em',
+                          color: 'var(--accent)',
+                        }}
+                      >
+                        MACROS &amp; CONTROL KEYS
+                      </span>
+                      <button
+                        type="button"
+                        className={`subbar-util-btn ${showKeybar ? 'active' : ''}`}
+                        onClick={() => {
+                          setShowKeybar((prev) => {
+                            const next = !prev;
+                            localStorage.setItem('aim-show-keybar', String(next));
+                            return next;
+                          });
+                        }}
+                      >
+                        <Icon name="keyboard" size={12} />
+                        <span>KEYBAR: {showKeybar ? 'ON' : 'OFF'}</span>
+                      </button>
+                    </div>
+
+                    {pinnedKeys.length > 0 && (
+                      <>
+                        <div
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '9.5px',
+                            color: 'var(--text-muted)',
+                            letterSpacing: '0.1em',
+                            marginTop: '2px',
+                          }}
+                        >
+                          TERMINAL CONTROL PAD ({pinnedKeys.length})
+                        </div>
+                        <div className="ctrl-key-grid">
+                          {pinnedKeys.map((k) => (
+                            <button
+                              key={k.id}
+                              type="button"
+                              className="ctrl-mini-key"
+                              onClick={() => {
+                                sendCommand(k.cmd);
+                                setShowBoltPopover(false);
+                              }}
+                              title={k.voiceTrigger ? `${k.label} · mic: "${k.voiceTrigger}"` : k.label}
+                            >
+                              {k.label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {pinnedCmds.length > 0 && (
+                      <>
+                        <div
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '9.5px',
+                            color: 'var(--text-muted)',
+                            letterSpacing: '0.1em',
+                            marginTop: '4px',
+                          }}
+                        >
+                          PINNED COMMANDS &amp; SKILLS ({pinnedCmds.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          {pinnedCmds.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              className="bolt-cmd-item"
+                              onClick={() => {
+                                sendCommand(m.cmd);
+                                setShowBoltPopover(false);
+                              }}
+                            >
+                              <span>
+                                {m.isServer ? '☁ ' : ''}
+                                {m.label}
+                              </span>
+                              <span className="mono-kbd">
+                                {String(m.cmd || '').replace(/\r/g, '\\r')}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    <button
+                      type="button"
+                      className="macro-manage-footer-btn"
+                      onClick={() => {
+                        setShowBoltPopover(false);
+                        setMacroReturnToVoice(false);
+                        setShowMacroLibrary(true);
+                      }}
+                    >
+                      <Icon name="settings" size={13} />
+                      <span>MACRO STUDIO // CREATE, EDIT &amp; SYNC ({macroLibrary.length})</span>
+                    </button>
+                  </div>
+                )}
+
+                {curStaged.length > 0 && (
+                  <div className="staged-attachments-row">
+                    {curStaged.map((att) => (
+                      <span key={att.id} className="staged-shot-chip" title={att.path}>
+                        <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
+                          <Icon name="camera" size={12} />
+                        </span>
+                        <span>{att.filename}</span>
+                        {att.dims && <span style={{ color: 'var(--text-muted)' }}>{att.dims}</span>}
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          style={{ height: '18px', padding: '0 4px' }}
+                          onClick={() => removeStagedAttachment(activeSession, att.id)}
+                          title="Remove attached file"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <form className="ld-composer-row" onSubmit={handleComposerSubmit}>
+                  <button
+                    type="button"
+                    className={`ld-bolt-btn ${showBoltPopover ? 'active' : ''}`}
+                    onClick={() => setShowBoltPopover((prev) => !prev)}
+                    title="Terminal Control Pad, Pinned Macros & Macro Studio"
+                  >
+                    <Icon name="zap" size={15} />
+                  </button>
+                  <div className="ld-input-box">
+                    <input
+                      type="text"
+                      className="ld-prompt-field"
+                      placeholder={
+                        isListening
+                          ? `Listening on mic — speak directive for ${activeSession}...`
+                          : `Transmit directive to ${activeSession}...`
+                      }
+                      value={composerText}
+                      onChange={(e) => setComposerText(e.target.value)}
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      className={`composer-icon-btn ${isListening ? 'mic-on' : ''}`}
+                      onClick={startDictation}
+                      title={isListening ? 'Stop Voice Dictation' : 'Start Voice Dictation'}
+                    >
+                      <Icon name={isListening ? 'mic' : 'micOff'} size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`composer-icon-btn ${isSpeaking || voiceAutoRead ? 'speak-on' : ''}`}
+                      onClick={handleSpeakSummary}
+                      title="Speak latest 🔊 agent summary"
+                    >
+                      <Icon name={isSpeaking ? 'volumeOff' : 'volume'} size={14} />
+                    </button>
+                    <button type="submit" className="ld-send-btn" title="Send Directive">
+                      <Icon name="send" size={14} />
+                    </button>
+                  </div>
+                </form>
+              </div>
+            );
+          })()}
         </div>
 
         {splitMode && (showFiles || showBrowser) && (
@@ -2474,7 +2713,9 @@ function App() {
           isOpen={showBrowser}
           splitMode={splitMode}
           apiToken={apiTokenRef.current}
+          activeSession={activeSession}
           fleet={fleet}
+          onAttachToComposer={attachToActiveComposer}
           onToggleSplitMode={() => {
             setSplitMode((prev) => !prev);
             setTimeout(() => {
@@ -2493,6 +2734,69 @@ function App() {
           }}
         />
       </div>
+
+      {/* Frosted Mobile Bottom Dock (<768px 1-Tap Browser, Files, Voice & Settings — #258) */}
+      <nav className="ld-mobile-dock" aria-label="Mobile Navigation Dock">
+        <button
+          type="button"
+          className={`m-dock-tab ${showFleetSidebar ? 'active' : ''}`}
+          onClick={toggleFleetSidebar}
+        >
+          <Icon name="cpu" size={15} />
+          <span>FLEET</span>
+        </button>
+        <button
+          type="button"
+          className={`m-dock-tab ${!showBrowser && !showFiles && !showFleetSidebar ? 'active' : ''}`}
+          onClick={() => {
+            setShowFleetSidebar(false);
+            selectWorkspaceTool('none');
+          }}
+        >
+          <Icon name="terminal" size={15} />
+          <span>TERMINAL</span>
+        </button>
+        <button
+          type="button"
+          className={`m-dock-tab ${showBrowser && !showFleetSidebar ? 'active' : ''}`}
+          onClick={() => {
+            setShowFleetSidebar(false);
+            setShowBrowser(true);
+            setShowFiles(false);
+          }}
+        >
+          <Icon name="globe" size={15} />
+          <span>BROWSER</span>
+        </button>
+        <button
+          type="button"
+          className={`m-dock-tab ${showFiles && !showFleetSidebar ? 'active' : ''}`}
+          onClick={() => {
+            setShowFleetSidebar(false);
+            setShowFiles(true);
+            setShowBrowser(false);
+          }}
+        >
+          <Icon name="files" size={15} />
+          <span>FILES</span>
+        </button>
+        <button
+          type="button"
+          className={`m-dock-tab ${isListening ? 'active' : ''}`}
+          onClick={startDictation}
+        >
+          <Icon name="mic" size={15} />
+          <span>VOICE</span>
+        </button>
+        <button
+          type="button"
+          className={`m-dock-tab ${showSettings ? 'active' : ''}`}
+          onClick={() => openSettingsModal('appearance')}
+        >
+          <Icon name="settings" size={15} />
+          <span>SETTINGS</span>
+        </button>
+      </nav>
 
       {showKeyboard && (
         <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
@@ -2570,6 +2874,7 @@ function App() {
           onSaveMacro={saveMacro}
           onDeleteMacro={deleteMacro}
           onImportMacros={importMacros}
+          onRunMacro={(cmdStr) => sendCommand(cmdStr)}
           returnToVoice={macroReturnToVoice}
           onBackToVoice={() => {
             setMacroReturnToVoice(false);

@@ -1,10 +1,12 @@
 import asyncio
+import base64
 import hashlib
 import json
 import logging
 import os
 import re
 import shutil
+import struct
 import subprocess
 import time
 import urllib.error
@@ -14,6 +16,7 @@ from typing import Any
 
 import websockets
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from main import (
@@ -80,6 +83,39 @@ def _get_profile_dir() -> str:
     path = os.path.abspath(custom) if custom else os.path.join(HOME_DIR, ".cache", "aim-browser-profile")
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def _get_shots_dir() -> str:
+    custom = (os.environ.get("AIM_SHOTS_DIR") or "").strip()
+    path = os.path.abspath(custom) if custom else os.path.join(HOME_DIR, ".cache", "aim-connect", "shots")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _get_downloads_dir() -> str:
+    custom = (os.environ.get("AIM_BROWSER_DOWNLOAD_DIR") or "").strip()
+    path = os.path.abspath(custom) if custom else os.path.join(HOME_DIR, "Downloads", "aim-browser")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _extract_png_dims(png_bytes: bytes) -> tuple[int, int]:
+    if len(png_bytes) >= 24 and png_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        try:
+            w, h = struct.unpack(">II", png_bytes[16:24])
+            if w > 0 and h > 0:
+                return int(w), int(h)
+        except struct.error:
+            pass
+    return 1280, 800
+
+
+def _format_file_size(num_bytes: int) -> str:
+    if num_bytes >= 1024 * 1024:
+        return f"{num_bytes / (1024 * 1024):.1f} MB"
+    if num_bytes >= 1024:
+        return f"{round(num_bytes / 1024)} KB"
+    return f"{num_bytes} B"
 
 
 def _read_json_file(path: str, default: Any) -> Any:
@@ -399,8 +435,8 @@ async def start_browser_daemon(req: BrowserStartRequest | None = None):
 
     port = _get_cdp_port()
     profile_dir = _get_profile_dir()
-    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-    use_headless = body.mode == "headless" or (body.mode == "auto" and not has_display)
+    # Default mode="auto" to --headless=new so Chromium never pops onto the Operator's WSL2/Linux desktop (#258)
+    use_headless = body.mode != "headed"
 
     args = [
         binary,
@@ -511,6 +547,125 @@ async def close_browser_tab(target_id: str):
     return {"closed": target_id, "tabs": status["tabs"]}
 
 
+class BrowserScreenshotRequest(BaseModel):
+    target_id: str = ""
+    session: str = ""
+
+
+@router.post("/api/browser/screenshot", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def capture_browser_screenshot(req: BrowserScreenshotRequest | None = None):
+    """Capture a PNG screenshot of the active/leased CDP tab into 0600 ~/.cache/aim-connect/shots/ (#258)."""
+    body = req or BrowserScreenshotRequest()
+    if body.target_id and not TARGET_ID_RE.match(body.target_id):
+        raise HTTPException(status_code=400, detail="Invalid target_id")
+
+    try:
+        chosen_id, ws_url, chosen_meta = await _resolve_target_ws(body.target_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"CDP target unavailable: {exc}")
+
+    try:
+        async with websockets.connect(ws_url, max_size=32 * 1024 * 1024) as cdp_ws:
+            await cdp_ws.send(json.dumps({"id": 1, "method": "Page.captureScreenshot", "params": {"format": "png"}}))
+            png_b64 = ""
+            while True:
+                raw_msg = await asyncio.wait_for(cdp_ws.recv(), timeout=5.0)
+                parsed = json.loads(raw_msg)
+                if parsed.get("id") == 1:
+                    if "error" in parsed:
+                        raise RuntimeError(parsed["error"].get("message", "Screenshot failed"))
+                    png_b64 = (parsed.get("result") or {}).get("data") or ""
+                    break
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"CDP screenshot capture failed: {exc}")
+
+    if not png_b64:
+        raise HTTPException(status_code=502, detail="CDP returned empty screenshot payload")
+
+    png_bytes = base64.b64decode(png_b64)
+    width, height = _extract_png_dims(png_bytes)
+
+    raw_url = chosen_meta.get("url") or "about:blank"
+    host_slug = re.sub(r"[^a-zA-Z0-9._-]", "-", urllib.parse.urlparse(raw_url).netloc or "page").strip("-") or "page"
+    ts_ms = int(time.time() * 1000)
+    filename = f"screenshot-{host_slug[:40]}-{ts_ms}.png"
+    shots_dir = _get_shots_dir()
+    full_path = os.path.join(shots_dir, filename)
+
+    fd = os.open(full_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, png_bytes)
+    finally:
+        os.close(fd)
+    try:
+        os.chmod(full_path, 0o600)
+    except OSError:
+        pass
+
+    return {
+        "filename": filename,
+        "path": full_path,
+        "url": raw_url,
+        "dims": f"{width}x{height}",
+        "target_id": chosen_id,
+    }
+
+
+@router.get("/api/browser/downloads", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def list_browser_downloads():
+    """List streaming (.crdownload) and completed files in ~/Downloads/aim-browser (#258)."""
+    dl_dir = _get_downloads_dir()
+    items = []
+    now = time.time()
+    try:
+        entries = list(os.scandir(dl_dir))
+    except OSError:
+        entries = []
+
+    entries.sort(key=lambda e: e.stat().st_mtime if e.is_file() else 0, reverse=True)
+    for entry in entries[:40]:
+        if not entry.is_file() or entry.name.startswith("."):
+            continue
+        try:
+            st = entry.stat()
+        except OSError:
+            continue
+        is_streaming = entry.name.endswith(".crdownload")
+        clean_name = entry.name[: -len(".crdownload")] if is_streaming else entry.name
+        age_s = max(0, int(now - st.st_mtime))
+        when_str = (
+            "Streaming now"
+            if is_streaming
+            else ("Just now" if age_s < 60 else f"{age_s // 60}m ago" if age_s < 3600 else f"{age_s // 3600}h ago")
+        )
+        items.append(
+            {
+                "id": hashlib.sha1(entry.path.encode("utf-8")).hexdigest()[:12],
+                "name": clean_name,
+                "raw_name": entry.name,
+                "path": entry.path,
+                "size": _format_file_size(st.st_size),
+                "bytes": st.st_size,
+                "status": "streaming" if is_streaming else "done",
+                "when": when_str,
+            }
+        )
+    return {"dir": dl_dir, "downloads": items}
+
+
+@router.get("/api/browser/downloads/{filename}", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def download_browser_artifact(filename: str):
+    """Download a completed file from ~/Downloads/aim-browser with strict path-traversal guard (#258)."""
+    safe_name = os.path.basename(filename or "")
+    if not safe_name or safe_name != filename or ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    dl_dir = _get_downloads_dir()
+    target_path = os.path.abspath(os.path.join(dl_dir, safe_name))
+    if os.path.dirname(target_path) != dl_dir or not os.path.isfile(target_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path=target_path, filename=safe_name)
+
+
 class _CdpPageBridge:
     """Thin async CDP WebSocket session streaming Page.startScreencast & forwarding input."""
 
@@ -538,6 +693,14 @@ class _CdpPageBridge:
         _ACTIVE_BROWSER_BRIDGES.add(self)
         self._reader_task = asyncio.create_task(self._reader_loop())
         await self.send_cmd("Page.enable")
+        try:
+            await self.send_cmd(
+                "Page.setDownloadBehavior",
+                {"behavior": "allow", "downloadPath": _get_downloads_dir()},
+                timeout=1.5,
+            )
+        except Exception:
+            pass
         try:
             await self.send_cmd("Page.bringToFront", {}, timeout=2.0)
         except Exception:

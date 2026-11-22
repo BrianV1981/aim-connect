@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getAgentColor, resolveTabAgentInfo } from '../agentColors';
+import Icon from './Icons';
 
 const KEY_CODE_MAP = {
   Enter: 13,
@@ -17,7 +18,9 @@ export default function BrowserPane({
   isOpen,
   splitMode,
   apiToken,
+  activeSession = '',
   fleet = [],
+  onAttachToComposer,
   onToggleSplitMode,
   onClose,
 }) {
@@ -32,6 +35,11 @@ export default function BrowserPane({
   const [quickText, setQuickText] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [hudOverlay, setHudOverlay] = useState(null);
+  const [extFlash, setExtFlash] = useState(false);
+  const [shotFlash, setShotFlash] = useState(false);
+  const [showDownloadsPopover, setShowDownloadsPopover] = useState(false);
+  const [downloads, setDownloads] = useState([]);
+  const [dismissedDownloadIds, setDismissedDownloadIds] = useState([]);
 
   const canvasRef = useRef(null);
   const stageRef = useRef(null);
@@ -516,6 +524,63 @@ export default function BrowserPane({
     sendWs({ type: 'navigate', url: fav.url });
   };
 
+  const fetchDownloads = useCallback(async () => {
+    try {
+      const res = await fetch('/api/browser/downloads');
+      if (res.ok) {
+        const data = await res.json();
+        setDownloads(data.downloads || []);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !showDownloadsPopover) return undefined;
+    fetchDownloads();
+    const timer = setInterval(fetchDownloads, 3000);
+    return () => clearInterval(timer);
+  }, [isOpen, showDownloadsPopover, fetchDownloads]);
+
+  const handleOpenExternalBrowser = () => {
+    const targetUrl = candidateUrl && candidateUrl !== 'about:blank' ? candidateUrl : 'https://example.com';
+    const full = targetUrl.includes('://') ? targetUrl : `https://${targetUrl}`;
+    window.open(full, '_blank', 'noopener,noreferrer');
+    setExtFlash(true);
+    setTimeout(() => setExtFlash(false), 1400);
+  };
+
+  const handleScreenshotToChat = async () => {
+    try {
+      const res = await fetch('/api/browser/screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_id: activeTargetId || '',
+          session: activeSession || '',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatusMsg(data.detail || 'Screenshot capture failed');
+        return;
+      }
+      onAttachToComposer?.({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        filename: data.filename,
+        path: data.path,
+        dims: data.dims,
+        url: data.url,
+      });
+      setShotFlash(true);
+      setTimeout(() => setShotFlash(false), 1500);
+    } catch (err) {
+      setStatusMsg(`Screenshot failed: ${err.message}`);
+    }
+  };
+
+  const visibleDownloads = downloads.filter((d) => !dismissedDownloadIds.includes(d.id));
+  const hasStreamingDl = visibleDownloads.some((d) => d.status === 'streaming');
+
   if (!isOpen) return null;
 
   const hudVisibleOnCurrentTab =
@@ -535,65 +600,250 @@ export default function BrowserPane({
     : null;
 
   return (
-    <div className={`file-explorer-pane browser-copilot-pane ${splitMode ? 'split-mode' : 'full-mode'}`}>
+    <div
+      className={`file-explorer-pane browser-copilot-pane ${splitMode ? 'split-mode' : 'full-mode'}`}
+      style={{ position: 'relative' }}
+    >
       <div className="brain-quick-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: 1 }}>
-          <span className="brain-bar-label">
-            🌐 CO-PILOT {daemonRunning ? '🟢' : '⚪'}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+          <span
+            className="pulse-led"
+            style={!daemonRunning ? { background: '#6b7280', boxShadow: 'none' } : undefined}
+          />
+          <span className="brain-bar-label">CO-PILOT // :9222</span>
           {!daemonRunning ? (
             <button
               type="button"
-              className="macro-btn action"
-              style={{ padding: '3px 10px', fontSize: '11px' }}
+              className="subbar-util-btn active"
               disabled={startingDaemon}
               onClick={handleStartBrowser}
             >
-              {startingDaemon ? '⏳ Starting...' : '🚀 Launch Browser'}
+              <span>{startingDaemon ? 'STARTING...' : 'LAUNCH BROWSER'}</span>
             </button>
           ) : (
             <>
               <button
                 type="button"
-                className={`brain-quick-pill ${controlMode ? 'active browser-control-active' : ''}`}
+                className={`subbar-util-btn ${controlMode ? 'active browser-control-active' : ''}`}
                 onClick={() => setControlMode((prev) => !prev)}
                 title="Toggle Watch-Only vs Interactive Pointer/Keyboard Takeover (aim-login-hold)"
               >
-                {controlMode ? '🎮 Control ON' : '👁️ Watch Only'}
+                <Icon name={controlMode ? 'gamepad' : 'eye'} size={13} />
+                <span>{controlMode ? 'CONTROL ON' : 'WATCH ONLY'}</span>
               </button>
               <button
                 type="button"
-                className={`brain-quick-pill ${showTextBar ? 'active' : ''}`}
+                className={`subbar-util-btn ${showTextBar ? 'active' : ''}`}
                 onClick={() => setShowTextBar((prev) => !prev)}
-                title="Type or paste 2FA / password text directly into the focused browser input (mobile friendly)"
+                title="Type or paste 2FA / password text directly into the focused browser input"
               >
-                🔑 Type / 2FA
+                <Icon name="key" size={13} />
+                <span>TYPE / 2FA</span>
               </button>
             </>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <div className="cp-topright-actions">
           <button
             type="button"
-            className={`macro-btn ${splitMode ? 'action' : ''}`}
-            style={{ padding: '3px 8px', fontSize: '11px' }}
-            onClick={onToggleSplitMode}
-            title="Toggle side-by-side Split Pane vs Full Viewport"
+            className={`cp-action-icon-btn ${extFlash ? 'flash-ok' : ''}`}
+            onClick={handleOpenExternalBrowser}
+            title={`Open in External Browser (${candidateUrl || 'about:blank'})`}
+            aria-label="Open in External Browser"
           >
-            {splitMode ? '◫ Split' : '⬜ Full'}
+            <Icon name={extFlash ? 'check' : 'externalLink'} size={13} />
+          </button>
+
+          <button
+            type="button"
+            className={`cp-action-icon-btn ${shotFlash ? 'flash-ok' : ''}`}
+            disabled={!daemonRunning}
+            onClick={handleScreenshotToChat}
+            title={`Add Screenshot to Conversation (${activeSession || 'active node'})`}
+            aria-label="Add Screenshot to Conversation"
+          >
+            <Icon name={shotFlash ? 'check' : 'cameraPlus'} size={13} />
+          </button>
+
+          <button
+            type="button"
+            className={`cp-action-icon-btn ${showDownloadsPopover ? 'active' : ''}`}
+            onClick={() => {
+              const next = !showDownloadsPopover;
+              setShowDownloadsPopover(next);
+              if (next) fetchDownloads();
+            }}
+            title={`Browser Downloads (${visibleDownloads.length})`}
+            aria-label="Browser Downloads"
+          >
+            <Icon name="downloadSm" size={13} />
+            {visibleDownloads.length > 0 && (
+              <span className={`cp-dl-badge ${hasStreamingDl ? 'is-live' : ''}`}>
+                {visibleDownloads.length}
+              </span>
+            )}
+          </button>
+
+          <span style={{ opacity: 0.22, margin: '0 1px' }}>|</span>
+
+          <button
+            type="button"
+            className={`subbar-util-btn desktop-only ${!splitMode ? 'active' : ''}`}
+            onClick={onToggleSplitMode}
+            title={splitMode ? 'Upgrade Browser to Full View' : 'Return Browser to Split Screen'}
+          >
+            <Icon name={splitMode ? 'maximize' : 'split'} size={12} />
+            <span>{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
           </button>
           <button
             type="button"
-            className="macro-btn"
-            style={{ padding: '3px 8px', fontSize: '11px', color: '#f87171' }}
+            className="ghost-btn"
+            style={{ height: '26px', padding: '0 6px' }}
             onClick={onClose}
             title="Close Live Browser Viewport"
           >
-            ✖
+            <Icon name="close" size={14} />
           </button>
         </div>
       </div>
+
+      {showDownloadsPopover && (
+        <div className="browser-dl-popover" onClick={(e) => e.stopPropagation()}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: '6px',
+              borderBottom: '1px solid var(--border-hairline)',
+            }}
+          >
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '0.12em',
+                color: 'var(--accent)',
+              }}
+            >
+              BROWSER DOWNLOADS // CDP ({visibleDownloads.length})
+            </span>
+            {visibleDownloads.some((d) => d.status === 'done') && (
+              <button
+                type="button"
+                className="subbar-util-btn"
+                style={{ height: '22px', fontSize: '10px' }}
+                onClick={() =>
+                  setDismissedDownloadIds((prev) => [
+                    ...prev,
+                    ...visibleDownloads.filter((d) => d.status === 'done').map((d) => d.id),
+                  ])
+                }
+              >
+                CLEAR DONE
+              </button>
+            )}
+          </div>
+
+          {visibleDownloads.length === 0 ? (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', padding: '8px 2px' }}>
+              No recent downloads in ~/Downloads/aim-browser.
+            </div>
+          ) : (
+            visibleDownloads.map((d) => (
+              <div key={d.id} className="dl-item-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {d.name}
+                  </span>
+                  <span className="mono-kbd" style={{ fontSize: '9px' }}>
+                    {d.status === 'streaming' ? 'STREAMING' : d.size}
+                  </span>
+                </div>
+                {d.status === 'streaming' ? (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#93c5fd' }}>
+                    {d.size} received · Streaming via CDP...
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '10px',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <span>Completed {d.when}</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        type="button"
+                        className="subbar-util-btn"
+                        style={{ height: '22px', fontSize: '10px' }}
+                        onClick={() => {
+                          onAttachToComposer?.({
+                            id: d.id,
+                            filename: d.name,
+                            path: d.path,
+                            dims: d.size,
+                            url: 'cdp-download',
+                          });
+                          setShowDownloadsPopover(false);
+                        }}
+                        title="Attach file path into active agent composer"
+                      >
+                        + CHAT
+                      </button>
+                      <button
+                        type="button"
+                        className="subbar-util-btn"
+                        style={{ height: '22px', fontSize: '10px' }}
+                        onClick={async () => {
+                          try {
+                            const tok = apiToken || localStorage.getItem('aim-token') || '';
+                            const r = await fetch(`/api/browser/downloads/${encodeURIComponent(d.raw_name)}`, {
+                              headers: tok ? { 'x-api-token': tok } : {},
+                            });
+                            if (!r.ok) return;
+                            const blob = await r.blob();
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = d.name;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch {}
+                        }}
+                        title="Save downloaded file"
+                      >
+                        SAVE
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9.5px', color: 'var(--text-muted)', paddingTop: '2px' }}>
+            DIR: ~/Downloads/aim-browser (--headless=new CDP)
+          </div>
+        </div>
+      )}
 
       {/* Multi-Tab Co-Pilot Strip (Operator + Subagent targetId Leases) */}
       <div className="workspace-tabs-bar">

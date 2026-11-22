@@ -80,7 +80,7 @@ export default function SpawnSessionModal({ isOpen, onClose, onConfirm }) {
               STRICT ALPHABETICAL FLEET RAIL · MOUSE ON
             </div>
           </div>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+          <button type="button" className="ghost-btn" style={{ padding: '0 6px' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
         </div>
