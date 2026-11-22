@@ -1804,7 +1804,7 @@ function App() {
           const activeColor = getAgentColor(activeSession);
           return (
             <span
-              className="active-session-badge agent-colored-pill"
+              className="active-session-badge"
               style={{ '--agent-color': activeColor.hex, '--agent-rgb': activeColor.rgb }}
               title={`Active tmux session: ${activeSession} (${activeColor.name})`}
             >

@@ -1896,10 +1896,10 @@ body {
   box-shadow: 0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.35);
 }
 
-.active-session-badge.agent-colored-pill {
+.active-session-badge {
   border-radius: 999px;
   background: rgba(var(--agent-rgb, 56, 189, 248), 0.22);
-  border: 1px solid var(--agent-color, #38bdf8);
+  border: 1px solid var(--agent-color, #2a4a7f);
   color: #f8fafc;
   box-shadow: 0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.25);
 }
