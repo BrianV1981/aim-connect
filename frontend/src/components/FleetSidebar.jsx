@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { getAgentColor } from '../agentColors';
+import Icon from './Icons';
 
 function formatTokens(n) {
   if (!n || n <= 0) return '0';
@@ -17,8 +18,8 @@ const VESSEL_LABELS = {
   grok: 'GROK',
   opencode: 'OC',
   codex: 'CDX',
-  service: 'SVC',
-  shell: 'SH',
+  service: 'TMUX',
+  shell: 'TMUX',
 };
 
 export default function FleetSidebar({
@@ -34,16 +35,17 @@ export default function FleetSidebar({
   onSendSessionCommand,
 }) {
   const [filterText, setFilterText] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // all | thinking | high_ctx | worktree
+  const [statusFilter, setStatusFilter] = useState('all'); // all | nobrowser | tmux | high_ctx | waiting
   const [commandFeedback, setCommandFeedback] = useState({});
 
-  // Merge raw session names with enriched fleet metadata
+  // Merge raw session names with enriched fleet metadata in strict alphabetical order (#257)
   const items = useMemo(() => {
     const byName = new Map();
     fleet.forEach((f) => {
       if (f && f.session_name) byName.set(f.session_name, f);
     });
-    return sessions.map((name) => {
+    const sortedNames = [...sessions].sort((a, b) => a.localeCompare(b));
+    return sortedNames.map((name) => {
       const meta = byName.get(name);
       return (
         meta || {
@@ -59,6 +61,8 @@ export default function FleetSidebar({
           compaction_count: 0,
           tier: 'normal',
           preview: '',
+          has_browser_lease: false,
+          browser_tab_id: '',
           pane_count: 1,
         }
       );
@@ -70,22 +74,39 @@ export default function FleetSidebar({
     let waiting = 0;
     let critical = 0;
     let warning = 0;
+    let noBrowser = 0;
+    let rawTmux = 0;
     items.forEach((it) => {
+      const isRaw =
+        it.vessel === 'service' ||
+        (it.vessel === 'shell' && !it.tokens_used && Number(it.compaction_count || 0) === 0);
+      if (isRaw) rawTmux += 1;
+      if (!it.has_browser_lease) noBrowser += 1;
       if (it.status === 'THINKING') thinking += 1;
       if (it.status === 'WAITING') waiting += 1;
-      if (it.tier === 'critical' || Number(it.compaction_count || 0) > 0) critical += 1;
-      else if (it.tier === 'warning') warning += 1;
+      if (!isRaw) {
+        if (it.tier === 'critical' || Number(it.compaction_count || 0) > 0) critical += 1;
+        else if (it.tier === 'warning') warning += 1;
+      }
     });
-    return { total: items.length, thinking, waiting, critical, warning };
+    return { total: items.length, thinking, waiting, critical, warning, noBrowser, rawTmux };
   }, [items]);
 
   const filteredItems = useMemo(() => {
     const q = filterText.trim().toLowerCase();
     return items.filter((it) => {
-      if (statusFilter === 'thinking' && it.status !== 'THINKING' && it.status !== 'WAITING') return false;
+      const isRaw =
+        it.vessel === 'service' ||
+        (it.vessel === 'shell' && !it.tokens_used && Number(it.compaction_count || 0) === 0);
+      if (statusFilter === 'nobrowser' && it.has_browser_lease) return false;
+      if (statusFilter === 'tmux' && !isRaw) return false;
       if (statusFilter === 'waiting' && it.status !== 'WAITING') return false;
-      if (statusFilter === 'high_ctx' && it.tier === 'normal' && Number(it.compaction_count || 0) === 0) return false;
-      if (statusFilter === 'worktree' && !it.is_worktree) return false;
+      if (
+        statusFilter === 'high_ctx' &&
+        (isRaw || (it.tier === 'normal' && Number(it.compaction_count || 0) === 0))
+      ) {
+        return false;
+      }
       if (!q) return true;
       return (
         it.session_name.toLowerCase().includes(q) ||
@@ -104,7 +125,7 @@ export default function FleetSidebar({
     try {
       await onSendSessionCommand(sessionName, command);
       setCommandFeedback((prev) => ({ ...prev, [key]: '✓ Sent' }));
-    } catch (err) {
+    } catch {
       setCommandFeedback((prev) => ({ ...prev, [key]: '✗ Failed' }));
     }
     setTimeout(() => {
@@ -122,38 +143,31 @@ export default function FleetSidebar({
     <aside className="fleet-sidebar" aria-label="Fleet Session Sidebar">
       <div className="fleet-sidebar-header">
         <div className="fleet-sidebar-title-row">
-          <span className="fleet-sidebar-title">🧭 FLEET</span>
-          <span className="fleet-count-pill" title="Total active tmux sessions">
-            {counts.total}
+          <span className="fleet-sidebar-title" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <Icon name="cpu" size={14} />
+            <span>FLEET // {String(counts.total).padStart(2, '0')} NODES</span>
           </span>
-          {counts.thinking > 0 && (
-            <span className="fleet-thinking-pill" title="Sessions actively executing">
-              ⚡ {counts.thinking}
-            </span>
-          )}
           {counts.waiting > 0 && (
             <span className="fleet-waiting-pill" title="Sessions waiting for user approval or input">
               ✋ {counts.waiting}
             </span>
           )}
-          {counts.critical > 0 && (
-            <span className="fleet-critical-pill" title="Sessions >= 30% context saturation (Amnesia threshold)">
-              ⚠️ {counts.critical}
-            </span>
-          )}
         </div>
         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
           <button
-            className="macro-btn"
-            style={{ padding: '3px 8px', fontSize: '11px' }}
+            type="button"
+            className="subbar-util-btn"
+            style={{ height: '24px', padding: '0 8px' }}
             onClick={onCreateSession}
-            title="Create new tmux session"
+            title="Spawn new isolated tmux session"
           >
-            + New
+            <Icon name="plus" size={12} />
+            <span>NEW</span>
           </button>
           <button
-            className="macro-btn"
-            style={{ padding: '3px 8px', fontSize: '11px' }}
+            type="button"
+            className="ghost-btn mobile-only-close"
+            style={{ height: '24px', padding: '0 6px' }}
             onClick={onClose}
             title="Collapse Fleet Sidebar"
           >
@@ -163,51 +177,60 @@ export default function FleetSidebar({
       </div>
 
       <div className="fleet-sidebar-controls">
-        <input
-          type="text"
-          className="fleet-search-input"
-          placeholder="Filter sessions, branch, vessel..."
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-        />
+        <div style={{ position: 'relative' }}>
+          <span
+            style={{
+              position: 'absolute',
+              left: '9px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+              display: 'flex',
+              pointerEvents: 'none',
+            }}
+          >
+            <Icon name="search" size={13} />
+          </span>
+          <input
+            type="text"
+            className="fleet-search-input"
+            style={{ paddingLeft: '28px' }}
+            placeholder="Filter session, branch, vessel..."
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+          />
+        </div>
         <div className="fleet-filter-pills">
           <button
             type="button"
             className={`fleet-filter-pill ${statusFilter === 'all' ? 'active' : ''}`}
             onClick={() => setStatusFilter('all')}
           >
-            All ({counts.total})
+            ALL ({counts.total})
           </button>
           <button
             type="button"
-            className={`fleet-filter-pill ${statusFilter === 'thinking' ? 'active' : ''}`}
-            onClick={() => setStatusFilter('thinking')}
+            className={`fleet-filter-pill ${statusFilter === 'nobrowser' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('nobrowser')}
+            title="CLI-Only Agents & Raw Tmux Servers with No Open Browser Lease"
           >
-            ⚡ Busy ({counts.thinking})
+            NO WEB ({counts.noBrowser})
           </button>
-          {counts.waiting > 0 && (
-            <button
-              type="button"
-              className={`fleet-filter-pill ${statusFilter === 'waiting' ? 'active' : ''}`}
-              onClick={() => setStatusFilter('waiting')}
-            >
-              ✋ Wait ({counts.waiting})
-            </button>
-          )}
+          <button
+            type="button"
+            className={`fleet-filter-pill ${statusFilter === 'tmux' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('tmux')}
+            title="Non-Agent Split-Pane Tmux Server & Shell Sessions"
+          >
+            TMUX ({counts.rawTmux})
+          </button>
           <button
             type="button"
             className={`fleet-filter-pill ${statusFilter === 'high_ctx' ? 'active' : ''}`}
             onClick={() => setStatusFilter('high_ctx')}
-            title="Sessions in Warning, Critical, or Compacted context state (>=30% AGY · >=20% others)"
+            title="Sessions in Warning, Critical, or Compacted context state (>=30% AGY)"
           >
-            🧠 &ge;30% ({counts.warning + counts.critical})
-          </button>
-          <button
-            type="button"
-            className={`fleet-filter-pill ${statusFilter === 'worktree' ? 'active' : ''}`}
-            onClick={() => setStatusFilter('worktree')}
-          >
-            🛠️ Worktrees
+            CTX &ge;30% ({counts.warning + counts.critical})
           </button>
         </div>
       </div>
@@ -219,13 +242,14 @@ export default function FleetSidebar({
           filteredItems.map((item) => {
             const isActive = item.session_name === activeSession;
             const isUnread = unreadSessions.includes(item.session_name);
-            const vesselCode = VESSEL_LABELS[item.vessel] || 'SH';
             const compactionCount = Number(item.compaction_count || 0);
             const isCompacted = compactionCount > 0;
-            const showContextBar =
-              isCompacted || item.tokens_used > 0 || ['agy', 'grok', 'opencode', 'codex'].includes(item.vessel);
+            const isRawTmux =
+              item.vessel === 'service' ||
+              (item.vessel === 'shell' && !item.tokens_used && !isCompacted);
+            const vesselCode = VESSEL_LABELS[item.vessel] || 'TMUX';
             const rawPct = Math.min(100, Math.max(0, Number(item.context_pct || 0)));
-            const barWidth = isCompacted ? Math.max(6, rawPct) : rawPct;
+            const barWidth = isCompacted ? Math.max(6, rawPct) : Math.max(4, rawPct);
             const effectiveTier = isCompacted ? 'critical' : item.tier || 'normal';
             const agentColor = getAgentColor(item.session_name);
             const wikiKey = `${item.session_name}:wiki`;
@@ -234,7 +258,13 @@ export default function FleetSidebar({
             return (
               <div
                 key={item.session_name}
-                className={`fleet-session-card ${isActive ? 'active' : ''} tier-${effectiveTier}`}
+                className={`fleet-session-card spotlight-card ${isActive ? 'active' : ''} tier-${effectiveTier}`}
+                style={{ '--agent-color': agentColor.hex, '--agent-rgb': agentColor.rgb }}
+                onPointerMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  e.currentTarget.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
+                  e.currentTarget.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
+                }}
                 onClick={() => {
                   onSelectSession(item.session_name);
                   if (window.innerWidth < 768 && onClose) {
@@ -251,13 +281,13 @@ export default function FleetSidebar({
                     <span
                       className="fleet-session-name fleet-agent-name-pill"
                       style={{ '--agent-color': agentColor.hex, '--agent-rgb': agentColor.rgb }}
-                      title={`${item.session_name} · Browser tab color: ${agentColor.name} (${agentColor.hex})`}
+                      title={`${item.session_name} · Node color: ${agentColor.name} (${agentColor.hex})`}
                     >
                       {item.session_name}
                     </span>
                     {item.status === 'WAITING' && (
                       <span className="fleet-waiting-badge" title="Agent paused waiting for permission or answer">
-                        ✋ WAIT
+                        GATE
                       </span>
                     )}
                     {isUnread && (
@@ -267,6 +297,19 @@ export default function FleetSidebar({
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                    {item.has_browser_lease && (
+                      <span
+                        className="fleet-vessel-badge"
+                        style={{
+                          color: 'var(--accent)',
+                          borderColor: 'rgba(var(--accent-rgb), 0.45)',
+                          background: 'rgba(var(--accent-rgb), 0.1)',
+                        }}
+                        title="Leased Co-Pilot Browser Tab Open"
+                      >
+                        🌐
+                      </span>
+                    )}
                     <span className={`fleet-vessel-badge vessel-${item.vessel || 'shell'}`}>
                       {vesselCode}
                     </span>
@@ -280,7 +323,7 @@ export default function FleetSidebar({
                       title={`Terminate session ${item.session_name}`}
                       aria-label={`Terminate session ${item.session_name}`}
                     >
-                      🗑️
+                      <Icon name="trash" size={12} />
                     </button>
                   </div>
                 </div>
@@ -292,19 +335,35 @@ export default function FleetSidebar({
                         className={`fleet-branch-badge ${item.is_worktree ? 'worktree' : ''}`}
                         title={item.path || item.branch}
                       >
-                        {item.is_worktree ? '🛠️ ' : '🌿 '}
-                        {item.branch}
+                        <Icon name="gitBranch" size={11} /> {item.branch}
                       </span>
                     )}
                     {item.pane_count > 1 && (
                       <span className="fleet-pane-badge" title={`${item.pane_count} tmux panes`}>
-                        🪟 {item.pane_count}p
+                        {item.pane_count}p
                       </span>
                     )}
                   </div>
                 )}
 
-                {showContextBar && (
+                {isRawTmux ? (
+                  <div className="fleet-context-section">
+                    <div className="fleet-context-header">
+                      <span className="fleet-context-label" style={{ color: '#34d399' }}>
+                        DAEMON ONLINE
+                      </span>
+                      <span className="fleet-context-pct">
+                        {`${item.pane_count || 1} ${(item.pane_count || 1) === 1 ? 'PANE' : 'PANES'}`}
+                      </span>
+                    </div>
+                    <div className="fleet-context-track">
+                      <div
+                        className="fleet-context-fill tier-normal"
+                        style={{ width: '100%', opacity: 0.55 }}
+                      />
+                    </div>
+                  </div>
+                ) : (
                   <div className="fleet-context-section">
                     <div className="fleet-context-header">
                       <span
@@ -320,27 +379,18 @@ export default function FleetSidebar({
                         }
                       >
                         {isCompacted
-                          ? `⚠️ COMPACTED ${compactionCount}x`
+                          ? `COMPACTED ${compactionCount}X`
                           : effectiveTier === 'critical'
                             ? item.vessel === 'agy'
-                              ? '🚨 512K CLIFF'
-                              : '⚠️ 30% RULE'
+                              ? '512K CLIFF ALERT'
+                              : '30% RULE'
                             : effectiveTier === 'warning'
                               ? item.vessel === 'agy'
-                                ? '⚡ SAVE / HANDOFF'
-                                : '⚡ WIKI SOON'
-                              : 'CTX'}
+                                ? 'SAVE / HANDOFF'
+                                : 'WIKI SOON'
+                              : 'CONTEXT'}
                       </span>
-                      <span
-                        className={`fleet-context-pct tier-${effectiveTier}`}
-                        title={
-                          isCompacted
-                            ? `Compacted ${compactionCount}x at 512k cliff (currently ${Number(item.context_pct || 0).toFixed(1)}% post-compaction)`
-                            : item.vessel === 'agy'
-                              ? 'AGY Context (30% Save/Handoff warning · 45% critical · 51.2% / 512k auto-compact cliff)'
-                              : 'J.O.S.H.U.A. 30%-Rule Context Saturation'
-                        }
-                      >
+                      <span className={`fleet-context-pct tier-${effectiveTier}`}>
                         {`${Number(item.context_pct || 0).toFixed(1)}% · ${formatTokens(item.tokens_used)}/${formatTokens(item.tokens_limit)}`}
                       </span>
                     </div>
@@ -361,11 +411,7 @@ export default function FleetSidebar({
                       <div
                         className={`fleet-context-30-marker ${item.vessel === 'agy' ? 'agy-warn-marker' : ''}`}
                         style={{ left: '30%' }}
-                        title={
-                          item.vessel === 'agy'
-                            ? '30% Save / Handoff Warning (300k — safe headroom before 512k cliff)'
-                            : '30% Amnesia Threshold'
-                        }
+                        title="30% Save / Handoff Warning"
                       />
                       {item.vessel === 'agy' && (
                         <div
@@ -384,7 +430,7 @@ export default function FleetSidebar({
                   </div>
                 )}
 
-                {(isActive || effectiveTier === 'warning' || effectiveTier === 'critical') && (
+                {!isRawTmux && (isActive || effectiveTier === 'warning' || effectiveTier === 'critical') && (
                   <div className="fleet-card-actions" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
@@ -392,7 +438,7 @@ export default function FleetSidebar({
                       onClick={(e) => handleTriggerSkill(e, item.session_name, '/aim-memory-wiki', 'wiki')}
                       title="Inject /aim-memory-wiki into session"
                     >
-                      {commandFeedback[wikiKey] || '🧠 /wiki'}
+                      {commandFeedback[wikiKey] || '/wiki'}
                     </button>
                     <button
                       type="button"
@@ -400,7 +446,7 @@ export default function FleetSidebar({
                       onClick={(e) => handleTriggerSkill(e, item.session_name, '/aim-handoff', 'handoff')}
                       title="Inject /aim-handoff into session (Baton Pass)"
                     >
-                      {commandFeedback[handoffKey] || '🤝 /handoff'}
+                      {commandFeedback[handoffKey] || '/handoff'}
                     </button>
                   </div>
                 )}

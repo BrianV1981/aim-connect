@@ -559,8 +559,34 @@ def _resolve_agy_brain_tokens_by_workspace(
     )
 
 
+def _read_browser_leases_by_session() -> dict[str, str]:
+    """Return mapping of tmux session_name -> primary leased CDP targetId (#257)."""
+    custom = (os.environ.get("AIM_BROWSER_STATE_DIR") or "").strip()
+    state_dir = os.path.abspath(custom) if custom else os.path.join(HOME_DIR, ".cache", "aim-browser")
+    leases_path = os.path.join(state_dir, "leases.json")
+    if not os.path.isfile(leases_path):
+        return {}
+    try:
+        with open(leases_path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    by_sess: dict[str, str] = {}
+    for lease_key, meta in raw.items():
+        if not isinstance(meta, dict):
+            continue
+        tid = str(meta.get("targetId") or "").strip()
+        sess = str(meta.get("session") or meta.get("actor") or lease_key or "").strip()
+        if tid and sess and sess not in by_sess:
+            by_sess[sess] = tid
+    return by_sess
+
+
 def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], list[dict]]:
     """Collect pane-level and session-level telemetry for all allowed tmux sessions."""
+    allowed_sessions = sorted(allowed_sessions, key=lambda s: s.lower())
     allowed_set = set(allowed_sessions)
     if not allowed_set:
         return [], []
@@ -693,9 +719,11 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         panes.append(pane_obj)
         by_session.setdefault(sess_name, []).append(pane_obj)
 
+    browser_leases_by_sess = _read_browser_leases_by_session()
     fleet = []
     for sess_name in allowed_sessions:
         sess_panes = by_session.get(sess_name, [])
+        leased_tid = browser_leases_by_sess.get(sess_name, "")
         if not sess_panes:
             fleet.append({
                 "session_name": sess_name,
@@ -713,6 +741,8 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 "preview": "",
                 "spoken_summary": "",
                 "turn_digest": "",
+                "has_browser_lease": bool(leased_tid),
+                "browser_tab_id": leased_tid,
                 "pane_count": 0,
                 "panes": [],
             })
@@ -750,6 +780,8 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "preview": primary["preview"],
             "spoken_summary": primary.get("spoken_summary", ""),
             "turn_digest": primary.get("turn_digest", ""),
+            "has_browser_lease": bool(leased_tid),
+            "browser_tab_id": leased_tid,
             "attached": primary["attached"],
             "pane_count": len(sess_panes),
             "panes": sess_panes,
@@ -816,6 +848,7 @@ def _get_sessions_sync(x_api_token: str = None, is_local_admin: bool = False) ->
                 # Non-admin users only see sessions with their prefix (or all if no prefix)
                 if role == "admin" or not prefix or line.startswith(prefix):
                     sessions.append(line)
+    sessions.sort(key=lambda s: s.lower())
     try:
         fleet, panes = collect_fleet_telemetry(sessions)
     except Exception as e:

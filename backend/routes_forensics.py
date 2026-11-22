@@ -16,7 +16,12 @@ from main import (
     verify_token_or_loopback,
 )
 from routes_files import _find_repo_roots, _resolve_session_cwd, secure_path
-from routes_sessions import ANSI_ESCAPE_RE
+from routes_sessions import (
+    ANSI_ESCAPE_RE,
+    SESSION_WORKSPACE_ALIASES,
+    _normalize_workspace_root,
+    _read_transcript_telemetry,
+)
 
 router = APIRouter()
 logger = logging.getLogger("aim-connect")
@@ -467,3 +472,321 @@ def get_swarm_activity():
         })
 
     return {"dispatches": dispatches}
+
+
+REVERSE_WORKSPACE_ALIASES = {v: k for k, v in SESSION_WORKSPACE_ALIASES.items()}
+
+
+def _format_tok_short(tokens: int, limit: int = 1_000_000) -> str:
+    if not tokens or tokens <= 0:
+        return "0k (0.0%)"
+    pct = round((tokens / max(1, limit)) * 100.0, 1)
+    if tokens >= 1_000_000:
+        return f"{tokens / 1_000_000:.2f}M ({pct}%)"
+    if tokens >= 1_000:
+        return f"{round(tokens / 1_000)}k ({pct}%)"
+    return f"{tokens} ({pct}%)"
+
+
+def _infer_vessel_from_filename(fpath: str) -> str:
+    low = os.path.basename(fpath).lower()
+    if "grok" in low:
+        return "GROK"
+    if "opencode" in low or low.startswith("oc_"):
+        return "OC"
+    if "codex" in low or low.startswith("cdx_"):
+        return "CDX"
+    return "AGY"
+
+
+def _infer_session_from_vault_file(fpath: str) -> str:
+    stem = os.path.splitext(os.path.basename(fpath))[0]
+    for prefix in ("grok_", "opencode_", "codex_", "agy_", "flight_"):
+        if stem.lower().startswith(prefix):
+            stem = stem[len(prefix):]
+            break
+    # Match aim-<slug> or <slug>-academy / <slug>-book patterns first
+    m = re.search(r"(aim-[a-z0-9-]+|[a-z0-9]+-(?:academy|ai-book))", stem, re.IGNORECASE)
+    if m:
+        return m.group(1).lower()
+    parts = stem.split("_")
+    return (parts[0] if parts and parts[0] else "aim-connect").lower()
+
+
+def _count_jsonl_user_turns(fpath: str) -> tuple[int, str]:
+    """Return (user_turn_count, first_user_title_fallback) for a JSONL transcript."""
+    if not os.path.isfile(fpath):
+        return 0, ""
+    user_count = 0
+    first_prompt = ""
+    try:
+        with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+            for raw_ln in fh:
+                if "USER_INPUT" not in raw_ln and '"user"' not in raw_ln:
+                    continue
+                try:
+                    obj = json.loads(raw_ln)
+                except Exception:
+                    continue
+                kind = obj.get("type") or obj.get("role") or ""
+                if kind in ("USER_INPUT", "user"):
+                    user_count += 1
+                    if not first_prompt:
+                        c = obj.get("content") or obj.get("text") or ""
+                        if isinstance(c, list):
+                            c = " ".join(str(x) for x in c)
+                        cleaned = re.sub(r"<[^>]+>", "", str(c)).strip()
+                        first_line = next((ln.strip("#> ") for ln in cleaned.splitlines() if ln.strip()), "")
+                        first_prompt = first_line[:96]
+    except OSError:
+        return 0, ""
+    return user_count, first_prompt
+
+
+def _collect_project_history_records() -> list[dict]:
+    """Index multi-generation session history across AGY conversation_summaries.db and vault JSONL/MD (#257)."""
+    raw_records: list[dict] = []
+    seen_paths: set[str] = set()
+
+    agy_base = os.environ.get(
+        "AIM_AGY_APP_DATA_DIR",
+        os.path.join(HOME_DIR, ".gemini", "antigravity-cli"),
+    )
+    db_path = os.path.join(agy_base, "conversation_summaries.db")
+    if os.path.isfile(db_path):
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status
+                    FROM conversation_summaries
+                    WHERE nesting_depth = 0
+                    ORDER BY last_modified_time DESC
+                    LIMIT 250
+                    """
+                ).fetchall()
+            finally:
+                conn.close()
+
+            for cid, title, preview, step_count, last_mod, raw_uris, status_str in rows:
+                if not cid:
+                    continue
+                try:
+                    uris = json.loads(raw_uris) if isinstance(raw_uris, str) else []
+                except Exception:
+                    uris = []
+                norm_root = ""
+                if isinstance(uris, list) and uris:
+                    norm_root = _normalize_workspace_root(str(uris[0]))
+                repo_base = os.path.basename(norm_root) if norm_root else "aim-connect"
+                sess_name = REVERSE_WORKSPACE_ALIASES.get(repo_base, repo_base) or "aim-connect"
+
+                tx_path = os.path.join(
+                    agy_base, "brain", str(cid), ".system_generated", "logs", "transcript.jsonl"
+                )
+                seen_paths.add(os.path.abspath(tx_path))
+                tok_in, comp_cnt = _read_transcript_telemetry(tx_path)
+                turn_cnt, first_prompt = _count_jsonl_user_turns(tx_path)
+                if turn_cnt <= 0:
+                    turn_cnt = max(1, int(step_count or 2) // 2)
+
+                try:
+                    sort_ts = os.path.getmtime(tx_path) if os.path.isfile(tx_path) else 0.0
+                except OSError:
+                    sort_ts = 0.0
+                if not sort_ts and last_mod:
+                    sort_ts = 1.0
+
+                clean_title = (title or preview or first_prompt or f"{sess_name} session").strip()
+                is_running = "RUNNING" in str(status_str or "").upper()
+                seal = (
+                    "LIVE WORKSPACE"
+                    if is_running
+                    else ("POST-CLIFF RECOVERY" if comp_cnt > 0 else "BLACKBOX SEALED")
+                )
+                when_str = str(last_mod or "")[:19].replace("T", " ") or "Recorded"
+
+                raw_records.append(
+                    {
+                        "id": str(cid),
+                        "session": sess_name,
+                        "vessel": "AGY",
+                        "title": clean_title,
+                        "turns": turn_cnt,
+                        "tokens": _format_tok_short(tok_in, 1_000_000),
+                        "compaction_count": comp_cnt,
+                        "seal": seal,
+                        "when": "ACTIVE NOW" if is_running else when_str,
+                        "sort_key": str(last_mod or "") or f"{sort_ts:020.6f}",
+                        "log_path": tx_path,
+                    }
+                )
+        except Exception as exc:
+            logger.debug(f"History DB scan skipped: {exc}")
+
+    # Scan additional vault / forensics JSONL transcripts (Grok, OpenCode, Codex, sealed vaults)
+    vault_dirs = []
+    custom_dir = os.environ.get("AIM_FORENSICS_DIR", "").strip()
+    if custom_dir and os.path.isdir(custom_dir):
+        vault_dirs.append(custom_dir)
+    else:
+        for default_v in (
+            os.path.join(HOME_DIR, ".aim", "vault"),
+            os.path.join(AIM_CONNECT_ROOT, "joshua_os", "vault"),
+        ):
+            if os.path.isdir(default_v):
+                vault_dirs.append(default_v)
+
+    for vdir in vault_dirs:
+        for fpath in glob.glob(os.path.join(vdir, "**", "*.jsonl"), recursive=True):
+            abs_p = os.path.abspath(fpath)
+            if abs_p in seen_paths or not os.path.isfile(abs_p):
+                continue
+            seen_paths.add(abs_p)
+            vessel = _infer_vessel_from_filename(abs_p)
+            sess_name = _infer_session_from_vault_file(abs_p)
+            turn_cnt, first_prompt = _count_jsonl_user_turns(abs_p)
+            try:
+                mtime = os.path.getmtime(abs_p)
+            except OSError:
+                mtime = 0.0
+            rec_id = os.path.splitext(os.path.basename(abs_p))[0]
+            when_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime)) if mtime else "Sealed"
+            raw_records.append(
+                {
+                    "id": rec_id,
+                    "session": sess_name,
+                    "vessel": vessel,
+                    "title": first_prompt or f"{sess_name} ({vessel} Baton Transcript)",
+                    "turns": max(1, turn_cnt),
+                    "tokens": "Sealed JSONL",
+                    "compaction_count": 0,
+                    "seal": "BLACKBOX SEALED",
+                    "when": when_str,
+                    "sort_key": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime)) if mtime else "",
+                    "log_path": abs_p,
+                }
+            )
+
+    # Group by project/session to assign chronological GEN #01..GEN #NN and is_current
+    by_proj: dict[str, list[dict]] = {}
+    for rec in raw_records:
+        by_proj.setdefault(rec["session"], []).append(rec)
+
+    enriched: list[dict] = []
+    for sess_name, items in by_proj.items():
+        # Sort oldest -> newest to number GEN #01 .. GEN #NN
+        items.sort(key=lambda r: (r["sort_key"], r["id"]))
+        total_gen = len(items)
+        for idx, item in enumerate(items):
+            gen_num = idx + 1
+            item["gen"] = f"GEN #{gen_num:02d}"
+            item["is_current"] = gen_num == total_gen
+            if item["is_current"] and item["seal"] != "POST-CLIFF RECOVERY":
+                item["seal"] = "LIVE WORKSPACE"
+            enriched.append(item)
+
+    # Return newest-first within any list
+    enriched.sort(key=lambda r: (r["sort_key"], r["gen"]), reverse=True)
+    return enriched
+
+
+@router.get("/api/sessions/history", dependencies=[Depends(verify_token), Depends(require_admin)])
+def list_session_history(session: str = Query("")):
+    """Return multi-generation project session notebook & baton-pass history (#257)."""
+    all_records = _collect_project_history_records()
+    counts_by_project: dict[str, int] = {}
+    for rec in all_records:
+        counts_by_project[rec["session"]] = counts_by_project.get(rec["session"], 0) + 1
+
+    filtered = (
+        [r for r in all_records if r["session"] == session]
+        if session
+        else all_records
+    )
+    return {
+        "session": session,
+        "total": len(all_records),
+        "counts_by_project": counts_by_project,
+        "records": filtered,
+    }
+
+
+@router.get("/api/sessions/history/{record_id}/turns", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_history_record_turns(record_id: str):
+    """Return paired Operator + J.O.S.H.U.A. turns for any historical generation (#257)."""
+    all_records = _collect_project_history_records()
+    matched = next((r for r in all_records if r["id"] == record_id), None)
+    if not matched:
+        raise HTTPException(status_code=404, detail="History record not found.")
+
+    raw_steps = parse_jsonl_transcript(matched["log_path"], max_turns=600)
+    paired_turns: list[dict] = []
+    pending_op: dict | None = None
+
+    for step in raw_steps:
+        if step["role"] == "user":
+            if pending_op is not None:
+                paired_turns.append(
+                    {
+                        "idx": len(paired_turns) + 1,
+                        "stamp": str(pending_op.get("created_at") or "")[11:19] or f"STEP {pending_op['step_index']}",
+                        "operator": pending_op.get("content") or "",
+                        "tool": "",
+                        "agent": "(Awaiting assistant response / baton handoff)",
+                    }
+                )
+            pending_op = step
+        else:
+            tools = step.get("tool_calls") or []
+            tool_summary = " · ".join(
+                f"{tc['name']}({str(tc.get('args') or '')[:80]})" for tc in tools[:4]
+            )
+            if pending_op is not None:
+                paired_turns.append(
+                    {
+                        "idx": len(paired_turns) + 1,
+                        "stamp": str(step.get("created_at") or pending_op.get("created_at") or "")[11:19]
+                        or f"STEP {step['step_index']}",
+                        "operator": pending_op.get("content") or "",
+                        "tool": tool_summary,
+                        "agent": step.get("content") or step.get("thinking") or "(Tool step executed)",
+                    }
+                )
+                pending_op = None
+            elif paired_turns:
+                # Merge consecutive multi-step planner tool turns onto active exchange
+                prev = paired_turns[-1]
+                if tool_summary:
+                    prev["tool"] = f"{prev['tool']} · {tool_summary}".strip(" ·")
+                if step.get("content"):
+                    prev["agent"] = step["content"]
+            else:
+                paired_turns.append(
+                    {
+                        "idx": 1,
+                        "stamp": str(step.get("created_at") or "")[11:19] or "INIT",
+                        "operator": "(Session attach)",
+                        "tool": tool_summary,
+                        "agent": step.get("content") or "(Initialized)",
+                    }
+                )
+
+    if pending_op is not None:
+        paired_turns.append(
+            {
+                "idx": len(paired_turns) + 1,
+                "stamp": str(pending_op.get("created_at") or "")[11:19] or "LIVE",
+                "operator": pending_op.get("content") or "",
+                "tool": "",
+                "agent": "(Turn in progress)",
+            }
+        )
+
+    return {
+        "record": matched,
+        "turn_count": len(paired_turns),
+        "turns": paired_turns,
+    }
+

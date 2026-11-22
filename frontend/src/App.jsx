@@ -17,6 +17,8 @@ import TokenGrabberModal from './components/TokenGrabberModal';
 import FileExplorer from './components/FileExplorer';
 import BrowserPane from './components/BrowserPane';
 import ForensicsModal from './components/ForensicsModal';
+import HistoryVault from './components/HistoryVault';
+import SpawnSessionModal from './components/SpawnSessionModal';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
 import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelection';
 import { E2EESocketWrapper } from './e2ee';
@@ -194,6 +196,10 @@ function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showTokenGrabber, setShowTokenGrabber] = useState(false);
   const [showForensics, setShowForensics] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyCounts, setHistoryCounts] = useState({});
+  const [isSpawnModalOpen, setIsSpawnModalOpen] = useState(false);
+  const [scrollFocusSearch, setScrollFocusSearch] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [fileSelectMode, setFileSelectMode] = useState(false);
@@ -441,6 +447,7 @@ function App() {
 
   const closeNativeScrollMode = useCallback(() => {
     setIsNativeScrollMode(false);
+    setScrollFocusSearch(false);
     setScrollbackContent('');
     setRawScrollback('');
   }, []);
@@ -449,9 +456,12 @@ function App() {
     setIsSelectMode((prev) => !prev);
   }, []);
 
-  const enterNativeScrollMode = useCallback(async () => {
+  const enterNativeScrollMode = useCallback(async (opts = {}) => {
     const targetSession = activeSessionRef.current || activeSession;
     if (!targetSession) return;
+    const wantSearch = Boolean(opts && opts.focusSearch);
+    setScrollFocusSearch(wantSearch);
+    setShowHistory(false);
 
     // Blur xterm and clear stale selection so hidden textarea never hijacks Ctrl+C or selection (#227)
     if (term.current) {
@@ -906,25 +916,39 @@ function App() {
     }, 60);
   }, []);
 
-  const createSession = async () => {
-    const name = window.prompt('New Session Name:');
-    if (!name) return;
-    try {
-      await fetch('/api/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-      const res = await fetch('/api/sessions');
-      const data = await res.json();
-      setSessions(data.sessions || []);
-      if (Array.isArray(data.fleet)) setFleet(data.fleet);
-      setActiveSession(name);
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: 'switch_session', session: name }));
-      }
-    } catch (e) {
-      console.error(e);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetch('/api/sessions/history')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && d.counts_by_project) setHistoryCounts(d.counts_by_project);
+      })
+      .catch(() => {});
+  }, [isAuthenticated]);
+
+  const createSession = () => {
+    setIsSpawnModalOpen(true);
+  };
+
+  const confirmCreateSession = async (name) => {
+    const createRes = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const createData = await createRes.json();
+    if (!createRes.ok || createData.error) {
+      throw new Error(createData.detail || createData.error || 'Failed to spawn session');
+    }
+    const res = await fetch('/api/sessions');
+    const data = await res.json();
+    const sorted = [...(data.sessions || [])].sort((a, b) => a.localeCompare(b));
+    setSessions(sorted);
+    if (Array.isArray(data.fleet)) setFleet(data.fleet);
+    setShowHistory(false);
+    setActiveSession(name);
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'switch_session', session: name }));
     }
   };
 
@@ -974,6 +998,7 @@ function App() {
     if (!newSession) {
       setActiveSession('');
       setShowFiles(false);
+      setShowHistory(false);
       setFileSelectMode(false);
       closeNativeScrollMode();
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -983,6 +1008,7 @@ function App() {
     }
     if (newSession !== activeSessionRef.current) {
       closeNativeScrollMode();
+      setShowHistory(false);
     }
     setActiveSession(newSession);
     setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
@@ -990,6 +1016,10 @@ function App() {
     if (matchedFleet) {
       lastChimedDigestRef.current[newSession] =
         matchedFleet.turn_digest || matchedFleet.spoken_summary || '';
+      // Auto-collapse Co-Pilot Browser when switching onto a CLI-only / raw tmux session without a browser lease (#257)
+      if (!matchedFleet.has_browser_lease && showBrowser) {
+        setShowBrowser(false);
+      }
     }
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
@@ -1462,6 +1492,13 @@ function App() {
         }
         return false;
       }
+      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'f' && activeSessionRef.current) {
+        if (ev.type === 'keydown') {
+          ev.preventDefault();
+          enterNativeScrollMode({ focusSearch: true });
+        }
+        return false;
+      }
       if (isNativeScrollModeRef.current) return false;
       return true;
     });
@@ -1470,6 +1507,14 @@ function App() {
       if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
         ev.preventDefault();
         setShowCommandPalette((prev) => !prev);
+      } else if (
+        (ev.metaKey || ev.ctrlKey) &&
+        ev.key.toLowerCase() === 'f' &&
+        activeSessionRef.current &&
+        !document.querySelector('.modal-overlay')
+      ) {
+        ev.preventDefault();
+        enterNativeScrollMode({ focusSearch: true });
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -2007,11 +2052,11 @@ function App() {
         <div className="hdr-cluster">
           <button
             type="button"
-            className={`ghost-btn desktop-only ${showForensics ? 'active' : ''}`}
-            onClick={() => setShowForensics(true)}
+            className={`ghost-btn desktop-only ${showHistory ? 'active' : ''}`}
+            onClick={() => setShowHistory((prev) => !prev)}
             onMouseEnter={historyTabScramble.triggerScramble}
             onMouseLeave={historyTabScramble.resetScramble}
-            title="Session Turn History & Forensics Vault"
+            title="Project Session Notebook & Past-Reincarnations History Vault"
           >
             <Icon name="history" />
             <span className="hide-halfscreen">{historyTabScramble.display}</span>
@@ -2071,80 +2116,112 @@ function App() {
             minWidth: 0,
           }}
         >
-          {activeSession && (
-            <div className="node-subbar">
-              <div className="node-title-tag">
-                <Icon name="shield" />
-                <span>{activeSession}</span>
+          {activeSession && (() => {
+            const activeFleetItem = fleet.find((f) => f.session_name === activeSession);
+            const isRawTmux =
+              activeFleetItem &&
+              (activeFleetItem.vessel === 'service' ||
+                (activeFleetItem.vessel === 'shell' && !activeFleetItem.tokens_used));
+            const histCount = historyCounts[activeSession] || 0;
+            return (
+              <div className="node-subbar">
+                <div className="node-title-tag">
+                  <Icon name={isRawTmux ? 'terminal' : 'shield'} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {activeSession}
+                  </span>
+                  {!activeFleetItem?.has_browser_lease && (
+                    <span className="mono-kbd" style={{ fontSize: '9px', padding: '1px 5px', color: 'var(--text-muted)' }}>
+                      {isRawTmux ? 'SPLIT TMUX' : 'NO BROWSER'}
+                    </span>
+                  )}
+                </div>
+                <div className="subbar-tools-row">
+                  <button
+                    type="button"
+                    className="subbar-util-btn"
+                    onClick={async () => {
+                      try {
+                        const text = await navigator.clipboard.readText();
+                        if (text) pasteToTerminal(text);
+                      } catch (e) {
+                        console.error('Paste failed', e);
+                      }
+                    }}
+                    title="Bracketed Paste from Clipboard"
+                  >
+                    <Icon name="clipboard" />
+                    <span>PASTE</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`subbar-util-btn ${isNativeScrollMode ? 'active' : ''}`}
+                    onClick={() => {
+                      if (isNativeScrollMode) closeNativeScrollMode();
+                      else enterNativeScrollMode({ focusSearch: false });
+                    }}
+                    title="Full 2,000-Line Scroll / Copy & Multi-Page Search (Ctrl+F)"
+                  >
+                    <Icon name="copyText" />
+                    <span>SCROLL/COPY</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`subbar-util-btn ${showTokenGrabber ? 'active' : ''}`}
+                    onClick={() => setShowTokenGrabber(true)}
+                    title="Extract URLs, File Paths, IPs & Git SHAs"
+                  >
+                    <Icon name="link" />
+                    <span>GRAB</span>
+                  </button>
+                  {!isRawTmux && (
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${showForensics ? 'active' : ''}`}
+                      onClick={() => setShowForensics(true)}
+                      title="Forensic Tool Inspector, SQLite FTS5 Search & Swarm Dispatcher"
+                    >
+                      <Icon name="microscope" />
+                      <span>FORENSICS</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`subbar-util-btn ${showHistory ? 'active' : ''}`}
+                    onClick={() => {
+                      setShowHistory((prev) => {
+                        const next = !prev;
+                        if (next) closeNativeScrollMode();
+                        return next;
+                      });
+                    }}
+                    title="Project Session Notebook & Baton-Pass Reincarnations"
+                  >
+                    <Icon name="history" />
+                    <span>{isRawTmux ? 'FLEET HISTORY' : `HISTORY${histCount ? ` (${histCount})` : ''}`}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`subbar-util-btn ${isListening ? 'active' : ''}`}
+                    onClick={startDictation}
+                    title={isListening ? 'Stop Voice Dictation' : 'Start Voice Dictation'}
+                  >
+                    <Icon name={isListening ? 'mic' : 'micOff'} />
+                    <span>{isListening ? 'MIC ON' : 'MIC'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`subbar-util-btn ${isSpeaking || voiceAutoRead ? 'active' : ''}`}
+                    onClick={handleSpeakSummary}
+                    title="Speak latest 🔊 agent summary"
+                  >
+                    <Icon name={isSpeaking ? 'volumeOff' : 'volume'} />
+                    <span>{isSpeaking ? 'STOP' : voiceAutoRead ? 'AUTO' : 'SPEAK'}</span>
+                  </button>
+                </div>
               </div>
-              <div className="subbar-tools-row">
-                <button
-                  type="button"
-                  className="subbar-util-btn"
-                  onClick={async () => {
-                    try {
-                      const text = await navigator.clipboard.readText();
-                      if (text) pasteToTerminal(text);
-                    } catch (e) {
-                      console.error('Paste failed', e);
-                    }
-                  }}
-                  title="Bracketed Paste from Clipboard"
-                >
-                  <Icon name="clipboard" />
-                  <span>PASTE</span>
-                </button>
-                <button
-                  type="button"
-                  className={`subbar-util-btn ${isNativeScrollMode ? 'active' : ''}`}
-                  onClick={() => {
-                    if (isNativeScrollMode) closeNativeScrollMode();
-                    else enterNativeScrollMode();
-                  }}
-                  title="Toggle isolated Scroll/Copy text selection view"
-                >
-                  <Icon name="copyText" />
-                  <span>SCROLL/COPY</span>
-                </button>
-                <button
-                  type="button"
-                  className={`subbar-util-btn ${showTokenGrabber ? 'active' : ''}`}
-                  onClick={() => setShowTokenGrabber(true)}
-                  title="Extract URLs, File Paths, IPs & Git SHAs"
-                >
-                  <Icon name="link" />
-                  <span>GRAB</span>
-                </button>
-                <button
-                  type="button"
-                  className={`subbar-util-btn ${showForensics ? 'active' : ''}`}
-                  onClick={() => setShowForensics(true)}
-                  title="Forensic Tool Inspector, SQLite FTS5 Search & Swarm Dispatcher"
-                >
-                  <Icon name="microscope" />
-                  <span>FORENSICS</span>
-                </button>
-                <button
-                  type="button"
-                  className={`subbar-util-btn ${isListening ? 'active' : ''}`}
-                  onClick={startDictation}
-                  title={isListening ? 'Stop Voice Dictation' : 'Start Voice Dictation'}
-                >
-                  <Icon name={isListening ? 'mic' : 'micOff'} />
-                  <span>{isListening ? 'MIC ON' : 'MIC'}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`subbar-util-btn ${isSpeaking || voiceAutoRead ? 'active' : ''}`}
-                  onClick={handleSpeakSummary}
-                  title="Speak latest 🔊 agent summary"
-                >
-                  <Icon name={isSpeaking ? 'volumeOff' : 'volume'} />
-                  <span>{isSpeaking ? 'STOP' : voiceAutoRead ? 'AUTO' : 'SPEAK'}</span>
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {activeSession && !showKeyboard && (
             <div className="commander-toolbar">
@@ -2182,45 +2259,7 @@ function App() {
           )}
 
           <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-            {showSearch && (
-              <div className="search-bar">
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder="Search terminal..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      if (e.shiftKey) searchAddon.current?.findPrevious(searchTerm);
-                      else searchAddon.current?.findNext(searchTerm);
-                    }
-                    if (e.key === 'Escape') {
-                      setShowSearch(false);
-                      setSearchTerm('');
-                    }
-                  }}
-                  autoFocus
-                />
-                <button className="search-btn" onClick={() => searchAddon.current?.findPrevious(searchTerm)}>
-                  ▲
-                </button>
-                <button className="search-btn" onClick={() => searchAddon.current?.findNext(searchTerm)}>
-                  ▼
-                </button>
-                <button
-                  className="search-btn search-close"
-                  onClick={() => {
-                    setShowSearch(false);
-                    setSearchTerm('');
-                  }}
-                >
-                  ✖
-                </button>
-              </div>
-            )}
-
-            {!activeSession && (
+            {!activeSession && !showHistory && (
               <div className="welcome-screen home-stage">
                 <div className="ld-grid-backdrop" />
                 <div className="ld-aurora-wash" />
@@ -2356,15 +2395,34 @@ function App() {
             <div
               className="terminal-container"
               ref={terminalRef}
-              style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}
+              style={{
+                height: '100%',
+                pointerEvents: isNativeScrollMode || showHistory ? 'none' : 'auto',
+                visibility: showHistory ? 'hidden' : 'visible',
+              }}
             />
-            {isNativeScrollMode && (
+            {showHistory && (
+              <HistoryVault
+                activeSession={activeSession}
+                fleet={fleet}
+                operatorStyle={operatorStyle}
+                operatorSide={operatorSide}
+                onHistoryCountsChange={setHistoryCounts}
+                onInjectToAgent={(text) => {
+                  setShowHistory(false);
+                  pasteToTerminal(text);
+                }}
+                onClose={() => setShowHistory(false)}
+              />
+            )}
+            {isNativeScrollMode && !showHistory && (
               <ScrollbackOverlay
                 scrollbackContent={scrollbackContent}
                 rawScrollback={rawScrollback}
                 isSelectMode={isSelectMode}
+                focusSearch={scrollFocusSearch}
                 onToggleSelectMode={toggleScrollbackSelectMode}
-                onRefresh={enterNativeScrollMode}
+                onRefresh={() => enterNativeScrollMode({ focusSearch: false })}
                 onClose={closeNativeScrollMode}
               />
             )}
@@ -2582,6 +2640,12 @@ function App() {
         />
       )}
 
+      <SpawnSessionModal
+        isOpen={isSpawnModalOpen}
+        onClose={() => setIsSpawnModalOpen(false)}
+        onConfirm={confirmCreateSession}
+      />
+
       <DeleteSessionModal
         isOpen={isDeleteSessionModalOpen}
         onClose={() => {
@@ -2609,8 +2673,8 @@ function App() {
         onToggleFleetSidebar={toggleFleetSidebar}
         onOpenTokenGrabber={() => setShowTokenGrabber(true)}
         onOpenForensics={() => setShowForensics(true)}
-        onEnterScrollMode={enterNativeScrollMode}
-        onOpenSearch={() => setShowSearch(true)}
+        onEnterScrollMode={() => enterNativeScrollMode({ focusSearch: false })}
+        onOpenSearch={() => enterNativeScrollMode({ focusSearch: true })}
         onToggleKeyboard={() => setShowKeyboard((prev) => !prev)}
         onToggleVoice={startDictation}
         onSpeakSummary={handleSpeakSummary}
