@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 
 export default function MacroLibraryModal({ 
-  macroLibrary, onToggleMacroPin, onSaveMacro, onDeleteMacro, onImportMacros, onClose
+  macroLibrary, onToggleMacroPin, onSaveMacro, onDeleteMacro, onImportMacros, onClose, returnToVoice = false, onBackToVoice
 }) {
   const [showMacroModal, setShowMacroModal] = useState(false);
   const [editingMacroId, setEditingMacroId] = useState(null);
@@ -105,12 +105,19 @@ export default function MacroLibraryModal({
             ))}
           </div>
           <input type="file" ref={fileInputRef} accept=".json" style={{ display: 'none' }} onChange={handleImport} />
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', marginTop: '20px' }}>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', marginTop: '20px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button className="macro-btn" onClick={handleExport}>📥 Export</button>
               <button className="macro-btn" onClick={() => fileInputRef.current?.click()}>📤 Import</button>
             </div>
-            <button className="macro-btn action" onClick={onClose}>Done</button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {returnToVoice && onBackToVoice && (
+                <button className="subbar-util-btn active" style={{ height: '32px', padding: '0 12px' }} onClick={onBackToVoice}>
+                  ← BACK TO VOICE SETTINGS
+                </button>
+              )}
+              <button className="macro-btn action" onClick={onClose}>Done</button>
+            </div>
           </div>
         </div>
       </div>

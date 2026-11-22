@@ -1,12 +1,19 @@
 {
-  "name": "A.I.M. Connect",
-  "short_name": "A.I.M.",
-  "start_url": ".",
+  "name": "A.I.M. Connect // Sovereign Fleet Node",
+  "short_name": "AIM Connect",
+  "description": "Sovereign Agent Cockpit & Co-Pilot Browser",
+  "start_url": "/",
   "display": "standalone",
-  "background_color": "#0B162C",
-  "theme_color": "#0B162C",
-  "description": "Sovereign Terminal & Server Management",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#050505",
+  "theme_color": "#050505",
   "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "/aim-icon.jpg",
       "sizes": "512x512",

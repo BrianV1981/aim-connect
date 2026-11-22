@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import { authenticateWebAuthn } from '../webauthn';
+import Icon from './Icons';
 
 export default function AuthScreen({
-  passphrase, setPassphrase,
-  password, setPassword,
-  showPassword, setShowPassword,
-  pin, authError, e2eeSecret, setE2eeSecret,
-  onPinInput, onBackspace, onPasteClick, onWebAuthnLogin
+  passphrase,
+  setPassphrase,
+  password,
+  setPassword,
+  showPassword,
+  setShowPassword,
+  pin,
+  authError,
+  e2eeSecret,
+  setE2eeSecret,
+  onPinInput,
+  onBackspace,
+  onPasteClick,
+  onWebAuthnLogin,
 }) {
   const [webAuthnError, setWebAuthnError] = useState('');
   const [isWebAuthnLoading, setIsWebAuthnLoading] = useState(false);
@@ -14,15 +24,13 @@ export default function AuthScreen({
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT') return; // Don't interfere if typing in inputs
-      
+      if (e.target.tagName === 'INPUT') return;
       if (e.key >= '0' && e.key <= '9') {
         onPinInput(e.key);
       } else if (e.key === 'Backspace') {
         onBackspace();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onPinInput, onBackspace]);
@@ -33,10 +41,10 @@ export default function AuthScreen({
       setWebAuthnError('Please enter your Name (Stealth Passphrase) first.');
       return;
     }
-    
+
     setIsWebAuthnLoading(true);
     setWebAuthnError('');
-    
+
     try {
       const result = await authenticateWebAuthn(passphrase);
       if (result.success) {
@@ -50,127 +58,127 @@ export default function AuthScreen({
       setIsWebAuthnLoading(false);
     }
   };
+
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <div className="auth-header" style={{ marginBottom: '8px' }}>
-          <img src="/aim-icon.jpg" alt="A.I.M. Logo" style={{ width: '48px', height: '48px', borderRadius: '12px', marginBottom: '8px', boxShadow: '0 4px 12px rgba(0, 255, 170, 0.2)' }} />
-          <h2 style={{ fontSize: '18px', margin: '0 0 4px 0' }}>A.I.M. SECURE</h2>
-        </div>
-        
-        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
-          <input 
-            type="text" 
-            className="modal-input" 
-            style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '12px' }}
-            placeholder="Name"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            autoComplete="username"
-          />
-        </div>
-        
-        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
-          <input 
-            type={showPassword ? "text" : "password"} 
-            className="modal-input" 
-            style={{ width: '100%', textAlign: 'center', letterSpacing: '2px', padding: '10px' }}
-            placeholder="Admin Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
-          <button 
-            onClick={() => setShowPassword(!showPassword)}
-            style={{
-              position: 'absolute',
-              right: '30px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              fontSize: '16px',
-              padding: '4px'
-            }}
-          >
-            {showPassword ? '🫣' : '👁️'}
-          </button>
-        </div>
+    <div className="cockpit-shell">
+      <div className="ld-grid-backdrop" />
+      <div className="ld-aurora-wash" />
+      <div className="auth-lock-stage">
+        <div className="auth-card ld-mask-glass">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="ld-brand-box">
+                <Icon name="shield" />
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)' }}>
+                  AIM<span style={{ color: 'var(--accent)' }}>CONNECT</span> // 3FA GATE
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', letterSpacing: '0.12em' }}>
+                  ZERO-TRUST TOTP · WEBAUTHN · E2EE
+                </div>
+              </div>
+            </div>
+            <span className="pulse-led" title="Zero-Trust 3FA Gate Active" />
+          </div>
 
-        <div style={{ marginBottom: '8px', width: '100%', padding: '0 20px', boxSizing: 'border-box', position: 'relative' }}>
-          <input 
-            type={showE2eeSecret ? "text" : "password"} 
-            className="modal-input" 
-            style={{ width: '100%', textAlign: 'center', letterSpacing: '1px', padding: '10px', background: '#0f172a', borderColor: '#334155' }}
-            placeholder="E2EE Secret (Optional)"
-            value={e2eeSecret}
-            onChange={(e) => setE2eeSecret(e.target.value)}
-          />
-          <button 
-            onClick={() => setShowE2eeSecret(!showE2eeSecret)}
-            style={{
-              position: 'absolute',
-              right: '30px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              fontSize: '16px',
-              padding: '4px'
-            }}
-          >
-            {showE2eeSecret ? '🫣' : '👁️'}
-          </button>
-        </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+            <input
+              type="text"
+              className="ld-text-input"
+              placeholder="Operator Stealth Name / Passphrase"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              autoComplete="username"
+            />
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="ld-text-input"
+                style={{ flex: 1 }}
+                placeholder="Admin Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="subbar-util-btn"
+                style={{ height: '34px', padding: '0 10px' }}
+                onClick={() => setShowPassword(!showPassword)}
+                title={showPassword ? 'Hide Password' : 'Show Password'}
+              >
+                <Icon name={showPassword ? 'eyeOff' : 'eye'} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type={showE2eeSecret ? 'text' : 'password'}
+                className="ld-text-input"
+                style={{ flex: 1 }}
+                placeholder="Optional E2EE Secret (PBKDF2 AES-GCM)"
+                value={e2eeSecret}
+                onChange={(e) => setE2eeSecret(e.target.value)}
+              />
+              <button
+                type="button"
+                className="subbar-util-btn"
+                style={{ height: '34px', padding: '0 10px' }}
+                onClick={() => setShowE2eeSecret(!showE2eeSecret)}
+                title={showE2eeSecret ? 'Hide E2EE Secret' : 'Show E2EE Secret'}
+              >
+                <Icon name={showE2eeSecret ? 'eyeOff' : 'lock'} />
+              </button>
+            </div>
+          </div>
 
-        <div style={{ marginBottom: '12px', width: '100%', padding: '0 20px', boxSizing: 'border-box' }}>
-          <button 
+          <button
+            type="button"
+            className="neon-cta-btn"
+            style={{ width: '100%', justifyContent: 'center', height: '38px' }}
             onClick={handleWebAuthnLogin}
             disabled={isWebAuthnLoading}
-            style={{
-              width: '100%',
-              background: 'rgba(59, 130, 246, 0.2)',
-              border: '1px solid #3b82f6',
-              color: '#60a5fa',
-              padding: '8px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px'
-            }}
           >
-            {isWebAuthnLoading ? 'Authenticating...' : '👤 Login with FaceID / TouchID'}
+            <Icon name="fingerprint" />
+            <span>{isWebAuthnLoading ? 'AUTHENTICATING PASSKEY...' : 'LOGIN WITH FACEID / TOUCHID PASSKEY'}</span>
           </button>
-          {webAuthnError && <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', textAlign: 'center' }}>{webAuthnError}</div>}
-        </div>
 
-        <div className="pin-display">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className={`pin-dot ${i < pin.length ? 'filled' : ''}`}></div>
-          ))}
-        </div>
-        
-        {authError && <div className="auth-error">{authError}</div>}
+          {webAuthnError && (
+            <div style={{ color: '#f87171', fontSize: '11.5px', fontFamily: 'var(--font-mono)', textAlign: 'center' }}>
+              {webAuthnError}
+            </div>
+          )}
 
-        <div className="keypad">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-            <button key={num} className="key" onClick={() => onPinInput(num.toString())}>
-              {num}
+          <div style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+            OR ENTER 6-DIGIT HARDWARE / TOTP PIN
+          </div>
+
+          <div className="pin-dots-row">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <span key={i} className={`pin-dot ${i < pin.length ? 'filled' : ''}`} />
+            ))}
+          </div>
+
+          {authError && <div className="auth-error">{authError}</div>}
+
+          <div className="totp-keypad">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
+              <button key={num} type="button" className="totp-key" onClick={() => onPinInput(num)}>
+                {num}
+              </button>
+            ))}
+            <button type="button" className="totp-key" onClick={onPasteClick} title="Paste 6-digit TOTP code">
+              PASTE
             </button>
-          ))}
-          <button className="key action" style={{ fontSize: '24px' }} onClick={onPasteClick}>📋</button>
-          <button className="key" onClick={() => onPinInput('0')}>0</button>
-          <button className="key action" onClick={onBackspace}>⌫</button>
+            <button type="button" className="totp-key" onClick={() => onPinInput('0')}>
+              0
+            </button>
+            <button type="button" className="totp-key" onClick={onBackspace} title="Backspace">
+              ⌫
+            </button>
+          </div>
         </div>
       </div>
-      <div style={{ position: 'absolute', bottom: '10px', right: '10px', color: '#64748b', fontSize: '10px', zIndex: 10 }}>v1.1.0</div>
     </div>
   );
 }

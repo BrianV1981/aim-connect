@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Editor from '@monaco-editor/react';
 import { Terminal } from '@xterm/xterm';
 import { AnsiUp } from 'ansi_up';
 import { FitAddon } from '@xterm/addon-fit';
@@ -7,11 +6,11 @@ import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import './App.css';
 import Keyboard from './Keyboard';
+import Icon from './components/Icons';
 import SettingsModal from './components/SettingsModal';
 import MacroLibraryModal from './components/MacroLibraryModal';
 import AuthScreen from './components/AuthScreen';
 import DeleteSessionModal from './components/DeleteSessionModal';
-import IntegrationsModal from './components/IntegrationsModal';
 import FleetSidebar from './components/FleetSidebar';
 import CommandPalette from './components/CommandPalette';
 import TokenGrabberModal from './components/TokenGrabberModal';
@@ -21,8 +20,37 @@ import ForensicsModal from './components/ForensicsModal';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
 import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelection';
 import { E2EESocketWrapper } from './e2ee';
-import { authenticateWebAuthn } from './webauthn';
 import { getAgentColor } from './agentColors';
+import { useMatrixScramble } from './scramble';
+
+const THEME_META_COLORS = {
+  emerald: '#050505',
+  oled: '#000000',
+  light: '#f8fafc',
+  navy: '#050a14',
+};
+
+function resolveXtermPalette(uiTheme, termPalette) {
+  if (termPalette === 'hacker') {
+    return { background: '#000000', foreground: '#22c55e', cursor: '#00ffa3' };
+  }
+  if (termPalette === 'high-contrast' || termPalette === 'contrast') {
+    return { background: '#000000', foreground: '#ffffff', cursor: '#ffffff' };
+  }
+  if (termPalette === 'standard') {
+    return { background: '#0B162C', foreground: '#e2e8f0', cursor: '#ff5722' };
+  }
+  if (uiTheme === 'light') {
+    return { background: '#ffffff', foreground: '#09090b', cursor: '#047857' };
+  }
+  if (uiTheme === 'oled') {
+    return { background: '#000000', foreground: '#ffffff', cursor: '#00ffa3' };
+  }
+  if (uiTheme === 'navy') {
+    return { background: '#081122', foreground: '#e2e8f0', cursor: '#ff5722' };
+  }
+  return { background: '#040505', foreground: '#f3f4f6', cursor: '#00ffa3' };
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -32,13 +60,79 @@ function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [e2eeSecret, setE2eeSecretState] = useState(() => localStorage.getItem('aim-e2ee-secret') || '');
-  
+
   const setE2eeSecret = (val) => {
     setE2eeSecretState(val);
     localStorage.setItem('aim-e2ee-secret', val);
   };
-  
-  
+
+  // Emerald Matrix V4 Theme & Operator Reply Preferences (#256)
+  const [theme, setThemeState] = useState(() => {
+    const saved = localStorage.getItem('aim-ui-theme');
+    return ['emerald', 'oled', 'light', 'navy'].includes(saved) ? saved : 'emerald';
+  });
+  const setTheme = useCallback((nextTheme) => {
+    const valid = ['emerald', 'oled', 'light', 'navy'].includes(nextTheme) ? nextTheme : 'emerald';
+    setThemeState(valid);
+    localStorage.setItem('aim-ui-theme', valid);
+  }, []);
+
+  const [operatorStyle, setOperatorStyleState] = useState(
+    () => localStorage.getItem('aim-operator-style') || 'cyan'
+  );
+  const setOperatorStyle = useCallback((val) => {
+    setOperatorStyleState(val);
+    localStorage.setItem('aim-operator-style', val);
+  }, []);
+
+  const [operatorSide, setOperatorSideState] = useState(
+    () => localStorage.getItem('aim-operator-side') || 'right'
+  );
+  const setOperatorSide = useCallback((val) => {
+    setOperatorSideState(val);
+    localStorage.setItem('aim-operator-side', val);
+  }, []);
+
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const triggerInstallApp = useCallback(async () => {
+    if (!deferredInstallPrompt) return false;
+    try {
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+    } catch {}
+    setDeferredInstallPrompt(null);
+    return true;
+  }, [deferredInstallPrompt]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    const meta = document.getElementById('meta-theme-color');
+    if (meta) {
+      meta.setAttribute('content', THEME_META_COLORS[theme] || '#050505');
+    }
+  }, [theme]);
+
+  const brandAimScramble = useMatrixScramble('AIM');
+  const brandConnScramble = useMatrixScramble('CONNECT');
+  const termTabScramble = useMatrixScramble('TERMINAL');
+  const browserTabScramble = useMatrixScramble('BROWSER');
+  const filesTabScramble = useMatrixScramble('FILES');
+  const historyTabScramble = useMatrixScramble('HISTORY');
+  const homeSloganScramble = useMatrixScramble("Don't rent a seat.");
+
   const [sessions, setSessions] = useState([]);
   const [fleet, setFleet] = useState([]);
   const [unreadSessions, setUnreadSessions] = useState([]);
@@ -74,12 +168,15 @@ function App() {
         osc.stop(now + idx * 0.12 + 0.24);
       });
       setTimeout(() => {
-        try { ctx.close(); } catch (e) {}
+        try {
+          ctx.close();
+        } catch {}
       }, 650);
-    } catch (e) {
+    } catch {
       // Ignore audio context autoplay restrictions
     }
   };
+
   const [showFleetSidebar, setShowFleetSidebar] = useState(() => {
     const saved = localStorage.getItem('aim-show-fleet');
     if (saved !== null) return JSON.parse(saved);
@@ -94,7 +191,6 @@ function App() {
   }, [activeSession]);
   const [sessionToDelete, setSessionToDelete] = useState('');
   const [isDeleteSessionModalOpen, setIsDeleteSessionModalOpen] = useState(false);
-  const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showTokenGrabber, setShowTokenGrabber] = useState(false);
   const [showForensics, setShowForensics] = useState(false);
@@ -105,26 +201,29 @@ function App() {
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
   const [splitWidthPct, setSplitWidthPct] = useState(() => {
-    if (typeof window === 'undefined') return 52;
+    if (typeof window === 'undefined') return 48;
     const saved = Number(localStorage.getItem('aim-split-pane-pct'));
-    return Number.isFinite(saved) && saved >= 20 && saved <= 80 ? saved : 52;
+    return Number.isFinite(saved) && saved >= 20 && saved <= 80 ? saved : 48;
   });
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
   const cockpitBodyRef = useRef(null);
   const terminalColumnRef = useRef(null);
   const splitFitRafRef = useRef(null);
   const [showKeyboard, setShowKeyboard] = useState(false);
-  const [currentPath, setCurrentPath] = useState('');
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
-  const [voiceAutoRead, setVoiceAutoRead] = useState(() => JSON.parse(localStorage.getItem('aim-voice-autoread') ?? 'false'));
+  const [voiceAutoRead, setVoiceAutoRead] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-voice-autoread') ?? 'false')
+  );
   const voiceAutoReadRef = useRef(voiceAutoRead);
   useEffect(() => {
     voiceAutoReadRef.current = voiceAutoRead;
   }, [voiceAutoRead]);
-  const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('aim-voice-tts-voice') || 'piper:en_GB-alan-medium');
+  const [ttsVoice, setTtsVoice] = useState(
+    () => localStorage.getItem('aim-voice-tts-voice') || 'piper:en_GB-alan-medium'
+  );
   const ttsVoiceRef = useRef(ttsVoice);
   useEffect(() => {
     ttsVoiceRef.current = ttsVoice;
@@ -135,20 +234,36 @@ function App() {
   const ttsBufferSourceRef = useRef(null);
   const ttsAbortRef = useRef(null);
   const lastSpokenSummaryRef = useRef({});
-  const [voiceContinuous, setVoiceContinuous] = useState(() => JSON.parse(localStorage.getItem('aim-voice-continuous') ?? 'true'));
-  const [voiceAutoEnter, setVoiceAutoEnter] = useState(() => JSON.parse(localStorage.getItem('aim-voice-enter') ?? 'true'));
-  const [voiceAutoExecute, setVoiceAutoExecute] = useState(() => JSON.parse(localStorage.getItem('aim-voice-execute') ?? 'true'));
-  const [voiceAutoCapitalize, setVoiceAutoCapitalize] = useState(() => JSON.parse(localStorage.getItem('aim-voice-autocap') ?? 'true'));
-  const [voiceSlashes, setVoiceSlashes] = useState(() => JSON.parse(localStorage.getItem('aim-voice-slashes') ?? 'false'));
-  const [voiceAutoSend, setVoiceAutoSend] = useState(() => JSON.parse(localStorage.getItem('aim-voice-send') ?? 'true'));
+  const [voiceContinuous, setVoiceContinuous] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-voice-continuous') ?? 'true')
+  );
+  const [voiceAutoEnter, setVoiceAutoEnter] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-voice-enter') ?? 'true')
+  );
+  const [voiceAutoExecute, setVoiceAutoExecute] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-voice-execute') ?? 'true')
+  );
+  const [voiceAutoCapitalize, setVoiceAutoCapitalize] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-voice-autocap') ?? 'true')
+  );
+  const [voiceSlashes, setVoiceSlashes] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-voice-slashes') ?? 'false')
+  );
+  const [voiceAutoSend, setVoiceAutoSend] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-voice-send') ?? 'true')
+  );
 
   const stopSpeaking = () => {
     if (ttsAbortRef.current) {
-      try { ttsAbortRef.current.abort(); } catch (e) {}
+      try {
+        ttsAbortRef.current.abort();
+      } catch {}
       ttsAbortRef.current = null;
     }
     if (ttsBufferSourceRef.current) {
-      try { ttsBufferSourceRef.current.stop(0); } catch (e) {}
+      try {
+        ttsBufferSourceRef.current.stop(0);
+      } catch {}
       ttsBufferSourceRef.current = null;
     }
     if (ttsAudioRef.current) {
@@ -157,11 +272,13 @@ function App() {
         if (ttsAudioRef.current.dataset?.blobUrl) {
           URL.revokeObjectURL(ttsAudioRef.current.dataset.blobUrl);
         }
-      } catch (e) {}
+      } catch {}
       ttsAudioRef.current = null;
     }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try { window.speechSynthesis.cancel(); } catch (e) {}
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
     }
     setIsSpeaking(false);
   };
@@ -177,7 +294,9 @@ function App() {
       utterance.lang = 'en-US';
       utterance.rate = 1.04;
       const voices = window.speechSynthesis.getVoices?.() || [];
-      const preferred = voices.find((v) => /natural|google us english|siri|samantha/i.test(v.name) && /^en/i.test(v.lang));
+      const preferred = voices.find(
+        (v) => /natural|google us english|siri|samantha/i.test(v.name) && /^en/i.test(v.lang)
+      );
       if (preferred) utterance.voice = preferred;
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
@@ -185,7 +304,7 @@ function App() {
       setIsSpeaking(true);
       window.speechSynthesis.speak(utterance);
       return true;
-    } catch (e) {
+    } catch {
       setIsSpeaking(false);
       return false;
     }
@@ -202,14 +321,15 @@ function App() {
       return speakBrowserFallback(cleaned);
     }
 
-    // Unlock Web Audio Context synchronously during user gesture before awaiting fetch
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
       if (!ttsAudioCtxRef.current || ttsAudioCtxRef.current.state === 'closed') {
         ttsAudioCtxRef.current = new AudioCtx();
       }
       if (ttsAudioCtxRef.current.state === 'suspended') {
-        try { ttsAudioCtxRef.current.resume(); } catch (e) {}
+        try {
+          ttsAudioCtxRef.current.resume();
+        } catch {}
       }
     }
 
@@ -260,7 +380,9 @@ function App() {
           ttsAudioRef.current = null;
           setIsSpeaking(false);
         }
-        try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+        try {
+          URL.revokeObjectURL(blobUrl);
+        } catch {}
       };
       audio.onended = cleanup;
       audio.onerror = cleanup;
@@ -277,7 +399,12 @@ function App() {
   };
 
   const handleSpeakSummary = async () => {
-    if (isSpeaking || ttsBufferSourceRef.current || ttsAudioRef.current || (typeof window !== 'undefined' && window.speechSynthesis?.speaking)) {
+    if (
+      isSpeaking ||
+      ttsBufferSourceRef.current ||
+      ttsAudioRef.current ||
+      (typeof window !== 'undefined' && window.speechSynthesis?.speaking)
+    ) {
       stopSpeaking();
       return;
     }
@@ -291,7 +418,7 @@ function App() {
       if (data && data.spoken_summary) {
         summaryText = data.spoken_summary;
       }
-    } catch (e) {
+    } catch {
       // Fallback to cached fleet telemetry
     }
     if (!summaryText) {
@@ -303,6 +430,7 @@ function App() {
       await speakSummaryText(summaryText);
     }
   };
+
   const [scrollbackContent, setScrollbackContent] = useState('');
   const [rawScrollback, setRawScrollback] = useState('');
   const isNativeScrollModeRef = useRef(false);
@@ -327,15 +455,25 @@ function App() {
 
     // Blur xterm and clear stale selection so hidden textarea never hijacks Ctrl+C or selection (#227)
     if (term.current) {
-      try { term.current.clearSelection?.(); } catch (e) {}
-      try { term.current.blur(); } catch (e) {}
-      try { term.current.textarea?.blur(); } catch (e) {}
+      try {
+        term.current.clearSelection?.();
+      } catch {}
+      try {
+        term.current.blur();
+      } catch {}
+      try {
+        term.current.textarea?.blur();
+      } catch {}
     }
     const hiddenTextarea = terminalRef.current?.querySelector('textarea');
     if (hiddenTextarea) {
-      try { hiddenTextarea.blur(); } catch (e) {}
+      try {
+        hiddenTextarea.blur();
+      } catch {}
     }
-    try { window.getSelection?.()?.removeAllRanges?.(); } catch (e) {}
+    try {
+      window.getSelection?.()?.removeAllRanges?.();
+    } catch {}
 
     setIsNativeScrollMode(true);
     setScrollbackContent('Loading scrollback...');
@@ -358,11 +496,7 @@ function App() {
       setRawScrollback('Error loading scrollback.');
     }
   }, [activeSession]);
-  const [fileItems, setFileItems] = useState([]);
-  const [openFileContent, setOpenFileContent] = useState('');
-  const [isEditingFile, setIsEditingFile] = useState(false);
-  const [openFilePath, setOpenFilePath] = useState('');
-  
+
   const defaultLibrary = [
     { id: 'pre-ctrlc', label: '^C', cmd: '\x03', isPinned: true },
     { id: 'pre-esc', label: 'Esc', cmd: '\x1b', isPinned: true },
@@ -381,15 +515,15 @@ function App() {
     { id: '2', label: 'top', cmd: 'top\r', isPinned: true },
     { id: '3', label: 'ls', cmd: 'ls -la\r', isPinned: true },
     { id: '4', label: 'Mini Mode', cmd: 'opencode --mini\r', isPinned: false },
-    { id: 'pre-mode', label: '📜 Mode', cmd: '\x02[', isPinned: true }
+    { id: 'pre-mode', label: 'Copy Mode', cmd: '\x02[', isPinned: true },
   ];
+
   const [macroLibrary, setMacroLibrary] = useState(() => {
     const saved = localStorage.getItem('aim-macro-library');
     if (saved) {
       let parsed = JSON.parse(saved);
-      // Migrate missing hardcoded macros into existing user libraries
-      const missingDefaults = defaultLibrary.filter(def => 
-        def.id.startsWith('pre-') && !parsed.some(m => m.id === def.id)
+      const missingDefaults = defaultLibrary.filter(
+        (def) => def.id.startsWith('pre-') && !parsed.some((m) => m.id === def.id)
       );
       if (missingDefaults.length > 0) {
         parsed = [...missingDefaults, ...parsed];
@@ -401,33 +535,40 @@ function App() {
     if (oldSaved) {
       try {
         const oldParsed = JSON.parse(oldSaved).map((m, i) => ({
-          id: `old-${i}`, label: m.label, cmd: m.cmd, isPinned: true
+          id: `old-${i}`,
+          label: m.label,
+          cmd: m.cmd,
+          isPinned: true,
         }));
         return [...defaultLibrary, ...oldParsed];
-      } catch (e) {}
+      } catch {}
     }
     return defaultLibrary;
   });
-  
+
   const macroLibraryRef = useRef(macroLibrary);
   useEffect(() => {
     macroLibraryRef.current = macroLibrary;
   }, [macroLibrary]);
 
   const [showMacroLibrary, setShowMacroLibrary] = useState(false);
+  const [macroReturnToVoice, setMacroReturnToVoice] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [theme, setTheme] = useState('dark');
-  const [keyboardMode, setKeyboardMode] = useState(() => {
-    return localStorage.getItem('aim-kb-mode') || 'standard';
-  });
+  const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
+
+  const [keyboardMode, setKeyboardMode] = useState(() => localStorage.getItem('aim-kb-mode') || 'standard');
   const [autoCaps, setAutoCaps] = useState(() => {
     const val = localStorage.getItem('aim-kb-autocaps');
     return val !== null ? JSON.parse(val) : true;
   });
-  
-  const [termFontSize, setTermFontSize] = useState(() => parseInt(localStorage.getItem('aim-term-fontsize') || '14', 10));
-  const [termTheme, setTermTheme] = useState(() => localStorage.getItem('aim-term-theme') || 'standard');
-  const [keyboardFeedback, setKeyboardFeedback] = useState(() => localStorage.getItem('aim-kb-feedback') || 'audio');
+
+  const [termFontSize, setTermFontSize] = useState(() =>
+    parseInt(localStorage.getItem('aim-term-fontsize') || '14', 10)
+  );
+  const [termTheme, setTermTheme] = useState(() => localStorage.getItem('aim-term-theme') || 'match');
+  const [keyboardFeedback, setKeyboardFeedback] = useState(
+    () => localStorage.getItem('aim-kb-feedback') || 'audio'
+  );
   const terminalRef = useRef(null);
   const term = useRef(null);
   const ws = useRef(null);
@@ -437,28 +578,30 @@ function App() {
   const passwordRef = useRef('');
   const harnessRef = useRef('admin');
   const apiTokenRef = useRef(localStorage.getItem('aim-token') || null);
-  const clientIdRef = useRef((() => {
-    try {
-      let cid = sessionStorage.getItem('aim-tab-client-id');
-      if (!cid) {
-        cid = (window.crypto && window.crypto.randomUUID)
-          ? window.crypto.randomUUID()
-          : `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-        sessionStorage.setItem('aim-tab-client-id', cid);
+  const clientIdRef = useRef(
+    (() => {
+      try {
+        let cid = sessionStorage.getItem('aim-tab-client-id');
+        if (!cid) {
+          cid =
+            window.crypto && window.crypto.randomUUID
+              ? window.crypto.randomUUID()
+              : `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+          sessionStorage.setItem('aim-tab-client-id', cid);
+        }
+        return cid;
+      } catch {
+        return `tab-${Date.now().toString(36)}`;
       }
-      return cid;
-    } catch (e) {
-      return `tab-${Date.now().toString(36)}`;
-    }
-  })());
+    })()
+  );
   const reconnectAttempts = useRef(0);
   const [connState, setConnState] = useState('disconnected');
   const editorRef = useRef(null);
   const searchAddon = useRef(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Auto-auth on load if token exists
+
   useEffect(() => {
     if (apiTokenRef.current && !isAuthenticated) {
       setIsAuthenticated(true);
@@ -468,7 +611,6 @@ function App() {
     }
   }, []);
 
-  // Dynamic Viewport Height Fix for Mobile PWA (debounced for iOS Safari)
   useEffect(() => {
     let viewportTimeout;
     const setHeight = () => {
@@ -479,14 +621,14 @@ function App() {
         if (window.visualViewport) {
           document.body.style.height = `${window.visualViewport.height}px`;
         }
-        // Refit terminal after viewport settles
         if (fitAddon.current) {
-          try { fitAddon.current.fit(); } catch (e) { /* terminal not ready */ }
+          try {
+            fitAddon.current.fit();
+          } catch {}
         }
       }, 150);
     };
     const handleOrientation = () => {
-      // iOS needs ~300ms to finish the rotation animation
       setTimeout(setHeight, 350);
     };
     setHeight();
@@ -516,7 +658,7 @@ function App() {
         } else {
           ws.current.close();
         }
-      } catch (e) {}
+      } catch {}
       ws.current = null;
     }
     setConnState('disconnected');
@@ -531,13 +673,13 @@ function App() {
   useEffect(() => {
     const originalFetch = window.fetch;
     window.fetch = async (resource, config = {}) => {
-      const urlStr = typeof resource === 'string' ? resource : (resource?.url || '');
+      const urlStr = typeof resource === 'string' ? resource : resource?.url || '';
       const isApiRoute = urlStr.startsWith('/api/') || urlStr.includes('/api/');
       const isAuthBootstrap =
         urlStr.startsWith('/api/auth') ||
         urlStr.startsWith('/api/logout') ||
         urlStr.startsWith('/api/webauthn/authenticate');
-      const sentToken = (!isAuthBootstrap && isApiRoute && apiTokenRef.current) ? apiTokenRef.current : null;
+      const sentToken = !isAuthBootstrap && isApiRoute && apiTokenRef.current ? apiTokenRef.current : null;
       if (sentToken) {
         config = {
           ...config,
@@ -553,14 +695,15 @@ function App() {
       }
       return res;
     };
-    return () => { window.fetch = originalFetch; };
+    return () => {
+      window.fetch = originalFetch;
+    };
   }, [expireSession]);
 
-  // Keep ref in sync
   useEffect(() => {
     authRef.current = isAuthenticated;
   }, [isAuthenticated]);
-  
+
   useEffect(() => {
     pinRef.current = pin;
   }, [pin]);
@@ -577,12 +720,12 @@ function App() {
         const res = await fetch('/api/macros');
         const data = await res.json();
         if (Array.isArray(data)) {
-          setMacroLibrary(prev => {
-            const localMacros = prev.filter(m => !m.isServer);
-            const serverMacros = data.map(m => ({ ...m, isServer: true }));
+          setMacroLibrary((prev) => {
+            const localMacros = prev.filter((m) => !m.isServer);
+            const serverMacros = data.map((m) => ({ ...m, isServer: true }));
             const merged = [...localMacros];
-            serverMacros.forEach(sm => {
-              const idx = merged.findIndex(lm => lm.id === sm.id);
+            serverMacros.forEach((sm) => {
+              const idx = merged.findIndex((lm) => lm.id === sm.id);
               if (idx >= 0) merged[idx] = sm;
               else merged.push(sm);
             });
@@ -605,11 +748,12 @@ function App() {
         const res = await fetch('/api/sessions');
         const data = await res.json();
         if (Array.isArray(data.sessions)) {
-          setSessions(prev => JSON.stringify(prev) === JSON.stringify(data.sessions) ? prev : data.sessions);
+          setSessions((prev) =>
+            JSON.stringify(prev) === JSON.stringify(data.sessions) ? prev : data.sessions
+          );
         }
         if (Array.isArray(data.fleet)) {
           setFleet(data.fleet);
-          // Detect THINKING -> IDLE transitions on background sessions & WAITING permission alerts (#220)
           const newlyCompleted = [];
           let triggeredWaiting = false;
           const currWaiting = [];
@@ -637,7 +781,8 @@ function App() {
             if (prevSummary === undefined) {
               lastSpokenSummaryRef.current[sName] = currSummary;
             } else if (item.status !== 'THINKING' && currSummary) {
-              const turnFinished = prevSt === 'THINKING' && (item.status === 'IDLE' || item.status === 'WAITING');
+              const turnFinished =
+                prevSt === 'THINKING' && (item.status === 'IDLE' || item.status === 'WAITING');
               if (currSummary !== prevSummary || turnFinished) {
                 lastSpokenSummaryRef.current[sName] = currSummary;
                 if (sName === activeSession && voiceAutoReadRef.current) {
@@ -657,7 +802,6 @@ function App() {
             setUnreadSessions((prev) => Array.from(new Set([...prev, ...newlyCompleted])));
           }
         }
-        // Do not auto-assign activeSession to force the Welcome Screen on login
       } catch (err) {
         console.error(err);
       }
@@ -673,7 +817,9 @@ function App() {
       localStorage.setItem('aim-show-fleet', JSON.stringify(next));
       setTimeout(() => {
         if (fitAddon.current) {
-          try { fitAddon.current.fit(); } catch (e) {}
+          try {
+            fitAddon.current.fit();
+          } catch {}
         }
       }, 80);
       return next;
@@ -687,7 +833,7 @@ function App() {
       if (fitAddon.current) {
         try {
           fitAddon.current.fit();
-        } catch (e) {}
+        } catch {}
       }
     });
   }, []);
@@ -749,9 +895,9 @@ function App() {
   );
 
   const handleSplitDividerDoubleClick = useCallback(() => {
-    setSplitWidthPct(52);
+    setSplitWidthPct(48);
     try {
-      localStorage.setItem('aim-split-pane-pct', '52');
+      localStorage.setItem('aim-split-pane-pct', '48');
     } catch {}
     setTimeout(() => {
       try {
@@ -761,15 +907,14 @@ function App() {
   }, []);
 
   const createSession = async () => {
-    const name = window.prompt("New Session Name:");
+    const name = window.prompt('New Session Name:');
     if (!name) return;
     try {
       await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name }),
       });
-      // Force fetch to update dropdown
       const res = await fetch('/api/sessions');
       const data = await res.json();
       setSessions(data.sessions || []);
@@ -778,7 +923,9 @@ function App() {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify({ type: 'switch_session', session: name }));
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const killSession = async (targetName) => {
@@ -795,9 +942,8 @@ function App() {
     try {
       const res = await fetch('/api/sessions');
       const data = await res.json();
-      const otherSessions = (data.sessions || []).filter(s => s !== sessionToKill);
-      
-      // Only switch activeSession if we are killing the currently attached session
+      const otherSessions = (data.sessions || []).filter((s) => s !== sessionToKill);
+
       if (sessionToKill === activeSession) {
         if (otherSessions.length > 0) {
           const nextSession = otherSessions[0];
@@ -809,17 +955,19 @@ function App() {
           setActiveSession('');
         }
       }
-      
-      // Give tmux a millisecond to switch clients, then kill the original session and its workspace
+
       setTimeout(async () => {
-        await fetch(`/api/sessions/${encodeURIComponent(sessionToKill)}?delete_workspace=false`, { method: 'DELETE' });
+        await fetch(`/api/sessions/${encodeURIComponent(sessionToKill)}?delete_workspace=false`, {
+          method: 'DELETE',
+        });
         const finalRes = await fetch('/api/sessions');
         const finalData = await finalRes.json();
         setSessions(finalData.sessions || []);
         if (Array.isArray(finalData.fleet)) setFleet(finalData.fleet);
       }, 100);
-      
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const switchToSession = (newSession) => {
@@ -840,23 +988,20 @@ function App() {
     setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
     const matchedFleet = fleet.find((f) => f.session_name === newSession);
     if (matchedFleet) {
-      lastChimedDigestRef.current[newSession] = matchedFleet.turn_digest || matchedFleet.spoken_summary || '';
+      lastChimedDigestRef.current[newSession] =
+        matchedFleet.turn_digest || matchedFleet.spoken_summary || '';
     }
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
       if (fitAddon.current) {
         setTimeout(() => {
-           const dims = fitAddon.current.proposeDimensions();
-           if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
-             ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-           }
+          const dims = fitAddon.current.proposeDimensions();
+          if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+          }
         }, 100);
       }
     }
-  };
-
-  const handleSessionSwitch = (e) => {
-    switchToSession(e.target.value);
   };
 
   const sendSessionCommand = async (sessionName, command) => {
@@ -871,88 +1016,15 @@ function App() {
     return res.json();
   };
 
-  const loadFiles = async (path) => {
-    try {
-      const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
-      const data = await res.json();
-      if (data.items) {
-        setFileItems(data.items);
-        setCurrentPath(data.path);
-        setOpenFileContent('');
-        setIsEditingFile(false);
-        setOpenFilePath('');
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const loadFileContent = async (path) => {
-    try {
-      const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
-      const data = await res.json();
-      if (data.content !== undefined) {
-        setOpenFileContent(data.content);
-        setOpenFilePath(path);
-        setIsEditingFile(true);
-      } else {
-        setOpenFileContent(data.error || 'Failed to read file');
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const saveFile = async () => {
-    try {
-      await fetch('/api/file', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: openFilePath, content: openFileContent })
-      });
-      // flash visual feedback
-      const btn = document.getElementById('save-btn');
-      if (btn) {
-        btn.innerText = 'Saved!';
-        setTimeout(() => btn.innerText = 'Save', 2000);
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const createItem = async (isDir) => {
-    const name = window.prompt(`New ${isDir ? 'Folder' : 'File'} Name:`);
-    if (!name) return;
-    try {
-      await fetch('/api/file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: `${currentPath}/${name}`, is_dir: isDir })
-      });
-      loadFiles(currentPath);
-    } catch (e) { console.error(e); }
-  };
-
-  const deleteItem = async (path, e) => {
-    e.stopPropagation();
-    if (!window.confirm(`Delete ${path.split('/').pop()}?`)) return;
-    try {
-      await fetch(`/api/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
-      loadFiles(currentPath);
-    } catch (e) { console.error(e); }
-  };
-
-  useEffect(() => {
-    if (showFiles) {
-      loadFiles(currentPath);
-    }
-  }, [showFiles]);
-
-  // Handle PIN input
   const handlePinInput = (digit) => {
     if (pin.length < 6) {
-      setPin(prev => prev + digit);
+      setPin((prev) => prev + digit);
       setAuthError('');
     }
   };
 
   const handleBackspace = () => {
-    setPin(prev => prev.slice(0, -1));
+    setPin((prev) => prev.slice(0, -1));
     setAuthError('');
   };
 
@@ -969,17 +1041,14 @@ function App() {
     }
   };
 
-  // Trigger auth when 6 digits are reached
   useEffect(() => {
     if (pin.length === 6) {
       authenticate(pin, password, 'admin');
     }
   }, [pin, password]);
 
-  // Support pasting TOTP codes directly
   useEffect(() => {
     if (isAuthenticated) return;
-    
     const handlePaste = (e) => {
       e.preventDefault();
       const pastedText = e.clipboardData.getData('text');
@@ -989,7 +1058,6 @@ function App() {
         setAuthError('');
       }
     };
-    
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
   }, [isAuthenticated]);
@@ -1003,11 +1071,11 @@ function App() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-token': tokenToRevoke
-          }
+            'x-api-token': tokenToRevoke,
+          },
         });
       } catch (e) {
-        console.error("Logout failed", e);
+        console.error('Logout failed', e);
       }
     }
   };
@@ -1019,45 +1087,43 @@ function App() {
       setE2eeSecret(passedE2eeSecret);
     }
     setAuthError('');
-    authenticate(null, null, 'admin'); // proceed to WS connection
+    authenticate(null, null, 'admin');
   };
 
   const authenticate = async (token, pass, harness = 'admin') => {
     if (token !== null && (!pass || !passphrase)) {
-        setAuthError(!passphrase ? 'Please enter Name first' : 'Please enter Admin Password first');
-        setPin('');
-        return;
-    }
-    
-    // Store the harness to pass to the WS later
-    harnessRef.current = harness;
-    
-    if (token && pass) {
-      try {
-        const res = await window.fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password: pass, passphrase })
-      });
-      if (!res.ok) {
-        setAuthError('Invalid or expired PIN');
-        setPin('');
-        return;
-      }
-      const data = await res.json();
-      apiTokenRef.current = data.api_token;
-      localStorage.setItem('aim-token', data.api_token);
-    } catch (e) {
-      setAuthError('Connection failed');
+      setAuthError(!passphrase ? 'Please enter Name first' : 'Please enter Admin Password first');
       setPin('');
       return;
     }
+
+    harnessRef.current = harness;
+
+    if (token && pass) {
+      try {
+        const res = await window.fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: pass, passphrase }),
+        });
+        if (!res.ok) {
+          setAuthError('Invalid or expired PIN');
+          setPin('');
+          return;
+        }
+        const data = await res.json();
+        apiTokenRef.current = data.api_token;
+        localStorage.setItem('aim-token', data.api_token);
+      } catch {
+        setAuthError('Connection failed');
+        setPin('');
+        return;
+      }
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-    // Cleanly dispose any stale socket owned by this tab before opening a replacement (#244)
     if (ws.current) {
       try {
         if (typeof ws.current._dispose === 'function') {
@@ -1065,16 +1131,16 @@ function App() {
         } else {
           ws.current.close();
         }
-      } catch (e) {}
+      } catch {}
       ws.current = null;
     }
-    
+
     const rawSocket = new WebSocket(wsUrl);
     rawSocket.binaryType = 'arraybuffer';
-    
+
     const socket = new E2EESocketWrapper(rawSocket, e2eeSecret);
     socket.init();
-    
+
     let pingInterval;
     let disposed = false;
     let authRequestedSession = '';
@@ -1082,7 +1148,6 @@ function App() {
 
     const handleVisibilityChange = () => {
       if (disposed || document.visibilityState !== 'visible') return;
-      // Reset grace clock on foreground wake and probe socket liveness immediately (#244)
       lastServerMessageAt = Date.now();
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
@@ -1098,7 +1163,6 @@ function App() {
     };
 
     socket.onopen = () => {
-      // Send the API token to WS, not the original PIN, plus current activeSession & tab client_id (#217, #243, #244)
       authRequestedSession = activeSessionRef.current || '';
       lastServerMessageAt = Date.now();
       socket.send(
@@ -1140,8 +1204,7 @@ function App() {
                 socket.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
               }
             }
-            
-            // Bidirectional keepalive every 10s + dead-socket watchdog when visible (#244)
+
             pingInterval = setInterval(() => {
               if (socket.readyState === WebSocket.OPEN) {
                 if (
@@ -1166,13 +1229,13 @@ function App() {
             }
             return;
           }
-        } catch (e) {
+        } catch {
           if (authRef.current && term.current) {
             term.current.write(event.data);
           }
         }
-      } 
-      
+      }
+
       if (event.data instanceof ArrayBuffer) {
         if (term.current) {
           term.current.write(new Uint8Array(event.data));
@@ -1185,26 +1248,35 @@ function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (disposed) return;
       if (event.code === 1008) {
-        if (term.current) term.current.writeln('\x1b[31m\n[Session expired. Please log in again.]\x1b[0m');
+        if (term.current)
+          term.current.writeln('\x1b[31m\n[Session expired. Please log in again.]\x1b[0m');
         expireSession('Session expired — please sign in again');
         return;
       }
-      
+
       if (authRef.current) {
         const MAX_RECONNECT = 5;
         const BASE_DELAY = 1000;
         reconnectAttempts.current++;
-        
+
         if (reconnectAttempts.current > MAX_RECONNECT) {
-          if (term.current) term.current.writeln('\x1b[31m\n[Connection lost. Max retries exceeded. Returning to login.]\x1b[0m');
+          if (term.current)
+            term.current.writeln(
+              '\x1b[31m\n[Connection lost. Max retries exceeded. Returning to login.]\x1b[0m'
+            );
           setConnState('disconnected');
           setTimeout(() => handleLogout(), 2000);
           return;
         }
-        
+
         const delay = BASE_DELAY * Math.pow(2, reconnectAttempts.current - 1);
         setConnState('reconnecting');
-        if (term.current) term.current.writeln(`\x1b[33m\n[Reconnecting... attempt ${reconnectAttempts.current}/${MAX_RECONNECT} (${delay/1000}s)]\x1b[0m`);
+        if (term.current)
+          term.current.writeln(
+            `\x1b[33m\n[Reconnecting... attempt ${reconnectAttempts.current}/${MAX_RECONNECT} (${
+              delay / 1000
+            }s)]\x1b[0m`
+          );
         setTimeout(() => authenticate(null, null), delay);
       } else {
         setConnState('disconnected');
@@ -1215,30 +1287,37 @@ function App() {
   };
 
   const syncMacrosToServer = async (library) => {
-    const serverMacros = library.filter(m => m.isServer).map(({ isServer, ...rest }) => rest);
+    const serverMacros = library.filter((m) => m.isServer).map(({ isServer, ...rest }) => rest);
     try {
       await fetch('/api/macros', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ macros: serverMacros })
+        body: JSON.stringify({ macros: serverMacros }),
       });
-    } catch (e) { console.error('Failed to sync macros to server', e); }
+    } catch (e) {
+      console.error('Failed to sync macros to server', e);
+    }
   };
 
   const toggleMacroPin = (id) => {
-    const updated = macroLibrary.map(m => m.id === id ? { ...m, isPinned: !m.isPinned } : m);
+    const updated = macroLibrary.map((m) => (m.id === id ? { ...m, isPinned: !m.isPinned } : m));
     setMacroLibrary(updated);
     localStorage.setItem('aim-macro-library', JSON.stringify(updated));
-    if (updated.find(m => m.id === id)?.isServer) syncMacrosToServer(updated);
+    if (updated.find((m) => m.id === id)?.isServer) syncMacrosToServer(updated);
   };
 
   const saveMacro = (editingId, label, cmd, voiceTrigger, isServer) => {
     if (!label || !cmd) return;
     let updated;
     if (editingId) {
-      updated = macroLibrary.map(m => m.id === editingId ? { ...m, label, cmd, voiceTrigger, isServer } : m);
+      updated = macroLibrary.map((m) =>
+        m.id === editingId ? { ...m, label, cmd, voiceTrigger, isServer } : m
+      );
     } else {
-      updated = [...macroLibrary, { id: Date.now().toString(), label, cmd, voiceTrigger, isPinned: true, isServer }];
+      updated = [
+        ...macroLibrary,
+        { id: Date.now().toString(), label, cmd, voiceTrigger, isPinned: true, isServer },
+      ];
     }
     setMacroLibrary(updated);
     localStorage.setItem('aim-macro-library', JSON.stringify(updated));
@@ -1247,8 +1326,8 @@ function App() {
 
   const deleteMacro = (id) => {
     if (!window.confirm('Delete this macro permanently?')) return;
-    const isServer = macroLibrary.find(m => m.id === id)?.isServer;
-    const updated = macroLibrary.filter(m => m.id !== id);
+    const isServer = macroLibrary.find((m) => m.id === id)?.isServer;
+    const updated = macroLibrary.filter((m) => m.id !== id);
     setMacroLibrary(updated);
     localStorage.setItem('aim-macro-library', JSON.stringify(updated));
     if (isServer) syncMacrosToServer(updated);
@@ -1257,12 +1336,14 @@ function App() {
   const importMacros = (importedMacros, mode) => {
     let updated;
     if (mode === 'replace') {
-      updated = importedMacros.map(m => ({ ...m, id: m.id || Date.now().toString() + Math.random() }));
+      updated = importedMacros.map((m) => ({
+        ...m,
+        id: m.id || Date.now().toString() + Math.random(),
+      }));
     } else {
-      // Merge: skip duplicates by label
       const existing = [...macroLibrary];
-      importedMacros.forEach(m => {
-        if (!existing.some(e => e.label === m.label)) {
+      importedMacros.forEach((m) => {
+        if (!existing.some((e) => e.label === m.label)) {
           existing.push({ ...m, id: m.id || Date.now().toString() + Math.random() });
         }
       });
@@ -1273,19 +1354,14 @@ function App() {
     syncMacrosToServer(updated);
   };
 
+  // Sync xterm.js font size and theme across UI schemes + Terminal Palette overrides (#256)
   useEffect(() => {
     if (term.current) {
       term.current.options.fontSize = termFontSize;
-      if (termTheme === 'hacker') {
-        term.current.options.theme = { background: '#000000', foreground: '#00ff00', cursor: '#00ff00' };
-      } else if (termTheme === 'high-contrast') {
-        term.current.options.theme = { background: '#000000', foreground: '#ffffff', cursor: '#ffffff' };
-      } else {
-        term.current.options.theme = { background: '#0B162C', foreground: '#e2e8f0', cursor: '#ff5722' };
-      }
+      term.current.options.theme = resolveXtermPalette(theme, termTheme);
       setTimeout(() => fitAddon.current?.fit(), 50);
     }
-  }, [termFontSize, termTheme]);
+  }, [termFontSize, termTheme, theme]);
 
   // Initialize terminal once authenticated
   useEffect(() => {
@@ -1293,13 +1369,11 @@ function App() {
 
     term.current = new Terminal({
       cursorBlink: true,
-      theme: termTheme === 'hacker' ? { background: '#000000', foreground: '#00ff00', cursor: '#00ff00' } :
-             termTheme === 'high-contrast' ? { background: '#000000', foreground: '#ffffff', cursor: '#ffffff' } :
-             { background: '#0B162C', foreground: '#e2e8f0', cursor: '#ff5722' },
-      fontFamily: '"Fira Code", monospace',
+      theme: resolveXtermPalette(theme, termTheme),
+      fontFamily: '"JetBrains Mono", "Fira Code", monospace',
       fontSize: termFontSize,
     });
-    
+
     fitAddon.current = new FitAddon();
     term.current.loadAddon(fitAddon.current);
     searchAddon.current = new SearchAddon();
@@ -1307,8 +1381,7 @@ function App() {
 
     if (terminalRef.current) {
       term.current.open(terminalRef.current);
-      
-      // Robust fit loop: wait for CSS flexbox to finish settling on mobile
+
       let fitAttempts = 0;
       const fitInterval = setInterval(() => {
         if (fitAddon.current && terminalRef.current) {
@@ -1319,10 +1392,9 @@ function App() {
           }
         }
         fitAttempts++;
-        if (fitAttempts >= 10) clearInterval(fitInterval); // Try for 1.5 seconds (150ms * 10)
+        if (fitAttempts >= 10) clearInterval(fitInterval);
       }, 150);
-      
-      // Aggressively disable mobile predictive text to prevent duplication glitches
+
       const textarea = terminalRef.current.querySelector('textarea');
       if (textarea) {
         textarea.setAttribute('autocorrect', 'off');
@@ -1341,18 +1413,17 @@ function App() {
     term.current.writeln('\x1b[1;36m      #+# #+#     #+#    #+# #+#    #+# #+#    #+# #+#    #+# #+#     #+# \x1b[0m');
     term.current.writeln('\x1b[1;36m       #####       ########   ########  ###    ###  ########  ###     ### \x1b[0m');
     term.current.writeln('');
-    term.current.writeln('\x1b[1;34m    A.I.M. SOVEREIGN NODE - TERMINAL INTERFACE\x1b[0m');
-    term.current.writeln('\x1b[90m    ===========================================\x1b[0m');
+    term.current.writeln('\x1b[1;32m    A.I.M. SOVEREIGN NODE - EMERALD MATRIX INTERFACE\x1b[0m');
+    term.current.writeln('\x1b[90m    ================================================\x1b[0m');
     term.current.writeln('\x1b[32m    [+] Connection Established\x1b[0m');
     term.current.writeln('\x1b[32m    [+] E2EE Handshake Verified\x1b[0m');
     term.current.writeln('\x1b[32m    [+] Primary Node Initialized\x1b[0m');
     term.current.writeln('');
     term.current.writeln('\x1b[37m    Welcome, Operator. The Sovereign AI is ready.\x1b[0m');
     term.current.writeln('');
+
     term.current.onData((data) => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        // Intercept multi-line pastes (either raw or xterm bracketed \x1b[200~...\x1b[201~)
-        // so tmux load-buffer + paste-buffer -p -r handles them without firing Enter on newlines (#216)
         if (data.startsWith('\x1b[200~') && data.endsWith('\x1b[201~')) {
           const inner = data.slice(6, -6).replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '');
           if (inner) {
@@ -1383,8 +1454,6 @@ function App() {
       }
     });
 
-    // Intercept Cmd+K / Ctrl+K inside xterm.js so it opens CommandPalette instead of sending ^K (#210)
-    // Also mute xterm key capture while Scroll/Copy is open so Ctrl/Cmd+C copies DOM selection (#227)
     term.current.attachCustomKeyEventHandler((ev) => {
       if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
         if (ev.type === 'keydown') {
@@ -1406,7 +1475,6 @@ function App() {
     window.addEventListener('keydown', handleGlobalKeyDown);
 
     const handleResize = () => {
-      // Force the body to match the visual viewport (which shrinks when native keyboard opens)
       if (window.visualViewport) {
         document.body.style.height = `${window.visualViewport.height}px`;
       }
@@ -1440,7 +1508,6 @@ function App() {
       resizeObserver.observe(terminalRef.current);
     }
 
-    // Mobile touch-to-scroll adapter (throttled to ~30fps to prevent WS/PTY redraw storms, #245)
     const TOUCH_SCROLL_THROTTLE_MS = 32;
     let lastTouchY = 0;
     let pendingTouchDeltaY = 0;
@@ -1471,8 +1538,7 @@ function App() {
     const handleTouchMove = (e) => {
       if (e.touches.length === 1) {
         if (isNativeScrollModeRef.current) return;
-        
-        e.preventDefault(); // Stop browser pull-to-refresh / scrolling
+        e.preventDefault();
         const currentY = e.touches[0].clientY;
         const deltaY = lastTouchY - currentY;
         lastTouchY = currentY;
@@ -1499,8 +1565,6 @@ function App() {
       termEl.addEventListener('touchmove', handleTouchMove, { passive: false });
     }
 
-    // CRITICAL MOBILE FIX: Prevent browser from scrolling the toolbar off-screen 
-    // when xterm's hidden textarea receives focus at the bottom of the screen.
     const handleScroll = () => {
       if (window.scrollY > 0 || window.scrollX > 0) {
         window.scrollTo(0, 0);
@@ -1515,7 +1579,7 @@ function App() {
       window.removeEventListener('resize', handleResize);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', handleResize);
-        document.body.style.height = ''; // reset on unmount
+        document.body.style.height = '';
       }
       window.removeEventListener('scroll', handleScroll);
       if (termEl) {
@@ -1523,28 +1587,22 @@ function App() {
         termEl.removeEventListener('touchmove', handleTouchMove);
       }
       if (term.current) term.current.dispose();
-      // DO NOT close ws.current here, otherwise it closes on re-renders
     };
   }, [isAuthenticated]);
 
-  // Dynamically disable native keyboard when our custom one is open
   useEffect(() => {
     if (term.current) {
-      if (term.current && term.current.textarea) {
+      if (term.current.textarea) {
         term.current.textarea.readOnly = showKeyboard;
-        // Blur the textarea if we just enabled the custom keyboard to ensure the native one drops
         if (showKeyboard) {
           term.current.textarea.blur();
         }
       }
       if (showKeyboard) {
-        // Force blur the hidden textarea just in case it's currently focused
         const textarea = terminalRef.current?.querySelector('textarea');
         if (textarea) textarea.blur();
       }
-      
-      // Give React a few milliseconds to render the keyboard DOM, then resize the terminal
-      // so it shrinks and the cursor stays visible above the keyboard!
+
       setTimeout(() => {
         if (fitAddon.current) {
           fitAddon.current.fit();
@@ -1557,7 +1615,6 @@ function App() {
     }
   }, [showKeyboard]);
 
-  // Force layout recalculation when switching sessions
   useEffect(() => {
     if (activeSession && fitAddon.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
       setTimeout(() => {
@@ -1577,7 +1634,7 @@ function App() {
   const startDictation = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Voice dictation is not supported by your browser.");
+      alert('Voice dictation is not supported by your browser.');
       return;
     }
 
@@ -1592,49 +1649,41 @@ function App() {
 
     shouldBeListeningRef.current = true;
     lastVoiceEndedWithSpace.current = false;
-    lastVoiceEndedSentence.current = true; // Always capitalize the first word of a brand new dictation session
+    lastVoiceEndedSentence.current = true;
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
-    
+
     recognition.onresult = (event) => {
       const lastIdx = event.results.length - 1;
-      let transcript = event.results[lastIdx][0].transcript;
+      const transcript = event.results[lastIdx][0].transcript;
       const lowerTrimmed = transcript.trim().toLowerCase();
-      
-      // Check for Macro Voice Triggers first
-      const matchingMacro = macroLibraryRef.current?.find(m => m.voiceTrigger && m.voiceTrigger.toLowerCase() === lowerTrimmed);
-      
-      // Check for verbal action commands
+
+      const matchingMacro = macroLibraryRef.current?.find(
+        (m) => m.voiceTrigger && m.voiceTrigger.toLowerCase() === lowerTrimmed
+      );
+
       let isEnterCommand = false;
       let isSubmitCommand = false;
-      if (lowerTrimmed === "enter" && voiceAutoEnter) isEnterCommand = true;
-      if (lowerTrimmed === "send" && voiceAutoSend) isSubmitCommand = true;
-      if (lowerTrimmed === "execute" && voiceAutoExecute) isSubmitCommand = true;
+      if (lowerTrimmed === 'enter' && voiceAutoEnter) isEnterCommand = true;
+      if (lowerTrimmed === 'send' && voiceAutoSend) isSubmitCommand = true;
+      if (lowerTrimmed === 'execute' && voiceAutoExecute) isSubmitCommand = true;
 
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         if (matchingMacro) {
-          // If a macro Voice Trigger is matched, execute its payload exactly like clicking the macro button
           ws.current.send(JSON.stringify({ type: 'input', payload: matchingMacro.cmd }));
           lastVoiceEndedWithSpace.current = false;
           lastVoiceEndedSentence.current = true;
-        } else if (isSubmitCommand) {
-          ws.current.send(JSON.stringify({ type: 'input', payload: '\r' })); // Send Carriage Return for AGY UI
-          lastVoiceEndedWithSpace.current = false;
-          lastVoiceEndedSentence.current = true;
-        } else if (isEnterCommand) {
+        } else if (isSubmitCommand || isEnterCommand) {
           ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
           lastVoiceEndedWithSpace.current = false;
           lastVoiceEndedSentence.current = true;
         } else {
-          // Handle verbal punctuation replacements
-          // Collapse multiple spaces into single space before doing replacements
           let finalPayload = transcript.trim().replace(/\s+/g, ' ');
 
-          // If auto-capitalize is on, and the previous payload ended with a sentence terminator
           if (voiceAutoCapitalize && lastVoiceEndedSentence.current) {
             finalPayload = finalPayload.trimStart();
             finalPayload = finalPayload.charAt(0).toUpperCase() + finalPayload.slice(1);
@@ -1642,7 +1691,6 @@ function App() {
 
           if (voiceSlashes) {
             finalPayload = finalPayload
-              // CRITICAL: Backslash MUST be processed before slash to prevent "back slash" becoming "back/"
               .replace(/\s*\bback\s?slash\b\s*/gi, '\\')
               .replace(/\s*\b(?:forward\s)?slash\b\s*/gi, '/')
               .replace(/\s*\bdash\b\s*/gi, '-');
@@ -1654,68 +1702,67 @@ function App() {
             .replace(/\bcomma\b/gi, ',')
             .replace(/\bperiod\b/gi, '.')
             .replace(/\bquestion mark\b/gi, '?')
-            // Parentheses fixes: OPEN paren eats trailing space, preserves leading. CLOSE paren eats leading space, preserves trailing.
             .replace(/\b(?:open|left)\s+paren(?:thesis)?\b\s*/gi, '(')
             .replace(/\s*\b(?:close|right)\s+paren(?:thesis)?\b/gi, ')')
-            // Quote fixes: OPEN quote ("quote") eats trailing space. CLOSE quote ("unquote") eats leading space.
             .replace(/\bquote\b\s*/gi, '"')
             .replace(/\s*\bunquote\b/gi, '"')
-            // Remove spaces BEFORE punctuation like period, comma, question mark
             .replace(/\s+([.,?!])/g, '$1');
 
-          // IN-CHUNK AUTO-CAPITALIZATION: If auto-capitalize is on, ensure any word immediately following a sentence terminator inside the same chunk gets capitalized.
           if (voiceAutoCapitalize) {
             finalPayload = finalPayload.replace(/([.?!])\s+([a-z])/g, (match, p1, p2) => p1 + ' ' + p2.toUpperCase());
           }
-          
-          let prefix = "";
+
+          let prefix = '';
           if (lastVoiceEndedWithSpace.current) {
             const startsWithPunctuation = /^[.,?!)]/.test(finalPayload.trimStart());
             const startsWithUnquote = finalPayload.startsWith('"') && lowerTrimmed.startsWith('unquote');
             if (startsWithPunctuation || startsWithUnquote) {
-              prefix = "\b";
+              prefix = '\b';
             }
           }
-          
-          // Determine if we should append a trailing space for the NEXT chunk.
-          // We SHOULD NOT append a trailing space if the payload ends with an OPENING symbol: "(", "/", "\", "-", or "quote"
-          let appendSpace = " ";
-          if (finalPayload.endsWith('(') || finalPayload.endsWith('/') || finalPayload.endsWith('\\') || finalPayload.endsWith('-')) {
-            appendSpace = "";
+
+          let appendSpace = ' ';
+          if (
+            finalPayload.endsWith('(') ||
+            finalPayload.endsWith('/') ||
+            finalPayload.endsWith('\\') ||
+            finalPayload.endsWith('-')
+          ) {
+            appendSpace = '';
           }
           if (finalPayload.endsWith('"') && lowerTrimmed.endsWith('quote') && !lowerTrimmed.endsWith('unquote')) {
-            appendSpace = "";
+            appendSpace = '';
           }
-          
-          // Send a space after the transcript to make chaining easier
+
           ws.current.send(JSON.stringify({ type: 'input', payload: prefix + finalPayload + appendSpace }));
-          
-          lastVoiceEndedWithSpace.current = (appendSpace === " ");
-          // Determine if this dictation segment ended with a sentence terminator
-          lastVoiceEndedSentence.current = /[.?!]\s*$/.test(finalPayload) || /[.?!]$/.test(finalPayload.trimEnd());
+
+          lastVoiceEndedWithSpace.current = appendSpace === ' ';
+          lastVoiceEndedSentence.current =
+            /[.?!]\s*$/.test(finalPayload) || /[.?!]$/.test(finalPayload.trimEnd());
         }
       }
     };
 
     recognition.onerror = (event) => {
-      console.error("Speech recognition error", event.error);
-      const hard = ["not-allowed", "network", "service-not-allowed", "audio-capture", "language-not-supported"];
+      console.error('Speech recognition error', event.error);
+      const hard = ['not-allowed', 'network', 'service-not-allowed', 'audio-capture', 'language-not-supported'];
       if (hard.includes(event.error)) {
         shouldBeListeningRef.current = false;
         setIsListening(false);
-        const msg = {
-          "not-allowed": "Microphone permission denied. Allow mic for this site and try again.",
-          "network": "Voice recognition failed (network/service). Brave often cannot use Web Speech — try Chrome or Edge.",
-          "service-not-allowed": "This browser blocks speech recognition. Try Chrome or Edge.",
-          "audio-capture": "Could not capture microphone audio.",
-          "language-not-supported": "Speech language not supported in this browser."
-        }[event.error] || `Voice error: ${event.error}`;
+        const msg =
+          {
+            'not-allowed': 'Microphone permission denied. Allow mic for this site and try again.',
+            network:
+              'Voice recognition failed (network/service). Brave often cannot use Web Speech — try Chrome or Edge.',
+            'service-not-allowed': 'This browser blocks speech recognition. Try Chrome or Edge.',
+            'audio-capture': 'Could not capture microphone audio.',
+            'language-not-supported': 'Speech language not supported in this browser.',
+          }[event.error] || `Voice error: ${event.error}`;
         alert(msg);
       }
     };
 
     recognition.onend = () => {
-      // If voiceContinuous is false, let it die naturally
       if (!voiceContinuous) {
         shouldBeListeningRef.current = false;
         setIsListening(false);
@@ -1723,10 +1770,9 @@ function App() {
       }
 
       if (shouldBeListeningRef.current) {
-        // Browser aggressively killed it due to a pause. Restart it silently!
         try {
           recognition.start();
-        } catch (e) {
+        } catch {
           setIsListening(false);
         }
       } else {
@@ -1761,14 +1807,53 @@ function App() {
     }
   };
 
+  const openSettingsModal = (tab = 'appearance') => {
+    setSettingsInitialTab(tab);
+    setShowSettings(true);
+  };
+
+  const selectWorkspaceTool = (tool) => {
+    if (tool === 'none') {
+      setShowBrowser(false);
+      setShowFiles(false);
+      setSplitMode(true);
+    } else if (tool === 'browser') {
+      if (showBrowser) {
+        setSplitMode((prev) => !prev);
+      } else {
+        setShowBrowser(true);
+        setShowFiles(false);
+        if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSplitMode(true);
+      }
+    } else if (tool === 'files') {
+      if (showFiles) {
+        setSplitMode((prev) => !prev);
+      } else {
+        setShowFiles(true);
+        setShowBrowser(false);
+        if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSplitMode(true);
+      }
+    }
+    setTimeout(() => {
+      try {
+        fitAddon.current?.fit();
+      } catch {}
+    }, 80);
+  };
+
   if (!isAuthenticated) {
     return (
       <AuthScreen
-        passphrase={passphrase} setPassphrase={setPassphrase}
-        password={password} setPassword={setPassword}
-        showPassword={showPassword} setShowPassword={setShowPassword}
-        pin={pin} authError={authError}
-        e2eeSecret={e2eeSecret} setE2eeSecret={setE2eeSecret}
+        passphrase={passphrase}
+        setPassphrase={setPassphrase}
+        password={password}
+        setPassword={setPassword}
+        showPassword={showPassword}
+        setShowPassword={setShowPassword}
+        pin={pin}
+        authError={authError}
+        e2eeSecret={e2eeSecret}
+        setE2eeSecret={setE2eeSecret}
         onPinInput={handlePinInput}
         onBackspace={handleBackspace}
         onPasteClick={handlePasteClick}
@@ -1778,177 +1863,186 @@ function App() {
   }
 
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <button
-          className={`macro-btn ${showFleetSidebar ? 'action' : ''}`}
-          onClick={toggleFleetSidebar}
-          title="Toggle Multi-Session Fleet Sidebar"
-          style={{ position: 'relative' }}
-        >
-          🧭 Fleet ({sessions.length})
-          {unreadSessions.length > 0 && (
-            <span className="fleet-header-unread-dot" title={`${unreadSessions.length} unread completed session(s)`}>
-              {unreadSessions.length}
-            </span>
-          )}
-        </button>
-        <h1
-          onClick={() => switchToSession('')}
-          style={{ cursor: 'pointer' }}
-          title="Return to A.I.M. Connect Welcome Screen"
-        >
-          aim-connect
-        </h1>
-        {activeSession && (() => {
-          const activeColor = getAgentColor(activeSession);
-          return (
-            <span
-              className="active-session-badge"
-              style={{ '--agent-color': activeColor.hex, '--agent-rgb': activeColor.rgb }}
-              title={`Active tmux session: ${activeSession} (${activeColor.name})`}
-            >
-              ⚡ {activeSession}
-            </span>
-          );
-        })()}
-        {waitingSessions.length > 0 && (
+    <div className="app-container cockpit-shell" data-op-style={operatorStyle} data-op-side={operatorSide}>
+      <div className="ld-grid-backdrop" />
+      <div className="ld-aurora-wash" />
+
+      {/* Frosted 50px Header (Half-Screen Coherent — Preserves #229 & #255 Invariants) */}
+      <header className="app-header ld-header">
+        <div className="hdr-cluster">
           <button
-            className="macro-btn header-waiting-alert-btn"
-            onClick={() => switchToSession(waitingSessions[0])}
-            title={`Agent waiting for permission or input: ${waitingSessions.join(', ')}`}
+            type="button"
+            className={`ghost-btn ${showFleetSidebar ? 'active' : ''}`}
+            onClick={toggleFleetSidebar}
+            title="Toggle Multi-Session Fleet Sidebar"
+            style={{ position: 'relative' }}
           >
-            ✋ {waitingSessions.length} Waiting
+            <Icon name="sidebar" />
+            {unreadSessions.length > 0 && (
+              <span className="fleet-header-unread-dot" title={`${unreadSessions.length} unread completed session(s)`}>
+                {unreadSessions.length}
+              </span>
+            )}
           </button>
-        )}
-        <button className="macro-btn" onClick={() => setIsIntegrationsModalOpen(true)} title="Integrations Vault">
-          🔌
-        </button>
-        <button
-          className={`macro-btn ${showFiles ? 'action' : ''}`}
-          onClick={() => {
-            setShowFiles((prev) => {
-              const next = !prev;
-              if (next) setShowBrowser(false);
-              return next;
-            });
-            setTimeout(() => {
-              try { fitAddon.current?.fit(); } catch (e) {}
-            }, 80);
-          }}
-          title="Toggle File Explorer, Brain (HANDOFF.md / memory-wiki/), and Git DiffEditor"
-        >
-          {showFiles ? (splitMode ? '◫ Files' : '💻 Terminal') : '📁 Files'}
-        </button>
-        <button
-          className={`macro-btn ${showBrowser ? 'action' : ''}`}
-          onClick={() => {
-            setShowBrowser((prev) => {
-              const next = !prev;
-              if (next) setShowFiles(false);
-              return next;
-            });
-            setTimeout(() => {
-              try { fitAddon.current?.fit(); } catch (e) {}
-            }, 80);
-          }}
-          title="Toggle Live CDP Co-Pilot Browser Split-Pane (Operator + Subagent Tabs)"
-        >
-          {showBrowser ? (splitMode ? '◫ Browser' : '💻 Terminal') : '🌐 Browser'}
-        </button>
-        <button
-          className="macro-btn action"
-          onClick={() => setShowCommandPalette(true)}
-          title="Open Command Palette (Cmd+K / Ctrl+K)"
-        >
-          ⌘K
-        </button>
-        <button
-          className="macro-btn"
-          onClick={() => setShowTokenGrabber(true)}
-          title="Extract URLs, Paths, IPs, and Git SHAs from Scrollback"
-        >
-          🔗 Grab
-        </button>
-        <button
-          className="macro-btn"
-          onClick={() => setShowForensics(true)}
-          title="Open On-Demand Forensic Tool Inspector, SQLite FTS5 Search & Swarm Feed"
-        >
-          🔬 Forensics
-        </button>
-            <button 
-              className={`macro-btn ${((showFiles && !splitMode) ? fileSelectMode : isNativeScrollMode) ? 'action' : ''}`}
-              onClick={() => {
-                if (showFiles && !splitMode) {
-                  setFileSelectMode((prev) => !prev);
-                } else if (isNativeScrollMode) {
-                  closeNativeScrollMode();
-                } else {
-                  enterNativeScrollMode();
-                }
-              }}
-              title="Toggle isolated Scroll/Copy text selection view"
+
+          <div
+            className="ld-brand"
+            onClick={() => switchToSession('')}
+            onMouseEnter={() => {
+              brandAimScramble.triggerScramble();
+              brandConnScramble.triggerScramble();
+            }}
+            onMouseLeave={() => {
+              brandAimScramble.resetScramble();
+              brandConnScramble.resetScramble();
+            }}
+            title="Return to A.I.M. Connect Welcome Screen"
+          >
+            <div className="ld-brand-box">
+              <Icon name="terminal" />
+            </div>
+            <div className="ld-brand-word">
+              <strong style={{ color: 'var(--text-primary)' }}>{brandAimScramble.display}</strong>
+              <span>{brandConnScramble.display}</span>
+            </div>
+          </div>
+
+          {activeSession && (() => {
+            const activeColor = getAgentColor(activeSession);
+            return (
+              <span
+                className="active-session-badge"
+                style={{ '--agent-color': activeColor.hex, '--agent-rgb': activeColor.rgb }}
+                title={`Active tmux session: ${activeSession} (${activeColor.name})`}
+              >
+                <span className="project-pill-dot" />
+                {activeSession}
+              </span>
+            );
+          })()}
+
+          {waitingSessions.length > 0 && (
+            <button
+              type="button"
+              className="wait-alert-pill hide-halfscreen"
+              onClick={() => switchToSession(waitingSessions[0])}
+              title={`Agent waiting for permission or input: ${waitingSessions.join(', ')}`}
             >
-              🔍 Scroll/Copy
+              GATE // {waitingSessions.length}
             </button>
-            <button 
-              className="macro-btn" 
-              onClick={async () => {
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) pasteToTerminal(text);
-                } catch (e) {
-                  console.error("Paste failed", e);
-                }
-              }}
+          )}
+
+          {unreadSessions.length > 0 && (
+            <button
+              type="button"
+              className="new-reply-pill hide-halfscreen"
+              onClick={() => switchToSession(unreadSessions[0])}
+              title="Click to jump straight to next unread completed session"
             >
-              📋 Paste
+              NEW // {unreadSessions.length}
             </button>
-            <button 
-              className="macro-btn" 
-              onClick={() => setShowSearch(!showSearch)}
+          )}
+        </div>
+
+        <div className="hdr-center desktop-only">
+          <div
+            className="cmdk-bar"
+            onClick={() => setShowCommandPalette(true)}
+            title="Open Command Palette (⌘K / Ctrl+K)"
+          >
+            <span className="cmdk-bar-inner">
+              <Icon name="search" />
+              <span className="cmdk-bar-text">Search nodes, files, commands...</span>
+            </span>
+            <span className="mono-kbd">⌘K</span>
+          </div>
+
+          <div className="seg-rail">
+            <button
+              type="button"
+              className={`seg-item ${!showBrowser && !showFiles ? 'active' : ''}`}
+              onClick={() => selectWorkspaceTool('none')}
+              onMouseEnter={termTabScramble.triggerScramble}
+              onMouseLeave={termTabScramble.resetScramble}
+              title="Terminal Only"
             >
-              🔎 Find
+              <Icon name="terminal" />
+              <span>{termTabScramble.display}</span>
             </button>
-        <button 
-          className={`macro-btn ${showKeyboard ? 'active' : ''}`} 
-          onClick={() => setShowKeyboard(!showKeyboard)}
-        >
-          ⌨️ {showKeyboard ? 'ON' : 'OFF'}
-        </button>
-        <button 
-          className={`macro-btn action ${isListening ? 'listening' : ''}`} 
-          onClick={startDictation}
-          style={{ background: isListening ? '#ef4444' : undefined }}
-        >
-          {isListening ? '🛑' : '🎤 Voice'}
-        </button>
-        <button
-          className={`macro-btn action ${isSpeaking ? 'listening' : ''}`}
-          onClick={handleSpeakSummary}
-          disabled={!activeSession}
-          title={
-            isSpeaking
-              ? 'Stop speaking summary'
-              : `Speak latest 🔊 agent summary${voiceAutoRead ? ' (Auto-Playback ON)' : ' (Manual Mode)'}`
-          }
-          style={{
-            background: isSpeaking ? '#ef4444' : undefined,
-            opacity: activeSession ? 1 : 0.5,
-          }}
-        >
-          {isSpeaking ? '🔇 Stop' : (voiceAutoRead ? '🔊 Auto' : '🔊 Speak')}
-        </button>
-        <button className="macro-btn" onClick={() => setShowSettings(true)}>
-          ⚙️ Settings
-        </button>
-        <button className="macro-btn" onClick={handleLogout} style={{ color: '#ef4444', border: '1px solid #ef4444' }}>
-          🚪 Logout
-        </button>
-        <div className={`status-indicator ${connState}`}></div>
+            <button
+              type="button"
+              className={`seg-item ${showBrowser ? 'active' : ''}`}
+              onClick={() => selectWorkspaceTool('browser')}
+              onMouseEnter={browserTabScramble.triggerScramble}
+              onMouseLeave={browserTabScramble.resetScramble}
+              title="Toggle Live CDP Co-Pilot Browser Split-Pane (Re-click to toggle Split vs Full)"
+            >
+              <Icon name="globe" />
+              <span>{browserTabScramble.display}</span>
+              {showBrowser && (
+                <span className={`seg-expand-badge ${!splitMode ? 'is-full' : ''}`}>
+                  {!splitMode ? 'SPLIT' : 'FULL'}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`seg-item ${showFiles ? 'active' : ''}`}
+              onClick={() => selectWorkspaceTool('files')}
+              onMouseEnter={filesTabScramble.triggerScramble}
+              onMouseLeave={filesTabScramble.resetScramble}
+              title="Toggle File Explorer, Brain & Git Diff (Re-click to toggle Split vs Full)"
+            >
+              <Icon name="files" />
+              <span>{filesTabScramble.display}</span>
+              {showFiles && (
+                <span className={`seg-expand-badge ${!splitMode ? 'is-full' : ''}`}>
+                  {!splitMode ? 'SPLIT' : 'FULL'}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="hdr-cluster">
+          <button
+            type="button"
+            className={`ghost-btn desktop-only ${showForensics ? 'active' : ''}`}
+            onClick={() => setShowForensics(true)}
+            onMouseEnter={historyTabScramble.triggerScramble}
+            onMouseLeave={historyTabScramble.resetScramble}
+            title="Session Turn History & Forensics Vault"
+          >
+            <Icon name="history" />
+            <span className="hide-halfscreen">{historyTabScramble.display}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`ghost-btn ${showKeyboard ? 'active' : ''}`}
+            onClick={() => setShowKeyboard((prev) => !prev)}
+            title={`Toggle On-Screen Sovereign Keyboard (${showKeyboard ? 'ON' : 'OFF'})`}
+          >
+            <Icon name="keyboard" />
+            <span className="hide-halfscreen">{showKeyboard ? 'KB ON' : 'KB OFF'}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`ghost-btn ${showSettings ? 'active' : ''}`}
+            onClick={() => openSettingsModal('appearance')}
+            title="System Settings (Themes, Standalone App, Keyboard, Voice, Vault & 3FA)"
+          >
+            <Icon name="settings" />
+          </button>
+
+          <div
+            className={`status-indicator ${connState}`}
+            title={`WebSocket Status: ${connState.toUpperCase()}${e2eeSecret ? ' · E2EE Active' : ''}`}
+          />
+        </div>
       </header>
-      
+
       <div
         className={`cockpit-body ${isDraggingSplit ? 'is-resizing-split' : ''}`}
         ref={cockpitBodyRef}
@@ -1967,171 +2061,425 @@ function App() {
           onSendSessionCommand={sendSessionCommand}
         />
 
-      <div ref={terminalColumnRef} style={{ display: ((!showFiles && !showBrowser) || splitMode) ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
-        {!showKeyboard && (
-          <div className="commander-toolbar">
-            <div className="macro-group">
-              {macroLibrary.filter(m => m.isPinned).map((macro) => (
-                <button 
-                  key={macro.id} 
-                  className="macro-btn action" 
-                  onClick={() => sendCommand(macro.cmd)}
-                  onContextMenu={(e) => { e.preventDefault(); toggleMacroPin(macro.id); }}
+        <div
+          ref={terminalColumnRef}
+          style={{
+            display: (!showFiles && !showBrowser) || splitMode ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            minWidth: 0,
+          }}
+        >
+          {activeSession && (
+            <div className="node-subbar">
+              <div className="node-title-tag">
+                <Icon name="shield" />
+                <span>{activeSession}</span>
+              </div>
+              <div className="subbar-tools-row">
+                <button
+                  type="button"
+                  className="subbar-util-btn"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      if (text) pasteToTerminal(text);
+                    } catch (e) {
+                      console.error('Paste failed', e);
+                    }
+                  }}
+                  title="Bracketed Paste from Clipboard"
                 >
-                  {macro.isServer ? "☁️ " : "📱 "}{macro.label}
+                  <Icon name="clipboard" />
+                  <span>PASTE</span>
                 </button>
-              ))}
-                <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
-            </div>
-          </div>
-        )}
-        <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-          {showSearch && (
-            <div className="search-bar">
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search terminal..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    if (e.shiftKey) searchAddon.current?.findPrevious(searchTerm);
-                    else searchAddon.current?.findNext(searchTerm);
-                  }
-                  if (e.key === 'Escape') { setShowSearch(false); setSearchTerm(''); }
-                }}
-                autoFocus
-              />
-              <button className="search-btn" onClick={() => searchAddon.current?.findPrevious(searchTerm)}>▲</button>
-              <button className="search-btn" onClick={() => searchAddon.current?.findNext(searchTerm)}>▼</button>
-              <button className="search-btn search-close" onClick={() => { setShowSearch(false); setSearchTerm(''); }}>✖</button>
+                <button
+                  type="button"
+                  className={`subbar-util-btn ${isNativeScrollMode ? 'active' : ''}`}
+                  onClick={() => {
+                    if (isNativeScrollMode) closeNativeScrollMode();
+                    else enterNativeScrollMode();
+                  }}
+                  title="Toggle isolated Scroll/Copy text selection view"
+                >
+                  <Icon name="copyText" />
+                  <span>SCROLL/COPY</span>
+                </button>
+                <button
+                  type="button"
+                  className={`subbar-util-btn ${showTokenGrabber ? 'active' : ''}`}
+                  onClick={() => setShowTokenGrabber(true)}
+                  title="Extract URLs, File Paths, IPs & Git SHAs"
+                >
+                  <Icon name="link" />
+                  <span>GRAB</span>
+                </button>
+                <button
+                  type="button"
+                  className={`subbar-util-btn ${showForensics ? 'active' : ''}`}
+                  onClick={() => setShowForensics(true)}
+                  title="Forensic Tool Inspector, SQLite FTS5 Search & Swarm Dispatcher"
+                >
+                  <Icon name="microscope" />
+                  <span>FORENSICS</span>
+                </button>
+                <button
+                  type="button"
+                  className={`subbar-util-btn ${isListening ? 'active' : ''}`}
+                  onClick={startDictation}
+                  title={isListening ? 'Stop Voice Dictation' : 'Start Voice Dictation'}
+                >
+                  <Icon name={isListening ? 'mic' : 'micOff'} />
+                  <span>{isListening ? 'MIC ON' : 'MIC'}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`subbar-util-btn ${isSpeaking || voiceAutoRead ? 'active' : ''}`}
+                  onClick={handleSpeakSummary}
+                  title="Speak latest 🔊 agent summary"
+                >
+                  <Icon name={isSpeaking ? 'volumeOff' : 'volume'} />
+                  <span>{isSpeaking ? 'STOP' : voiceAutoRead ? 'AUTO' : 'SPEAK'}</span>
+                </button>
+              </div>
             </div>
           )}
-          { !activeSession && (
-            <div className="welcome-screen" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 50, background: termTheme === 'hacker' || termTheme === 'high-contrast' ? '#000000' : '#0B162C', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#e2e8f0', padding: '20px', textAlign: 'center', userSelect: 'none' }}>
-              <div style={{ marginBottom: '24px', opacity: 0.9 }}>
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 17 10 11 4 5"></polyline>
-                  <line x1="12" y1="19" x2="20" y2="19"></line>
-                </svg>
+
+          {activeSession && !showKeyboard && (
+            <div className="commander-toolbar">
+              <div className="macro-group">
+                {macroLibrary
+                  .filter((m) => m.isPinned)
+                  .map((macro) => (
+                    <button
+                      key={macro.id}
+                      type="button"
+                      className="macro-btn action"
+                      onClick={() => sendCommand(macro.cmd)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        toggleMacroPin(macro.id);
+                      }}
+                    >
+                      {macro.isServer ? '☁ ' : ''}
+                      {macro.label}
+                    </button>
+                  ))}
+                <button
+                  type="button"
+                  className="macro-btn action add-macro"
+                  onClick={() => {
+                    setMacroReturnToVoice(false);
+                    setShowMacroLibrary(true);
+                  }}
+                  title="Open Macro Library"
+                >
+                  <Icon name="settings" size={13} />
+                </button>
               </div>
-              <h2 style={{ color: '#e2e8f0', marginBottom: '12px', fontSize: '24px', fontWeight: '600' }}>Welcome to A.I.M. Connect</h2>
-              <p style={{ maxWidth: '400px', lineHeight: '1.6', fontSize: '15px', color: '#94a3b8', marginBottom: '32px' }}>
-                You are securely authenticated, but no workspace is active in your viewport.
-              </p>
-              <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '20px 24px', borderRadius: '12px', border: '1px solid #1e293b', textAlign: 'left' }}>
-                <p style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '12px', color: '#cbd5e1' }}>
-                  <span style={{ fontSize: '20px' }}>🧭</span> 
-                  <span>Select an existing session from the <strong>Fleet Sidebar</strong> (or press <strong>⌘K</strong>).</span>
-                </p>
-                <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px', color: '#cbd5e1' }}>
-                  <span style={{ fontSize: '20px' }}>➕</span> 
-                  <span>Tap <strong>+ New</strong> in the Fleet Sidebar to spawn a brand new isolated workspace.</span>
-                </p>
+            </div>
+          )}
+
+          <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+            {showSearch && (
+              <div className="search-bar">
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search terminal..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (e.shiftKey) searchAddon.current?.findPrevious(searchTerm);
+                      else searchAddon.current?.findNext(searchTerm);
+                    }
+                    if (e.key === 'Escape') {
+                      setShowSearch(false);
+                      setSearchTerm('');
+                    }
+                  }}
+                  autoFocus
+                />
+                <button className="search-btn" onClick={() => searchAddon.current?.findPrevious(searchTerm)}>
+                  ▲
+                </button>
+                <button className="search-btn" onClick={() => searchAddon.current?.findNext(searchTerm)}>
+                  ▼
+                </button>
+                <button
+                  className="search-btn search-close"
+                  onClick={() => {
+                    setShowSearch(false);
+                    setSearchTerm('');
+                  }}
+                >
+                  ✖
+                </button>
               </div>
-              <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: '1px solid #1e293b', width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h3 style={{ margin: 0, color: '#e2e8f0', fontSize: '18px', fontWeight: '500', letterSpacing: '0.5px' }}>Own your stack. Don't rent a seat.</h3>
-                <p style={{ margin: 0, fontSize: '14px', color: '#94a3b8', lineHeight: '1.5' }}>
-                  A.I.M. Connect is proudly 100% ad-free and open-source. If this tool helps you take back control, consider <a href="https://buymeacoffee.com/brianv1981" target="_blank" rel="noreferrer" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: '500' }}>buying me a coffee ☕</a> to keep the servers humming.
-                </p>
-                <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px' }}>
-                  <a href="https://github.com/BrianV1981/aim-connect" target="_blank" rel="noreferrer" style={{ color: '#64748b', textDecoration: 'none', fontSize: '13px', fontWeight: '500', transition: 'color 0.2s' }}>[ GitHub ]</a>
-                  <a href="https://github.com/BrianV1981/aim-ecosystem" target="_blank" rel="noreferrer" style={{ color: '#64748b', textDecoration: 'none', fontSize: '13px', fontWeight: '500', transition: 'color 0.2s' }}>[ A.I.M. Ecosystem ]</a>
+            )}
+
+            {!activeSession && (
+              <div className="welcome-screen home-stage">
+                <div className="ld-grid-backdrop" />
+                <div className="ld-aurora-wash" />
+
+                <div className="home-hero-badge">
+                  <span className="pulse-led" />
+                  <span>SOVEREIGN FLEET COCKPIT // 100% OPEN SOURCE</span>
+                </div>
+
+                <div style={{ position: 'relative', zIndex: 2 }}>
+                  <h1 className="home-slogan">
+                    Own your stack.
+                    <br />
+                    <span
+                      className="home-slogan-grad"
+                      onMouseEnter={homeSloganScramble.triggerScramble}
+                      onMouseLeave={homeSloganScramble.resetScramble}
+                    >
+                      {homeSloganScramble.display}
+                    </span>
+                  </h1>
+                  <p
+                    style={{
+                      maxWidth: '480px',
+                      margin: '12px auto 0',
+                      fontSize: '13.5px',
+                      color: 'var(--text-secondary)',
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    You are securely authenticated via 3FA &amp; E2EE, with no active workspace attached to the center viewport.
+                  </p>
+                </div>
+
+                <div className="home-quick-card ld-mask-glass">
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      letterSpacing: '0.16em',
+                      color: 'var(--accent)',
+                    }}
+                  >
+                    QUICK LAUNCH // ATTACH WORKSPACE
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+                    {sessions.length === 0 ? (
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        No active tmux sessions yet — click + New in the Fleet rail to spawn one.
+                      </span>
+                    ) : (
+                      sessions.slice(0, 6).map((sName) => {
+                        const sColor = getAgentColor(sName);
+                        return (
+                          <button
+                            key={sName}
+                            type="button"
+                            className="project-pill"
+                            style={{
+                              '--agent-color': sColor.hex,
+                              '--agent-rgb': sColor.rgb,
+                              cursor: 'pointer',
+                              padding: '5px 12px',
+                            }}
+                            onClick={() => switchToSession(sName)}
+                          >
+                            <span className="project-pill-dot" />
+                            {sName}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      paddingTop: '6px',
+                      borderTop: '1px solid var(--border-hairline)',
+                    }}
+                  >
+                    <span>
+                      Press <span className="mono-kbd">⌘K</span> to search sessions, macros &amp; commands
+                    </span>
+                    <span>
+                      Click <strong>+ New</strong> in the Fleet rail to spawn an isolated node
+                    </span>
+                  </div>
+                </div>
+
+                <div className="home-coffee-card">
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '460px' }}>
+                    A.I.M. Connect is proudly <strong>100% ad-free and open-source</strong>. If this tool helps you take back control, consider buying me a coffee to keep the servers humming.
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '2px' }}>
+                    <a
+                      href="https://buymeacoffee.com/brianv1981"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="coffee-cta-btn"
+                    >
+                      <Icon name="coffee" />
+                      <span>BUY ME A COFFEE</span>
+                    </a>
+                    <a
+                      href="https://github.com/BrianV1981/aim-connect"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="subbar-util-btn"
+                      style={{ height: '36px', padding: '0 12px', textDecoration: 'none' }}
+                    >
+                      [ GITHUB ]
+                    </a>
+                    <a
+                      href="https://github.com/BrianV1981/aim-ecosystem"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="subbar-util-btn"
+                      style={{ height: '36px', padding: '0 12px', textDecoration: 'none' }}
+                    >
+                      [ A.I.M. ECOSYSTEM ]
+                    </a>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-          
-          <div className="terminal-container" ref={terminalRef} style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}></div>
-          {isNativeScrollMode && (
-            <ScrollbackOverlay
-              scrollbackContent={scrollbackContent}
-              rawScrollback={rawScrollback}
-              isSelectMode={isSelectMode}
-              onToggleSelectMode={toggleScrollbackSelectMode}
-              onRefresh={enterNativeScrollMode}
-              onClose={closeNativeScrollMode}
+            )}
+
+            <div
+              className="terminal-container"
+              ref={terminalRef}
+              style={{ height: '100%', pointerEvents: isNativeScrollMode ? 'none' : 'auto' }}
             />
-          )}
+            {isNativeScrollMode && (
+              <ScrollbackOverlay
+                scrollbackContent={scrollbackContent}
+                rawScrollback={rawScrollback}
+                isSelectMode={isSelectMode}
+                onToggleSelectMode={toggleScrollbackSelectMode}
+                onRefresh={enterNativeScrollMode}
+                onClose={closeNativeScrollMode}
+              />
+            )}
+          </div>
         </div>
+
+        {splitMode && (showFiles || showBrowser) && (
+          <div
+            className={`split-pane-resizer ${isDraggingSplit ? 'dragging' : ''}`}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Drag vertical divider to resize split panel"
+            title="Drag to resize panel · Double-click to reset"
+            onPointerDown={handleSplitDividerPointerDown}
+            onDoubleClick={handleSplitDividerDoubleClick}
+          >
+            <span className="split-pane-resizer-grip" />
+          </div>
+        )}
+
+        <FileExplorer
+          isOpen={showFiles}
+          activeSession={activeSession}
+          splitMode={splitMode}
+          uiTheme={theme}
+          selectMode={fileSelectMode}
+          onToggleSelectMode={() => setFileSelectMode((prev) => !prev)}
+          onToggleSplitMode={() => {
+            setSplitMode((prev) => !prev);
+            setTimeout(() => {
+              try {
+                fitAddon.current?.fit();
+              } catch {}
+            }, 80);
+          }}
+          onClose={() => {
+            setShowFiles(false);
+            setFileSelectMode(false);
+            setTimeout(() => {
+              try {
+                fitAddon.current?.fit();
+              } catch {}
+            }, 80);
+          }}
+          editorRef={editorRef}
+        />
+
+        <BrowserPane
+          isOpen={showBrowser}
+          splitMode={splitMode}
+          apiToken={apiTokenRef.current}
+          fleet={fleet}
+          onToggleSplitMode={() => {
+            setSplitMode((prev) => !prev);
+            setTimeout(() => {
+              try {
+                fitAddon.current?.fit();
+              } catch {}
+            }, 80);
+          }}
+          onClose={() => {
+            setShowBrowser(false);
+            setTimeout(() => {
+              try {
+                fitAddon.current?.fit();
+              } catch {}
+            }, 80);
+          }}
+        />
       </div>
 
-      {splitMode && (showFiles || showBrowser) && (
-        <div
-          className={`split-pane-resizer ${isDraggingSplit ? 'dragging' : ''}`}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Drag vertical divider to resize split panel"
-          title="Drag to resize panel · Double-click to reset"
-          onPointerDown={handleSplitDividerPointerDown}
-          onDoubleClick={handleSplitDividerDoubleClick}
-        >
-          <span className="split-pane-resizer-grip" />
-        </div>
-      )}
-
-      <FileExplorer
-        isOpen={showFiles}
-        activeSession={activeSession}
-        splitMode={splitMode}
-        selectMode={fileSelectMode}
-        onToggleSelectMode={() => setFileSelectMode((prev) => !prev)}
-        onToggleSplitMode={() => {
-          setSplitMode((prev) => !prev);
-          setTimeout(() => {
-            try { fitAddon.current?.fit(); } catch (e) {}
-          }, 80);
-        }}
-        onClose={() => {
-          setShowFiles(false);
-          setFileSelectMode(false);
-          setTimeout(() => {
-            try { fitAddon.current?.fit(); } catch (e) {}
-          }, 80);
-        }}
-        editorRef={editorRef}
-      />
-
-      <BrowserPane
-        isOpen={showBrowser}
-        splitMode={splitMode}
-        apiToken={apiTokenRef.current}
-        fleet={fleet}
-        onToggleSplitMode={() => {
-          setSplitMode((prev) => !prev);
-          setTimeout(() => {
-            try { fitAddon.current?.fit(); } catch (e) {}
-          }, 80);
-        }}
-        onClose={() => {
-          setShowBrowser(false);
-          setTimeout(() => {
-            try { fitAddon.current?.fit(); } catch (e) {}
-          }, 80);
-        }}
-      />
-      </div>
-
-        {showKeyboard && (
-          <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-            <div className="commander-toolbar" style={{ borderBottom: '1px solid #1c305c', borderTop: 'none', borderRadius: 0 }}>
-              <div className="macro-group">
-                {macroLibrary.filter(m => m.isPinned).map((macro) => (
-                  <button 
-                    key={macro.id} 
-                    className="macro-btn action" 
+      {showKeyboard && (
+        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+          <div className="commander-toolbar" style={{ borderTop: '1px solid var(--border-hairline)', borderRadius: 0 }}>
+            <div className="macro-group">
+              {macroLibrary
+                .filter((m) => m.isPinned)
+                .map((macro) => (
+                  <button
+                    key={macro.id}
+                    type="button"
+                    className="macro-btn action"
                     onClick={() => sendCommand(macro.cmd)}
-                    onContextMenu={(e) => { e.preventDefault(); toggleMacroPin(macro.id); }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      toggleMacroPin(macro.id);
+                    }}
                   >
-                    {macro.isServer ? "☁️ " : "📱 "}{macro.label}
+                    {macro.isServer ? '☁ ' : ''}
+                    {macro.label}
                   </button>
                 ))}
-                <button className="macro-btn action add-macro" onClick={() => setShowMacroLibrary(true)}>⚙️</button>
-              </div>
+              <button
+                type="button"
+                className="macro-btn action add-macro"
+                onClick={() => {
+                  setMacroReturnToVoice(false);
+                  setShowMacroLibrary(true);
+                }}
+              >
+                <Icon name="settings" size={13} />
+              </button>
             </div>
-            <Keyboard mode={keyboardMode} autoCaps={autoCaps} feedbackMode={keyboardFeedback} onKeyPress={(key) => {
-              if (showFiles && isEditingFile && editorRef.current) {
+          </div>
+          <Keyboard
+            mode={keyboardMode}
+            onChangeMode={(nextMode) => {
+              setKeyboardMode(nextMode);
+              localStorage.setItem('aim-kb-mode', nextMode);
+            }}
+            onClose={() => setShowKeyboard(false)}
+            autoCaps={autoCaps}
+            feedbackMode={keyboardFeedback}
+            onKeyPress={(key) => {
+              if (showFiles && editorRef.current) {
                 const editor = editorRef.current;
                 if (key === '\x7f') {
                   editor.trigger('keyboard', 'deleteLeft');
@@ -2152,9 +2500,10 @@ function App() {
               } else {
                 sendCommand(key);
               }
-            }} />
-          </div>
-        )}
+            }}
+          />
+        </div>
+      )}
 
       {showMacroLibrary && (
         <MacroLibraryModal
@@ -2163,48 +2512,84 @@ function App() {
           onSaveMacro={saveMacro}
           onDeleteMacro={deleteMacro}
           onImportMacros={importMacros}
-          onClose={() => setShowMacroLibrary(false)}
+          returnToVoice={macroReturnToVoice}
+          onBackToVoice={() => {
+            setMacroReturnToVoice(false);
+            setShowMacroLibrary(false);
+            openSettingsModal('voice');
+          }}
+          onClose={() => {
+            setMacroReturnToVoice(false);
+            setShowMacroLibrary(false);
+          }}
         />
       )}
 
       {showSettings && (
         <SettingsModal
           onClose={() => setShowSettings(false)}
-          autoCaps={autoCaps} setAutoCaps={setAutoCaps}
-          keyboardMode={keyboardMode} setKeyboardMode={setKeyboardMode}
-          theme={theme} setTheme={setTheme}
-          keyboardFeedback={keyboardFeedback} setKeyboardFeedback={setKeyboardFeedback}
-          alertChime={alertChime} setAlertChime={setAlertChime}
-          termFontSize={termFontSize} setTermFontSize={setTermFontSize}
-          termTheme={termTheme} setTermTheme={setTermTheme}
-          voiceAutoRead={voiceAutoRead} setVoiceAutoRead={setVoiceAutoRead}
-          ttsVoice={ttsVoice} setTtsVoice={setTtsVoice}
-          onPreviewVoice={(v) => speakSummaryText('All systems online. Neural voice synthesis verified.', v)}
-          voiceContinuous={voiceContinuous} setVoiceContinuous={setVoiceContinuous}
-          voiceAutoEnter={voiceAutoEnter} setVoiceAutoEnter={setVoiceAutoEnter}
-          voiceAutoSend={voiceAutoSend} setVoiceAutoSend={setVoiceAutoSend}
-          voiceAutoExecute={voiceAutoExecute} setVoiceAutoExecute={setVoiceAutoExecute}
-          voiceAutoCapitalize={voiceAutoCapitalize} setVoiceAutoCapitalize={setVoiceAutoCapitalize}
-          voiceSlashes={voiceSlashes} setVoiceSlashes={setVoiceSlashes}
+          initialTab={settingsInitialTab}
+          activeSession={activeSession}
+          macroLibrary={macroLibrary}
+          onOpenVoiceMacros={() => {
+            setShowSettings(false);
+            setMacroReturnToVoice(true);
+            setShowMacroLibrary(true);
+          }}
+          deferredInstallPrompt={deferredInstallPrompt}
+          onTriggerInstallApp={triggerInstallApp}
+          onLogout={handleLogout}
+          autoCaps={autoCaps}
+          setAutoCaps={setAutoCaps}
+          keyboardMode={keyboardMode}
+          setKeyboardMode={setKeyboardMode}
+          theme={theme}
+          setTheme={setTheme}
+          operatorStyle={operatorStyle}
+          setOperatorStyle={setOperatorStyle}
+          operatorSide={operatorSide}
+          setOperatorSide={setOperatorSide}
+          keyboardFeedback={keyboardFeedback}
+          setKeyboardFeedback={setKeyboardFeedback}
+          alertChime={alertChime}
+          setAlertChime={setAlertChime}
+          termFontSize={termFontSize}
+          setTermFontSize={setTermFontSize}
+          termTheme={termTheme}
+          setTermTheme={setTermTheme}
+          voiceAutoRead={voiceAutoRead}
+          setVoiceAutoRead={setVoiceAutoRead}
+          ttsVoice={ttsVoice}
+          setTtsVoice={setTtsVoice}
+          onPreviewVoice={(v) =>
+            speakSummaryText('All systems online. Neural voice synthesis verified.', v)
+          }
+          voiceContinuous={voiceContinuous}
+          setVoiceContinuous={setVoiceContinuous}
+          voiceAutoEnter={voiceAutoEnter}
+          setVoiceAutoEnter={setVoiceAutoEnter}
+          voiceAutoSend={voiceAutoSend}
+          setVoiceAutoSend={setVoiceAutoSend}
+          voiceAutoExecute={voiceAutoExecute}
+          setVoiceAutoExecute={setVoiceAutoExecute}
+          voiceAutoCapitalize={voiceAutoCapitalize}
+          setVoiceAutoCapitalize={setVoiceAutoCapitalize}
+          voiceSlashes={voiceSlashes}
+          setVoiceSlashes={setVoiceSlashes}
           apiToken={apiTokenRef.current}
-          e2eeSecret={e2eeSecret} setE2eeSecret={setE2eeSecret}
+          e2eeSecret={e2eeSecret}
+          setE2eeSecret={setE2eeSecret}
         />
       )}
 
-      <DeleteSessionModal 
-        isOpen={isDeleteSessionModalOpen} 
+      <DeleteSessionModal
+        isOpen={isDeleteSessionModalOpen}
         onClose={() => {
           setIsDeleteSessionModalOpen(false);
           setSessionToDelete('');
-        }} 
+        }}
         onConfirm={confirmKillSession}
         sessionName={sessionToDelete || activeSession}
-      />
-      
-      <IntegrationsModal
-        isOpen={isIntegrationsModalOpen}
-        onClose={() => setIsIntegrationsModalOpen(false)}
-        activeSession={activeSession}
       />
 
       <CommandPalette
@@ -2219,20 +2604,8 @@ function App() {
         onKillSession={killSession}
         onSendSessionCommand={sendSessionCommand}
         onSendRawCommand={sendCommand}
-        onToggleFiles={() => {
-          setShowFiles((prev) => {
-            const next = !prev;
-            if (next) setShowBrowser(false);
-            return next;
-          });
-        }}
-        onToggleBrowser={() => {
-          setShowBrowser((prev) => {
-            const next = !prev;
-            if (next) setShowFiles(false);
-            return next;
-          });
-        }}
+        onToggleFiles={() => selectWorkspaceTool('files')}
+        onToggleBrowser={() => selectWorkspaceTool('browser')}
         onToggleFleetSidebar={toggleFleetSidebar}
         onOpenTokenGrabber={() => setShowTokenGrabber(true)}
         onOpenForensics={() => setShowForensics(true)}
@@ -2248,8 +2621,9 @@ function App() {
             return next;
           });
         }}
-        onOpenSettings={() => setShowSettings(true)}
-        onOpenIntegrations={() => setIsIntegrationsModalOpen(true)}
+        onOpenSettings={() => openSettingsModal('appearance')}
+        onOpenIntegrations={() => openSettingsModal('integrations')}
+        onSetUiTheme={setTheme}
         onSetTermTheme={(newTheme) => {
           setTermTheme(newTheme);
           localStorage.setItem('aim-term-theme', newTheme);
@@ -2276,7 +2650,6 @@ function App() {
         sessions={sessions}
         onSendSessionCommand={sendSessionCommand}
       />
-
     </div>
   );
 }

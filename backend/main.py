@@ -104,11 +104,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' https://cdn.jsdelivr.net blob:; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "connect-src 'self' wss: ws:; "
         "img-src 'self' data: blob:; "
         "media-src 'self' blob: data:; "
-        "font-src 'self' https://cdn.jsdelivr.net data:; "
+        "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:; "
         "worker-src 'self' blob:; "
         "object-src 'none'; "
         "base-uri 'self'"
@@ -483,6 +483,13 @@ def _render_frontend_file(dist_dir: str, catchall: str):
             manifest["background_color"] = app_color
             manifest["theme_color"] = app_color
         return JSONResponse(manifest)
+
+    if file_path.endswith("sw.js"):
+        return FileResponse(
+            file_path,
+            media_type="application/javascript",
+            headers={**_NO_STORE_HEADERS, "Service-Worker-Allowed": "/"},
+        )
 
     if file_path.endswith("index.html"):
         app_name = os.environ.get("AIM_APP_NAME")

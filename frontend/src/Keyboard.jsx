@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Icon from './components/Icons';
 
-// Singleton AudioContext for key clicks
+// Singleton AudioContext for subtle keypress ticks
 let audioCtx = null;
 const playClickSound = () => {
   try {
@@ -12,85 +13,122 @@ const playClickSound = () => {
         return;
       }
     }
-    
     if (audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
-    
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-    
-    // Subtle Android-style tick sound
     osc.type = 'sine';
     osc.frequency.setValueAtTime(600, audioCtx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.03);
-    
-    gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gainNode.gain.setValueAtTime(0.35, audioCtx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.03);
-    
     osc.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
     osc.start();
     osc.stop(audioCtx.currentTime + 0.03);
-  } catch(e) {
-    // Ignore if audio fails or is blocked
+  } catch {
+    // Ignore if audio blocked
   }
 };
 
-export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = true, feedbackMode = 'audio' }) {
-  // 0 = off, 1 = shift (1 char), 2 = caps lock
-  const [shiftState, setShiftState] = useState(0);
+export default function Keyboard({
+  onKeyPress,
+  mode = 'standard',
+  onChangeMode,
+  onClose,
+  autoCaps = true,
+  feedbackMode = 'audio',
+}) {
+  const [shiftState, setShiftState] = useState(0); // 0=off, 1=shift, 2=caps
   const [ctrlState, setCtrlState] = useState(false);
-  const [layout, setLayout] = useState('alpha'); // 'alpha' or 'symbols'
+  const [layout, setLayout] = useState('alpha'); // 'alpha' | 'symbols' | 'fkeys'
   const [lastPunctuation, setLastPunctuation] = useState(false);
-  
+
   const triggerFeedback = () => {
     if (feedbackMode === 'off') return;
     if (feedbackMode === 'haptic' && navigator.vibrate) {
-      try { navigator.vibrate(10); } catch(e) {}
-    } else if (feedbackMode === 'audio' || feedbackMode === 'haptic') {
+      try {
+        navigator.vibrate(10);
+      } catch {}
+    } else {
       playClickSound();
     }
   };
 
-  // ===================== STANDARD MODE =====================
   const normalRows = [
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
     ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
-    ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
+    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '/'],
+    ['z', 'x', 'c', 'v', 'b', 'n', 'm', '.', '-'],
   ];
-  const shiftRows = [
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-    ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-    ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
-    ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
-  ];
+  const shiftRows = normalRows.map((row) => row.map((c) => c.toUpperCase()));
+
   const symbolRows = [
-    ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')'],
-    ['`', '~', '-', '_', '=', '+', '[', ']', '{', '}'],
-    ['\\', '|', ';', ':', "'", '"', '<', '>', '/', '?'],
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    ['@', '#', '$', '%', '&', '-', '+', '(', ')', '/'],
+    ['*', '"', "'", ':', ';', '!', '?', '~', '`', '\\'],
   ];
 
   const fnRows = [
-    [{label: 'F1', val: '\x1bOP'}, {label: 'F2', val: '\x1bOQ'}, {label: 'F3', val: '\x1bOR'}, {label: 'F4', val: '\x1bOS'}],
-    [{label: 'F5', val: '\x1b[15~'}, {label: 'F6', val: '\x1b[17~'}, {label: 'F7', val: '\x1b[18~'}, {label: 'F8', val: '\x1b[19~'}],
-    [{label: 'F9', val: '\x1b[20~'}, {label: 'F10', val: '\x1b[21~'}, {label: 'F11', val: '\x1b[23~'}, {label: 'F12', val: '\x1b[24~'}],
+    [
+      { label: 'F1', val: '\x1bOP' },
+      { label: 'F2', val: '\x1bOQ' },
+      { label: 'F3', val: '\x1bOR' },
+      { label: 'F4', val: '\x1bOS' },
+      { label: 'F5', val: '\x1b[15~' },
+      { label: 'F6', val: '\x1b[17~' },
+      { label: 'F7', val: '\x1b[18~' },
+      { label: 'F8', val: '\x1b[19~' },
+      { label: 'F9', val: '\x1b[20~' },
+      { label: 'F10', val: '\x1b[21~' },
+    ],
+    [
+      { label: 'F11', val: '\x1b[23~' },
+      { label: 'F12', val: '\x1b[24~' },
+      { label: 'ESC', val: '\x1b' },
+      { label: 'TAB', val: '\x09' },
+      { label: 'INS', val: '\x1b[2~' },
+      { label: 'DEL', val: '\x1b[3~' },
+      { label: 'HOME', val: '\x1b[H' },
+      { label: 'END', val: '\x1b[F' },
+      { label: 'PGUP', val: '\x1b[5~' },
+      { label: 'PGDN', val: '\x1b[6~' },
+    ],
+    [
+      { label: '^C', val: '\x03' },
+      { label: '^W', val: '\x17' },
+      { label: '^U', val: '\x15' },
+      { label: '^R', val: '\x12' },
+      { label: '^L', val: '\x0c' },
+      { label: '←', val: '\x1b[D' },
+      { label: '↓', val: '\x1b[B' },
+      { label: '↑', val: '\x1b[A' },
+      { label: '→', val: '\x1b[C' },
+      { label: '⌫', val: '\x7f' },
+    ],
   ];
 
-  // ===================== HACKER MODE =====================
-  const hackerNormalRows = [
-    ['\x1b', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
-    ['\x09', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'],
-    ['\x03', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', "'", '\\'],
-    ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/'],
-  ];
-  const hackerShiftRows = [
-    ['\x1b', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+'],
-    ['\x09', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}'],
-    ['\x03', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '|'],
-    ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?'],
+  const hackerRows = [
+    [
+      { label: 'ESC', val: '\x1b' },
+      { label: 'TAB', val: '\x09' },
+      { label: '^C', val: '\x03' },
+      { label: '^D', val: '\x04' },
+      { label: '^Z', val: '\x1a' },
+      { label: '^L', val: '\x0c' },
+      { label: 'PGUP', val: '\x1b[5~' },
+      { label: 'PGDN', val: '\x1b[6~' },
+      { label: 'HOME', val: '\x1b[H' },
+      { label: 'END', val: '\x1b[F' },
+    ],
+    ['/', '-', '|', '~', '_', ':', ';', '"', "'", '\x7f'].map((k) => ({
+      label: k === '\x7f' ? 'BKSP' : k,
+      val: k,
+    })),
+    ['(', ')', '[', ']', '{', '}', '<', '>', '&&', '\x1b[A'].map((k) => ({
+      label: k === '\x1b[A' ? '↑' : k,
+      val: k,
+    })),
   ];
 
   const repeatTimeouts = useRef({});
@@ -103,9 +141,39 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
     };
   }, []);
 
+  const handleKey = (e, key) => {
+    e.preventDefault();
+    triggerFeedback();
+
+    let finalKey = key;
+    if (ctrlState && key.length === 1 && /[a-zA-Z]/.test(key)) {
+      finalKey = String.fromCharCode(key.toLowerCase().charCodeAt(0) - 96);
+      setCtrlState(false);
+    }
+
+    onKeyPress(finalKey);
+
+    if (shiftState === 1 && layout === 'alpha') {
+      setShiftState(0);
+    }
+
+    if (autoCaps && finalKey === key) {
+      if (['.', '!', '?'].includes(key)) {
+        setLastPunctuation(true);
+      } else if (key === ' ' && lastPunctuation) {
+        setShiftState(1);
+        setLastPunctuation(false);
+      } else if (key !== '\b') {
+        setLastPunctuation(false);
+      }
+    }
+  };
+
   const handlePointerDown = (e, key) => {
     e.preventDefault();
-    try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
+    try {
+      e.target.setPointerCapture(e.pointerId);
+    } catch {}
     handleKey(e, key);
 
     if (key === '\x7f' || ['\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'].includes(key) || key === ' ') {
@@ -119,200 +187,263 @@ export default function Keyboard({ onKeyPress, mode = 'standard', autoCaps = tru
 
   const handlePointerUp = (e, key) => {
     e.preventDefault();
-    try { e.target.releasePointerCapture(e.pointerId); } catch(err) {}
+    try {
+      e.target.releasePointerCapture(e.pointerId);
+    } catch {}
     clearTimeout(repeatTimeouts.current[key]);
     clearInterval(repeatIntervals.current[key]);
-  };
-
-  const handleKey = (e, key) => {
-    e.preventDefault(); // Prevents delay and double-firing!
-    triggerFeedback();
-    
-    let finalKey = key;
-    if (ctrlState && key.length === 1 && /[a-zA-Z]/.test(key)) {
-      finalKey = String.fromCharCode(key.toLowerCase().charCodeAt(0) - 96);
-      setCtrlState(false);
-    }
-    
-    onKeyPress(finalKey);
-    
-    if (shiftState === 1 && layout === 'alpha') {
-      setShiftState(0);
-    }
-    
-    // Auto-capitalize logic
-    if (autoCaps && finalKey === key) {
-      if (['.', '!', '?'].includes(key)) {
-        setLastPunctuation(true);
-      } else if (key === ' ' && lastPunctuation) {
-        setShiftState(1);
-        setLastPunctuation(false);
-      } else if (key !== '\b') {
-        setLastPunctuation(false);
-      }
-    }
   };
 
   const toggleCtrl = (e) => {
     e.preventDefault();
     triggerFeedback();
-    setCtrlState(!ctrlState);
+    setCtrlState((prev) => !prev);
   };
 
   const toggleShift = (e) => {
     e.preventDefault();
     triggerFeedback();
-    if (shiftState === 0) setShiftState(1);
-    else if (shiftState === 1) setShiftState(2);
-    else setShiftState(0);
-  };
-
-  const toggleLayout = (e) => {
-    e.preventDefault();
-    triggerFeedback();
-    if (layout === 'alpha') setLayout('symbols');
-    else if (layout === 'symbols') setLayout('fkeys');
-    else setLayout('alpha');
-  };
-
-  const toggleMode = (e) => {
-    e.preventDefault();
-    triggerFeedback();
-    setMode(mode === 'standard' ? 'hacker' : 'standard');
-  };
-
-  const getDisplayLabel = (key) => {
-    if (key === '\x1b') return 'Esc';
-    if (key === '\x09') return 'Tab';
-    if (key === '\x03') return 'CtrlC';
-    if (key === '\x1b[A') return '↑';
-    if (key === '\x1b[B') return '↓';
-    if (key === '\x1b[D') return '←';
-    if (key === '\x1b[C') return '→';
-    return key;
-  };
-
-  const renderAlphaRow = (row, i, isShift) => {
-    return (
-      <div key={`alpha-${i}`} className="kb-row">
-        {i === 3 && (
-          <button 
-            className={`kb-key kb-shift ${shiftState > 0 ? 'active' : ''} ${shiftState === 2 ? 'capslock' : ''}`} 
-            onPointerDown={toggleShift}
-          >
-            {shiftState === 2 ? '⇪' : (shiftState === 1 ? '⬆' : '⇧')}
-          </button>
-        )}
-        {row.map(key => (
-          <button key={key} className="kb-key" onPointerDown={(e) => handlePointerDown(e, key)} onPointerUp={(e) => handlePointerUp(e, key)} onPointerCancel={(e) => handlePointerUp(e, key)}>
-            {getDisplayLabel(key)}
-          </button>
-        ))}
-        {i === 3 && (
-          <button className="kb-key kb-backspace" onPointerDown={(e) => handlePointerDown(e, '\x7f')} onPointerUp={(e) => handlePointerUp(e, '\x7f')} onPointerCancel={(e) => handlePointerUp(e, '\x7f')}>
-            ⌫
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  const renderSymbolRow = (row, i) => {
-    return (
-      <div key={`sym-${i}`} className="kb-row">
-        {row.map(key => (
-          <button key={key} className="kb-key" onPointerDown={(e) => handlePointerDown(e, key)} onPointerUp={(e) => handlePointerUp(e, key)} onPointerCancel={(e) => handlePointerUp(e, key)}>
-            {key}
-          </button>
-        ))}
-        {i === 2 && (
-          <button className="kb-key kb-backspace" onPointerDown={(e) => handlePointerDown(e, '\x7f')} onPointerUp={(e) => handlePointerUp(e, '\x7f')} onPointerCancel={(e) => handlePointerUp(e, '\x7f')}>
-            ⌫
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  const renderFnRow = (row, i) => {
-    return (
-      <div key={`fn-${i}`} className="kb-row">
-        {row.map(k => (
-          <button key={k.label} className="kb-key" onPointerDown={(e) => handlePointerDown(e, k.val)} onPointerUp={(e) => handlePointerUp(e, k.val)} onPointerCancel={(e) => handlePointerUp(e, k.val)}>
-            {k.label}
-          </button>
-        ))}
-        {i === 2 && (
-          <button className="kb-key kb-backspace" onPointerDown={(e) => handlePointerDown(e, '\x7f')} onPointerUp={(e) => handlePointerUp(e, '\x7f')} onPointerCancel={(e) => handlePointerUp(e, '\x7f')}>
-            ⌫
-          </button>
-        )}
-      </div>
-    );
+    setShiftState((prev) => (prev + 1) % 3);
   };
 
   if (mode === 'hacker') {
     return (
-      <div className="sovereign-keyboard hacker-mode">
-        {(shiftState > 0 ? hackerShiftRows : hackerNormalRows).map((row, i) => renderAlphaRow(row, i, shiftState > 0))}
+      <div className="sovereign-keyboard sovereign-kb-dock hacker-mode">
+        <div className="kb-toolbar">
+          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="subbar-util-btn"
+              onClick={() => onChangeMode?.('standard')}
+            >
+              STANDARD ABC
+            </button>
+            <button type="button" className="subbar-util-btn active">
+              HACKER KEYS
+            </button>
+          </div>
+          {onClose && (
+            <button type="button" className="ghost-btn" style={{ height: '24px', padding: '0 7px' }} onClick={onClose}>
+              <Icon name="close" />
+            </button>
+          )}
+        </div>
+        {hackerRows.map((row, idx) => (
+          <div key={`hk-${idx}`} className="kb-row">
+            {row.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className="kb-cap"
+                onPointerDown={(e) => handlePointerDown(e, item.val)}
+                onPointerUp={(e) => handlePointerUp(e, item.val)}
+                onPointerCancel={(e) => handlePointerUp(e, item.val)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ))}
         <div className="kb-row">
-          <button 
-            className="kb-key kb-ctrl" 
-            onPointerDown={toggleCtrl}
-            style={ctrlState ? { backgroundColor: '#e2e8f0', color: '#0f172a' } : {}}
+          <button
+            type="button"
+            className="kb-cap wide"
+            onPointerDown={(e) => handlePointerDown(e, '/aim-handoff\r')}
+            onPointerUp={(e) => handlePointerUp(e, '/aim-handoff\r')}
+            onPointerCancel={(e) => handlePointerUp(e, '/aim-handoff\r')}
           >
-            Ctrl
+            /handoff
           </button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[D')} onPointerUp={(e) => handlePointerUp(e, '\x1b[D')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[D')}>←</button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[A')} onPointerUp={(e) => handlePointerUp(e, '\x1b[A')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[A')}>↑</button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[B')} onPointerUp={(e) => handlePointerUp(e, '\x1b[B')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[B')}>↓</button>
-          <button className="kb-key kb-ctrl" onPointerDown={(e) => handlePointerDown(e, '\x1b[C')} onPointerUp={(e) => handlePointerUp(e, '\x1b[C')} onPointerCancel={(e) => handlePointerUp(e, '\x1b[C')}>→</button>
-          <button className="kb-key kb-space" onPointerDown={(e) => handlePointerDown(e, ' ')} onPointerUp={(e) => handlePointerUp(e, ' ')} onPointerCancel={(e) => handlePointerUp(e, ' ')}>Space</button>
-          <button className="kb-key kb-enter" onPointerDown={(e) => handlePointerDown(e, '\r')} onPointerUp={(e) => handlePointerUp(e, '\r')} onPointerCancel={(e) => handlePointerUp(e, '\r')}>Enter</button>
+          <button
+            type="button"
+            className="kb-cap space"
+            onPointerDown={(e) => handlePointerDown(e, ' ')}
+            onPointerUp={(e) => handlePointerUp(e, ' ')}
+            onPointerCancel={(e) => handlePointerUp(e, ' ')}
+          >
+            SPACE
+          </button>
+          <button
+            type="button"
+            className="kb-cap"
+            onPointerDown={(e) => handlePointerDown(e, '\x1b[D')}
+            onPointerUp={(e) => handlePointerUp(e, '\x1b[D')}
+            onPointerCancel={(e) => handlePointerUp(e, '\x1b[D')}
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            className="kb-cap"
+            onPointerDown={(e) => handlePointerDown(e, '\x1b[B')}
+            onPointerUp={(e) => handlePointerUp(e, '\x1b[B')}
+            onPointerCancel={(e) => handlePointerUp(e, '\x1b[B')}
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            className="kb-cap"
+            onPointerDown={(e) => handlePointerDown(e, '\x1b[C')}
+            onPointerUp={(e) => handlePointerUp(e, '\x1b[C')}
+            onPointerCancel={(e) => handlePointerUp(e, '\x1b[C')}
+          >
+            →
+          </button>
+          <button
+            type="button"
+            className="kb-cap wide"
+            onPointerDown={(e) => handlePointerDown(e, '\r')}
+            onPointerUp={(e) => handlePointerUp(e, '\r')}
+            onPointerCancel={(e) => handlePointerUp(e, '\r')}
+          >
+            ENTER ⏎
+          </button>
         </div>
       </div>
     );
   }
 
-  // STANDARD MODE
   return (
-    <div className="sovereign-keyboard">
-      {layout === 'alpha' && (
-        <>
-          {(shiftState > 0 ? shiftRows : normalRows).map((row, i) => renderAlphaRow(row, i, shiftState > 0))}
-        </>
-      )}
-      
-      {layout === 'symbols' && (
-        <>
-          {symbolRows.map((row, i) => renderSymbolRow(row, i))}
-        </>
-      )}
+    <div className="sovereign-keyboard sovereign-kb-dock">
+      <div className="kb-toolbar">
+        <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" className="subbar-util-btn active">
+            STANDARD
+          </button>
+          <button
+            type="button"
+            className="subbar-util-btn"
+            onClick={() => onChangeMode?.('hacker')}
+          >
+            HACKER
+          </button>
+          <span style={{ opacity: 0.25 }}>|</span>
+          <button
+            type="button"
+            className={`fav-chip ${layout === 'alpha' ? 'active' : ''}`}
+            onClick={() => setLayout('alpha')}
+          >
+            ABC
+          </button>
+          <button
+            type="button"
+            className={`fav-chip ${layout === 'symbols' ? 'active' : ''}`}
+            onClick={() => setLayout('symbols')}
+          >
+            ?123
+          </button>
+          <button
+            type="button"
+            className={`fav-chip ${layout === 'fkeys' ? 'active' : ''}`}
+            onClick={() => setLayout('fkeys')}
+          >
+            Fn F1–F12
+          </button>
+        </div>
+        {onClose && (
+          <button type="button" className="ghost-btn" style={{ height: '24px', padding: '0 7px' }} onClick={onClose}>
+            <Icon name="close" />
+          </button>
+        )}
+      </div>
 
-      {layout === 'fkeys' && (
-        <>
-          {fnRows.map((row, i) => renderFnRow(row, i))}
-        </>
-      )}
+      {layout === 'alpha' &&
+        (shiftState > 0 ? shiftRows : normalRows).map((row, idx) => (
+          <div key={`alpha-${idx}`} className="kb-row">
+            {row.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className="kb-cap"
+                onPointerDown={(e) => handlePointerDown(e, key)}
+                onPointerUp={(e) => handlePointerUp(e, key)}
+                onPointerCancel={(e) => handlePointerUp(e, key)}
+              >
+                {key}
+              </button>
+            ))}
+          </div>
+        ))}
+
+      {layout === 'symbols' &&
+        symbolRows.map((row, idx) => (
+          <div key={`sym-${idx}`} className="kb-row">
+            {row.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className="kb-cap"
+                onPointerDown={(e) => handlePointerDown(e, key)}
+                onPointerUp={(e) => handlePointerUp(e, key)}
+                onPointerCancel={(e) => handlePointerUp(e, key)}
+              >
+                {key}
+              </button>
+            ))}
+          </div>
+        ))}
+
+      {layout === 'fkeys' &&
+        fnRows.map((row, idx) => (
+          <div key={`fn-${idx}`} className="kb-row">
+            {row.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className="kb-cap"
+                onPointerDown={(e) => handlePointerDown(e, item.val)}
+                onPointerUp={(e) => handlePointerUp(e, item.val)}
+                onPointerCancel={(e) => handlePointerUp(e, item.val)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ))}
 
       <div className="kb-row">
-        <button 
-          className="kb-key kb-ctrl" 
+        <button
+          type="button"
+          className={`kb-cap ${shiftState > 0 ? 'mod-active' : ''}`}
+          onPointerDown={toggleShift}
+        >
+          {shiftState === 2 ? '⇪ CAPS' : shiftState === 1 ? '⬆ SHIFT' : '⇧'}
+        </button>
+        <button
+          type="button"
+          className={`kb-cap ${ctrlState ? 'mod-active' : ''}`}
           onPointerDown={toggleCtrl}
-          style={ctrlState ? { backgroundColor: '#e2e8f0', color: '#0f172a' } : {}}
         >
-          Ctrl
+          CTRL
         </button>
-        <button 
-          className="kb-key kb-ctrl" 
-          onPointerDown={toggleLayout}
+        <button
+          type="button"
+          className="kb-cap space"
+          onPointerDown={(e) => handlePointerDown(e, ' ')}
+          onPointerUp={(e) => handlePointerUp(e, ' ')}
+          onPointerCancel={(e) => handlePointerUp(e, ' ')}
         >
-          {layout === 'alpha' ? '?123' : layout === 'symbols' ? 'Fn' : 'ABC'}
+          SPACE
         </button>
-        <button className="kb-key" onPointerDown={(e) => handlePointerDown(e, ',')} onPointerUp={(e) => handlePointerUp(e, ',')} onPointerCancel={(e) => handlePointerUp(e, ',')}>,</button>
-        <button className="kb-key kb-space" onPointerDown={(e) => handlePointerDown(e, ' ')} onPointerUp={(e) => handlePointerUp(e, ' ')} onPointerCancel={(e) => handlePointerUp(e, ' ')}>Space</button>
-        <button className="kb-key" onPointerDown={(e) => handlePointerDown(e, '.')} onPointerUp={(e) => handlePointerUp(e, '.')} onPointerCancel={(e) => handlePointerUp(e, '.')}>.</button>
-        <button className="kb-key kb-enter" onPointerDown={(e) => handlePointerDown(e, '\r')} onPointerUp={(e) => handlePointerUp(e, '\r')} onPointerCancel={(e) => handlePointerUp(e, '\r')}>Enter</button>
+        <button
+          type="button"
+          className="kb-cap"
+          onPointerDown={(e) => handlePointerDown(e, '\x7f')}
+          onPointerUp={(e) => handlePointerUp(e, '\x7f')}
+          onPointerCancel={(e) => handlePointerUp(e, '\x7f')}
+        >
+          ⌫
+        </button>
+        <button
+          type="button"
+          className="kb-cap wide"
+          onPointerDown={(e) => handlePointerDown(e, '\r')}
+          onPointerUp={(e) => handlePointerUp(e, '\r')}
+          onPointerCancel={(e) => handlePointerUp(e, '\r')}
+        >
+          ENTER ⏎
+        </button>
       </div>
     </div>
   );

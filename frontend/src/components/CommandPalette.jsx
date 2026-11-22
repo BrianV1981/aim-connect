@@ -38,6 +38,7 @@ export default function CommandPalette({
   onToggleVoiceAutoRead,
   onOpenSettings,
   onOpenIntegrations,
+  onSetUiTheme,
   onSetTermTheme,
   onChangeFontSize,
 }) {
@@ -203,6 +204,38 @@ export default function CommandPalette({
 
     // 5. LAYOUT & THEME
     items.push(
+      {
+        id: 'uitheme:emerald',
+        category: 'LAYOUT & THEME',
+        label: '🟢 UI Scheme: Emerald Matrix (Default)',
+        keywords: 'theme emerald matrix mint obsidian dark',
+        badge: 'UI Scheme',
+        action: () => onSetUiTheme?.('emerald'),
+      },
+      {
+        id: 'uitheme:oled',
+        category: 'LAYOUT & THEME',
+        label: '⚫ UI Scheme: Pure OLED Black',
+        keywords: 'theme oled black contrast',
+        badge: 'UI Scheme',
+        action: () => onSetUiTheme?.('oled'),
+      },
+      {
+        id: 'uitheme:light',
+        category: 'LAYOUT & THEME',
+        label: '☀️ UI Scheme: Daylight Crisp',
+        keywords: 'theme light white day outdoor',
+        badge: 'UI Scheme',
+        action: () => onSetUiTheme?.('light'),
+      },
+      {
+        id: 'uitheme:navy',
+        category: 'LAYOUT & THEME',
+        label: '🌊 UI Scheme: Classic AIM Navy',
+        keywords: 'theme classic aim navy orange',
+        badge: 'UI Scheme',
+        action: () => onSetUiTheme?.('navy'),
+      },
       {
         id: 'theme:standard',
         category: 'LAYOUT & THEME',

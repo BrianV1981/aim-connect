@@ -12,6 +12,7 @@ export default function FileExplorer({
   isOpen,
   activeSession,
   splitMode,
+  uiTheme = 'emerald',
   selectMode = false,
   onToggleSelectMode,
   onToggleSplitMode,
@@ -616,7 +617,7 @@ export default function FileExplorer({
             <div style={{ flex: 1, height: '100%', minHeight: '420px', width: '100%', position: 'relative' }}>
               <DiffEditor
                 height="100%"
-                theme="vs-dark"
+                theme={uiTheme === 'light' ? 'vs' : 'vs-dark'}
                 language={activeTab.language || 'plaintext'}
                 original={activeTab.original}
                 modified={activeTab.content}
@@ -636,7 +637,7 @@ export default function FileExplorer({
                 height="100%"
                 path={activeTab.path}
                 language={activeTab.language}
-                theme="vs-dark"
+                theme={uiTheme === 'light' ? 'vs' : 'vs-dark'}
                 value={activeTab.content}
                 onChange={(value) => {
                   const nextVal = value ?? '';
