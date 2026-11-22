@@ -34,6 +34,7 @@ LEASE_NAME_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 FAVORITE_ID_RE = re.compile(r"^[a-f0-9]{12}$")
 MAX_FAVORITES = 50
 CLOSED_TARGET_TOMBSTONE_TTL_S = 4.0
+HUD_STALE_TTL_S = 6.0
 
 # Track live screencast bridges so DELETE /api/browser/tabs/{id} can detach DevTools
 # before calling /json/close/{id}, and tombstone closed IDs against /json/list races (#249).
@@ -110,9 +111,23 @@ def _write_leases(leases: dict[str, dict]) -> None:
     _write_json_atomic(os.path.join(_get_state_dir(), "leases.json"), leases)
 
 
-def _read_hud() -> dict | None:
-    raw = _read_json_file(os.path.join(_get_state_dir(), "hud.json"), None)
-    return raw if isinstance(raw, dict) else None
+def _read_hud(max_age_s: float = HUD_STALE_TTL_S) -> dict | None:
+    hud_path = os.path.join(_get_state_dir(), "hud.json")
+    raw = _read_json_file(hud_path, None)
+    if not isinstance(raw, dict):
+        return None
+    now_s = time.time()
+    ts_val = raw.get("ts")
+    if isinstance(ts_val, (int, float)) and ts_val > 0:
+        if (now_s * 1000.0 - float(ts_val)) > max_age_s * 1000.0:
+            return None
+    else:
+        try:
+            if (now_s - os.stat(hud_path).st_mtime) > max_age_s:
+                return None
+        except OSError:
+            return None
+    return raw
 
 
 def _favorite_id_for_url(url: str) -> str:

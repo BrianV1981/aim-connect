@@ -249,11 +249,10 @@ export default function FleetSidebar({
                       title={`Status: ${item.status || 'IDLE'}`}
                     />
                     <span
-                      className="fleet-agent-color-swatch"
-                      style={{ '--agent-color': agentColor.hex }}
-                      title={`Browser tab border color: ${agentColor.name} (${agentColor.hex})`}
-                    />
-                    <span className="fleet-session-name" title={item.session_name}>
+                      className="fleet-session-name fleet-agent-name-pill"
+                      style={{ '--agent-color': agentColor.hex, '--agent-rgb': agentColor.rgb }}
+                      title={`${item.session_name} · Browser tab color: ${agentColor.name} (${agentColor.hex})`}
+                    >
                       {item.session_name}
                     </span>
                     {item.status === 'WAITING' && (

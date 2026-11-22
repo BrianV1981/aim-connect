@@ -82,7 +82,22 @@ export function matchFleetSessionName(candidate, fleet = []) {
     const nl = n.toLowerCase();
     return lower.startsWith(`${nl}-`) || lower.startsWith(`${nl}:`) || lower.startsWith(`${nl}/`);
   });
-  return prefixed || '';
+  if (prefixed) return prefixed;
+
+  const slugged = names.find((n) => {
+    const nl = n.toLowerCase();
+    if (!nl.startsWith('aim-')) return false;
+    const slug = nl.slice(4);
+    if (slug.length < 2) return false;
+    return (
+      lower === slug ||
+      lower === `joshua-${slug}` ||
+      lower.startsWith(`${slug}-`) ||
+      lower.startsWith(`${slug}:`) ||
+      lower.endsWith(`-${slug}`)
+    );
+  });
+  return slugged || '';
 }
 
 export function resolveTabAgentInfo(tab, hudOverlay = null, fleet = []) {

@@ -41,6 +41,7 @@ export default function BrowserPane({
   const activeTargetRef = useRef('');
   const closingIdsRef = useRef(new Set());
   const hudTimerRef = useRef(null);
+  const lastHudSeqRef = useRef(-1);
   const lastMoveSentRef = useRef(0);
   const touchLastYRef = useRef(null);
 
@@ -61,7 +62,15 @@ export default function BrowserPane({
   }, [activeTargetId]);
 
   const showHud = useCallback((hud) => {
-    if (!hud) return;
+    if (!hud || typeof hud !== 'object') return;
+    if (hud.ts && Date.now() - Number(hud.ts) > 6000) return;
+    if (hud.seq !== undefined && hud.seq !== null) {
+      const seqNum = Number(hud.seq);
+      if (Number.isFinite(seqNum)) {
+        if (seqNum === lastHudSeqRef.current) return;
+        lastHudSeqRef.current = seqNum;
+      }
+    }
     setHudOverlay(hud);
     if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
     hudTimerRef.current = setTimeout(() => setHudOverlay(null), 4500);

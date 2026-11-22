@@ -429,3 +429,47 @@ def test_browser_tab_session_attribution_and_hud_metadata(admin_and_user_tokens,
         if "stop" in server_info:
             server_info["stop"]()
         t.join(timeout=2.0)
+
+
+def test_stale_hud_json_expired_from_status_and_read_hud(admin_and_user_tokens, monkeypatch):
+    """Stale hud.json on disk (>6s old via ts or mtime) must return None instead of replaying forever (#255)."""
+    import os
+
+    monkeypatch.setenv("AIM_BROWSER_CDP_PORT", "65433")
+    client = TestClient(main.app)
+    headers = {"X-API-Token": admin_and_user_tokens["admin"]}
+    hud_file = admin_and_user_tokens["state_dir"] / "hud.json"
+
+    # 1. Stale ts (30 minutes ago) -> _read_hud() and /api/browser/status return None
+    stale_ts_ms = int((time.time() - 1800) * 1000)
+    hud_file.write_text(
+        json.dumps(
+            {
+                "seq": 15,
+                "ts": stale_ts_ms,
+                "targetId": "T_OLD",
+                "lease": "alpha-231",
+                "actor": "joshua-alpha",
+                "action": "click",
+                "x": 278,
+                "y": 296,
+            }
+        )
+    )
+    assert routes_browser._read_hud() is None
+    assert client.get("/api/browser/status", headers=headers).json()["hud"] is None
+
+    # 2. Legacy payload without ts whose file mtime is 30s old -> None
+    hud_file.write_text(json.dumps({"seq": 16, "targetId": "T_OLD", "action": "click", "x": 10, "y": 20}))
+    old_mtime = time.time() - 30.0
+    os.utime(hud_file, (old_mtime, old_mtime))
+    assert routes_browser._read_hud() is None
+
+    # 3. Fresh ts (now) -> returned cleanly
+    fresh_ts_ms = int(time.time() * 1000)
+    hud_file.write_text(
+        json.dumps({"seq": 17, "ts": fresh_ts_ms, "targetId": "T_NEW", "action": "click", "x": 50, "y": 60})
+    )
+    st = client.get("/api/browser/status", headers=headers).json()
+    assert st["hud"] is not None
+    assert st["hud"]["seq"] == 17

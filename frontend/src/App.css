@@ -1878,17 +1878,30 @@ body {
 }
 
 
-/* --- Agent-Attributed Browser Borders & Fleet Session Color Swatches (#253) --- */
-.fleet-agent-color-swatch {
-  width: 8px;
-  height: 14px;
-  min-width: 8px;
-  border-radius: 3px;
-  background: var(--agent-color, #38bdf8);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--agent-color, #38bdf8) 55%, transparent);
-  border: 1px solid rgba(255, 255, 255, 0.28);
+/* --- Agent-Attributed Browser Borders & Fleet Session Color Pills (#253, #255) --- */
+.fleet-session-name.fleet-agent-name-pill {
   display: inline-block;
-  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(var(--agent-rgb, 56, 189, 248), 0.22);
+  border: 1px solid rgba(var(--agent-rgb, 56, 189, 248), 0.78);
+  color: #f8fafc;
+  box-shadow: 0 0 8px rgba(var(--agent-rgb, 56, 189, 248), 0.22);
+  line-height: 1.35;
+}
+
+.fleet-session-card.active .fleet-session-name.fleet-agent-name-pill {
+  background: rgba(var(--agent-rgb, 56, 189, 248), 0.32);
+  border-color: var(--agent-color, #38bdf8);
+  box-shadow: 0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.35);
+}
+
+.active-session-badge.agent-colored-pill {
+  border-radius: 999px;
+  background: rgba(var(--agent-rgb, 56, 189, 248), 0.22);
+  border: 1px solid var(--agent-color, #38bdf8);
+  color: #f8fafc;
+  box-shadow: 0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.25);
 }
 
 .workspace-tab-chip.agent-leased {

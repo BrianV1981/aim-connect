@@ -1800,18 +1800,18 @@ function App() {
         >
           aim-connect
         </h1>
-        {activeSession && (
-          <span
-            className="active-session-badge"
-            title={`Active tmux session: ${activeSession}`}
-          >
+        {activeSession && (() => {
+          const activeColor = getAgentColor(activeSession);
+          return (
             <span
-              className="fleet-agent-color-swatch"
-              style={{ '--agent-color': getAgentColor(activeSession).hex }}
-            />
-            ⚡ {activeSession}
-          </span>
-        )}
+              className="active-session-badge agent-colored-pill"
+              style={{ '--agent-color': activeColor.hex, '--agent-rgb': activeColor.rgb }}
+              title={`Active tmux session: ${activeSession} (${activeColor.name})`}
+            >
+              ⚡ {activeSession}
+            </span>
+          );
+        })()}
         {waitingSessions.length > 0 && (
           <button
             className="macro-btn header-waiting-alert-btn"
