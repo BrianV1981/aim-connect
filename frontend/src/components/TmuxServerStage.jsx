@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from './Icons';
 
 export default function TmuxServerStage({
@@ -6,22 +6,25 @@ export default function TmuxServerStage({
   termFontSize = 14,
   onSwitchToInteractiveTerm,
 }) {
-  const [serverData, setServerData] = useState({ uptime: 'ONLINE', windows: [] });
+  const [serverData, setServerData] = useState({ uptime: 'ONLINE', windows: [], loadedFor: '' });
   const [activeIdx, setActiveIdx] = useState(0);
   const [gridMode, setGridMode] = useState(true);
   const [shellInput, setShellInput] = useState('');
   const [execBadge, setExecBadge] = useState('');
+  const paneGridRef = useRef(null);
+  const needsInitialPaneScrollRef = useRef(true);
 
-  const fetchWindows = useCallback(async () => {
-    if (!activeSession) return;
+  const fetchWindows = useCallback(async (targetSession = activeSession) => {
+    if (!targetSession) return;
     try {
-      const res = await fetch(`/api/tmux/${encodeURIComponent(activeSession)}/windows`);
+      const res = await fetch(`/api/tmux/${encodeURIComponent(targetSession)}/windows`);
       if (res.ok) {
         const data = await res.json();
         const wins = Array.isArray(data.windows) ? data.windows : [];
         setServerData({
           uptime: data.uptime || 'ONLINE',
           windows: wins,
+          loadedFor: targetSession,
         });
       }
     } catch {
@@ -30,19 +33,34 @@ export default function TmuxServerStage({
   }, [activeSession]);
 
   useEffect(() => {
+    needsInitialPaneScrollRef.current = true;
     setActiveIdx(0);
     setGridMode(true);
-    fetchWindows();
+    fetchWindows(activeSession);
     const timer = setInterval(() => {
       if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        fetchWindows();
+        fetchWindows(activeSession);
       }
     }, 3000);
     return () => clearInterval(timer);
-  }, [fetchWindows]);
+  }, [activeSession, fetchWindows]);
 
   const wins = serverData.windows;
   const clampedIdx = wins.length > 0 ? Math.min(wins.length - 1, Math.max(0, activeIdx)) : 0;
+
+  // Start tmux pane logs scrolled to the bottom on session selection (#261)
+  useLayoutEffect(() => {
+    const gridEl = paneGridRef.current;
+    if (!gridEl || serverData.loadedFor !== activeSession || wins.length === 0) return;
+    const preNodes = gridEl.querySelectorAll('.tmux-pane-log');
+    preNodes.forEach((pre) => {
+      const nearBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 100;
+      if (needsInitialPaneScrollRef.current || nearBottom) {
+        pre.scrollTop = pre.scrollHeight;
+      }
+    });
+    needsInitialPaneScrollRef.current = false;
+  }, [activeSession, serverData.loadedFor, wins, gridMode, clampedIdx]);
   const activeWin = wins[clampedIdx] || null;
   const gridClass =
     !gridMode || wins.length <= 1 ? 'grid-1' : wins.length === 2 ? 'grid-2' : 'grid-4';
@@ -139,7 +157,7 @@ export default function TmuxServerStage({
         </div>
       </div>
 
-      <div className={`tmux-pane-grid ${gridClass}`}>
+      <div className={`tmux-pane-grid ${gridClass}`} ref={paneGridRef}>
         {visibleWins.length === 0 ? (
           <div className="fleet-empty-state">Inspecting tmux server panes...</div>
         ) : (

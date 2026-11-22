@@ -62,8 +62,48 @@ def _candidate_transcript_files() -> list[str]:
     return valid[:60]
 
 
+def _get_agy_active_max_step_index(transcript_path: str) -> int | None:
+    """Return active step_index ceiling from conversations/<cid>.db (?mode=ro) after /rewind (#261).
+
+    AGY's transcript.jsonl is append-only, whereas conversations/<cid>.db immediately deletes
+    rewound rows from `steps`. Returning -1 when `steps` is empty or MAX(idx) when populated
+    erases rewound turns immediately—even before the Operator submits a new prompt.
+    """
+    if not transcript_path:
+        return None
+    norm = os.path.abspath(transcript_path)
+    # Expected layout: <agy_root>/brain/<cid>/.system_generated/logs/transcript.jsonl
+    logs_dir = os.path.dirname(norm)
+    sys_gen_dir = os.path.dirname(logs_dir)
+    cid_dir = os.path.dirname(sys_gen_dir)
+    brain_dir = os.path.dirname(cid_dir)
+    if os.path.basename(logs_dir) != "logs" or os.path.basename(brain_dir) != "brain":
+        return None
+    cid = os.path.basename(cid_dir)
+    agy_root = os.path.dirname(brain_dir)
+    conv_db = os.path.join(agy_root, "conversations", f"{cid}.db")
+    if not cid or not os.path.isfile(conv_db):
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{conv_db}?mode=ro", uri=True, timeout=1.5)
+        try:
+            row = conn.execute("SELECT COUNT(*), MAX(idx) FROM steps").fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        cnt, max_idx = row[0], row[1]
+        if int(cnt or 0) == 0:
+            return -1
+        if max_idx is not None:
+            return int(max_idx)
+    except sqlite3.Error:
+        return None
+    return None
+
+
 def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
-    """Parse an AGY/Grok JSONL transcript into structured turns with expandable tool_calls (#212)."""
+    """Parse an AGY/Grok JSONL transcript into structured turns with /rewind rollback (#212, #261)."""
     turns: list[dict] = []
     if not os.path.isfile(file_path):
         return turns
@@ -74,7 +114,8 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
     except OSError:
         return turns
 
-    for raw_line in lines[-400:]:
+    window_size = max(800, max_turns * 12)
+    for raw_line in lines[-window_size:]:
         raw_line = raw_line.strip()
         if not raw_line:
             continue
@@ -83,13 +124,24 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
         except json.JSONDecodeError:
             continue
 
+        raw_step_idx = obj.get("step_index")
+        has_int_step = isinstance(raw_step_idx, int) and not isinstance(raw_step_idx, bool)
+        if has_int_step:
+            # AGY /rewind resets step_index in append-only transcript.jsonl; prune superseded turns (#261)
+            turns = [
+                t
+                for t in turns
+                if not t.get("_has_step_index") or t["step_index"] < raw_step_idx
+            ]
+
         step_type = obj.get("type") or obj.get("role") or ""
         if step_type in ("USER_INPUT", "user"):
             content = obj.get("content") or obj.get("text") or ""
             if isinstance(content, list):
                 content = "\n".join(str(x) for x in content)
             turns.append({
-                "step_index": obj.get("step_index", len(turns)),
+                "step_index": raw_step_idx if has_int_step else len(turns),
+                "_has_step_index": has_int_step,
                 "role": "user",
                 "created_at": obj.get("created_at", ""),
                 "content": str(content)[:4000],
@@ -120,13 +172,25 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
                 })
             if content or thinking or parsed_tools:
                 turns.append({
-                    "step_index": obj.get("step_index", len(turns)),
+                    "step_index": raw_step_idx if has_int_step else len(turns),
+                    "_has_step_index": has_int_step,
                     "role": "assistant",
                     "created_at": obj.get("created_at", ""),
                     "content": str(content)[:4000],
                     "thinking": str(thinking)[:2000],
                     "tool_calls": parsed_tools,
                 })
+
+    max_active_step = _get_agy_active_max_step_index(file_path)
+    if max_active_step is not None:
+        turns = [
+            t
+            for t in turns
+            if not t.get("_has_step_index") or t["step_index"] <= max_active_step
+        ]
+
+    for t in turns:
+        t.pop("_has_step_index", None)
 
     return turns[-max_turns:]
 
@@ -517,33 +581,51 @@ def _infer_session_from_vault_file(fpath: str) -> str:
 
 
 def _count_jsonl_user_turns(fpath: str) -> tuple[int, str]:
-    """Return (user_turn_count, first_user_title_fallback) for a JSONL transcript."""
+    """Return (user_turn_count, first_user_title_fallback) for a JSONL transcript with /rewind rollback (#261)."""
     if not os.path.isfile(fpath):
         return 0, ""
-    user_count = 0
-    first_prompt = ""
+    user_entries: list[tuple[int | None, str]] = []
     try:
         with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
             for raw_ln in fh:
-                if "USER_INPUT" not in raw_ln and '"user"' not in raw_ln:
+                raw_ln_s = raw_ln.strip()
+                if not raw_ln_s:
+                    continue
+                if "step_index" not in raw_ln_s and "USER_INPUT" not in raw_ln_s and '"user"' not in raw_ln_s:
                     continue
                 try:
-                    obj = json.loads(raw_ln)
+                    obj = json.loads(raw_ln_s)
                 except Exception:
                     continue
+                raw_step_idx = obj.get("step_index")
+                has_int_step = isinstance(raw_step_idx, int) and not isinstance(raw_step_idx, bool)
+                if has_int_step:
+                    user_entries = [
+                        (s_idx, prompt)
+                        for s_idx, prompt in user_entries
+                        if s_idx is None or s_idx < raw_step_idx
+                    ]
                 kind = obj.get("type") or obj.get("role") or ""
                 if kind in ("USER_INPUT", "user"):
-                    user_count += 1
-                    if not first_prompt:
-                        c = obj.get("content") or obj.get("text") or ""
-                        if isinstance(c, list):
-                            c = " ".join(str(x) for x in c)
-                        cleaned = re.sub(r"<[^>]+>", "", str(c)).strip()
-                        first_line = next((ln.strip("#> ") for ln in cleaned.splitlines() if ln.strip()), "")
-                        first_prompt = first_line[:96]
+                    c = obj.get("content") or obj.get("text") or ""
+                    if isinstance(c, list):
+                        c = " ".join(str(x) for x in c)
+                    cleaned = re.sub(r"<[^>]+>", "", str(c)).strip()
+                    first_line = next((ln.strip("#> ") for ln in cleaned.splitlines() if ln.strip()), "")
+                    user_entries.append((raw_step_idx if has_int_step else None, first_line[:96]))
     except OSError:
         return 0, ""
-    return user_count, first_prompt
+
+    max_active_step = _get_agy_active_max_step_index(fpath)
+    if max_active_step is not None:
+        user_entries = [
+            (s_idx, prompt)
+            for s_idx, prompt in user_entries
+            if s_idx is None or s_idx <= max_active_step
+        ]
+
+    first_prompt = next((prompt for _, prompt in user_entries if prompt), "")
+    return len(user_entries), first_prompt
 
 
 def _collect_project_history_records() -> list[dict]:
@@ -945,8 +1027,8 @@ def get_session_live_turns(session_name: str, limit: int = Query(24)):
                 }
             )
 
-    # Fallback to live tmux scrollback if no JSONL turns matched
-    if not paired:
+    # Fallback to live tmux scrollback only when no structured JSONL transcript file exists (#260, #261)
+    if not paired and not (log_path and os.path.isfile(log_path)):
         cap = subprocess.run(
             ["tmux", "capture-pane", "-t", session_name, "-S", "-400", "-p"],
             capture_output=True,

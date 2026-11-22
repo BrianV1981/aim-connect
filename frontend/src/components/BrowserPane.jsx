@@ -54,6 +54,21 @@ export default function BrowserPane({
   const lastMoveSentRef = useRef(0);
   const touchLastYRef = useRef(null);
   const lastAutoSyncedSessionRef = useRef('');
+  const preferredTargetIdRef = useRef(preferredTargetId);
+  const activeSessionPropRef = useRef(activeSession);
+  const fleetPropRef = useRef(fleet);
+
+  useEffect(() => {
+    preferredTargetIdRef.current = preferredTargetId;
+  }, [preferredTargetId]);
+
+  useEffect(() => {
+    activeSessionPropRef.current = activeSession;
+  }, [activeSession]);
+
+  useEffect(() => {
+    fleetPropRef.current = fleet;
+  }, [fleet]);
 
   const measureStageSize = useCallback(() => {
     const el = stageRef.current;
@@ -230,7 +245,8 @@ export default function BrowserPane({
     [connectScreencast, measureStageSize]
   );
 
-  // Auto-focus active session's leased tab when switching nodes (#260)
+  // Auto-focus active session's associated/leased tab when switching nodes while leaving
+  // the current tab untouched if the newly selected session has no associated tab (#260, #261).
   useEffect(() => {
     if (!isOpen || tabs.length === 0 || !activeSession) return;
     const syncKey = `${activeSession}:${preferredTargetId}`;
@@ -244,15 +260,13 @@ export default function BrowserPane({
         return info?.agentKey && info.agentKey.toLowerCase() === activeSession.toLowerCase();
       });
 
-    if (byOwner) {
-      lastAutoSyncedSessionRef.current = syncKey;
-      if (byOwner.id !== activeTargetRef.current) {
-        handleSelectTab(byOwner);
-      }
+    lastAutoSyncedSessionRef.current = syncKey;
+    if (byOwner && byOwner.id !== activeTargetRef.current) {
+      handleSelectTab(byOwner);
     }
   }, [isOpen, tabs, activeSession, preferredTargetId, hudOverlay, fleet, handleSelectTab]);
 
-  // Zero CPU / bandwidth when pane is closed; attach on open
+  // Zero CPU / bandwidth when pane is closed; keep /ws/browser open across session switches (#261)
   useEffect(() => {
     if (!isOpen) {
       lastAutoSyncedSessionRef.current = '';
@@ -269,9 +283,20 @@ export default function BrowserPane({
     (async () => {
       const st = await refreshStatus();
       if (!cancelled && st?.running) {
+        const curSess = activeSessionPropRef.current;
+        const curPref = preferredTargetIdRef.current;
+        const curFleet = fleetPropRef.current;
+        const ownerTab =
+          curSess && Array.isArray(st.tabs)
+            ? st.tabs.find((t) => {
+                const info = resolveTabAgentInfo(t, st.hud || null, curFleet);
+                return info?.agentKey && info.agentKey.toLowerCase() === curSess.toLowerCase();
+              })
+            : null;
         const pref =
-          (preferredTargetId && st.tabs?.find((t) => t.id === preferredTargetId)?.id) ||
-          activeTargetRef.current ||
+          (curPref && st.tabs?.find((t) => t.id === curPref)?.id) ||
+          ownerTab?.id ||
+          (activeTargetRef.current && st.tabs?.find((t) => t.id === activeTargetRef.current)?.id) ||
           st.tabs?.[0]?.id ||
           '';
         connectScreencast(pref);
@@ -296,7 +321,7 @@ export default function BrowserPane({
         wsRef.current = null;
       }
     };
-  }, [isOpen, connectScreencast, preferredTargetId, refreshStatus]);
+  }, [isOpen, connectScreencast, refreshStatus]);
 
   // Dynamically match Chromium viewport height & width to the full split/full pane stage (#249)
   useEffect(() => {
@@ -636,7 +661,15 @@ export default function BrowserPane({
   const activeFleetEntry = activeSession
     ? fleet.find((f) => f && f.session_name === activeSession)
     : null;
-  const sessionLacksLease = Boolean(activeSession && activeFleetEntry && !activeFleetEntry.has_browser_lease);
+  const sessionHasAssociatedTab = Boolean(
+    activeFleetEntry?.has_browser_lease ||
+      (activeSession &&
+        tabs.some((t) => {
+          const info = resolveTabAgentInfo(t, hudOverlay, fleet);
+          return info?.agentKey && info.agentKey.toLowerCase() === activeSession.toLowerCase();
+        }))
+  );
+  const sessionLacksLease = Boolean(activeSession && activeFleetEntry && !sessionHasAssociatedTab);
 
   return (
     <div

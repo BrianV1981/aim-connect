@@ -215,6 +215,34 @@ function App() {
   }, []);
   const [tmuxStageMode, setTmuxStageMode] = useState('grid'); // grid | pty
   const [optimisticChatBySession, setOptimisticChatBySession] = useState({});
+  const pendingSessionBottomScrollRef = useRef(false);
+
+  const reconcileOptimisticChat = useCallback((sessionKey, serverTurns = [], opts = {}) => {
+    if (!sessionKey) return;
+    setOptimisticChatBySession((prev) => {
+      const list = prev[sessionKey];
+      if (!Array.isArray(list) || list.length === 0) return prev;
+      if (opts?.rewound) {
+        const next = { ...prev };
+        delete next[sessionKey];
+        return next;
+      }
+      const serverPrompts = new Set(
+        (Array.isArray(serverTurns) ? serverTurns : [])
+          .map((t) => (t?.user || '').trim())
+          .filter(Boolean)
+      );
+      const now = Date.now();
+      const filtered = list.filter((m) => {
+        const txt = (m?.text || '').trim();
+        if (txt && serverPrompts.has(txt)) return false;
+        if (m?.createdAt && now - m.createdAt > 15000) return false;
+        return true;
+      });
+      if (filtered.length === list.length) return prev;
+      return { ...prev, [sessionKey]: filtered };
+    });
+  }, []);
   const [pasteFlash, setPasteFlash] = useState(false);
   const [fileSelectMode, setFileSelectMode] = useState(false);
   const [splitMode, setSplitMode] = useState(() =>
@@ -1042,24 +1070,28 @@ function App() {
       if (isRawTarget) {
         setTmuxStageMode((matchedFleet.window_count || matchedFleet.pane_count || 1) > 1 ? 'grid' : 'pty');
       }
-      // Auto-open & focus leased Co-Pilot Browser tab when selecting a leased agent; auto-collapse on non-leased (#257, #260)
-      if (matchedFleet.has_browser_lease) {
-        setPreferredBrowserTargetId(matchedFleet.browser_tab_id || '');
-        if (!showFiles && (typeof window === 'undefined' || window.innerWidth >= 768)) {
-          setShowBrowser(true);
-          setSplitMode(true);
-        }
-      } else {
-        setPreferredBrowserTargetId('');
-        if (showBrowser) {
-          setShowBrowser(false);
-        }
-      }
+      // Keep Co-Pilot Browser open/closed state persistent across session switches;
+      // update preferredBrowserTargetId so an open Browser auto-switches to this session's tab (#261).
+      setPreferredBrowserTargetId(
+        matchedFleet.has_browser_lease ? matchedFleet.browser_tab_id || '' : ''
+      );
+    } else {
+      setPreferredBrowserTargetId('');
+    }
+    pendingSessionBottomScrollRef.current = true;
+    if (term.current) {
+      try {
+        term.current.scrollToBottom?.();
+      } catch {}
     }
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'switch_session', session: newSession }));
       if (fitAddon.current) {
         setTimeout(() => {
+          try {
+            fitAddon.current?.fit();
+            term.current?.scrollToBottom?.();
+          } catch {}
           const dims = fitAddon.current.proposeDimensions();
           if (dims && ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
@@ -1296,14 +1328,28 @@ function App() {
           }
         } catch {
           if (authRef.current && term.current) {
-            term.current.write(event.data);
+            term.current.write(event.data, () => {
+              if (pendingSessionBottomScrollRef.current) {
+                pendingSessionBottomScrollRef.current = false;
+                try {
+                  term.current?.scrollToBottom?.();
+                } catch {}
+              }
+            });
           }
         }
       }
 
       if (event.data instanceof ArrayBuffer) {
         if (term.current) {
-          term.current.write(new Uint8Array(event.data));
+          term.current.write(new Uint8Array(event.data), () => {
+            if (pendingSessionBottomScrollRef.current) {
+              pendingSessionBottomScrollRef.current = false;
+              try {
+                term.current?.scrollToBottom?.();
+              } catch {}
+            }
+          });
         }
       }
     };
@@ -1918,7 +1964,7 @@ function App() {
       ...prev,
       [target]: [
         ...(prev[target] || []).slice(-4),
-        { id: `opt-${Date.now()}`, text: cleanText, attachments },
+        { id: `opt-${Date.now()}`, text: cleanText, attachments, createdAt: Date.now() },
       ],
     }));
     setComposerText('');
@@ -2248,6 +2294,7 @@ function App() {
                           setTimeout(() => {
                             try {
                               fitAddon.current?.fit();
+                              term.current?.scrollToBottom?.();
                             } catch {}
                           }, 60);
                         }
@@ -2541,6 +2588,7 @@ function App() {
                       termFontSize={termFontSize}
                       termTheme={termTheme}
                       optimisticMessages={optimisticChatBySession[activeSession] || []}
+                      onReconcileOptimistic={reconcileOptimisticChat}
                       onSpeakText={(txt) => speakSummaryText(txt)}
                       onSendRawCommand={sendCommand}
                       onSwitchToTerminal={() => {
@@ -2548,6 +2596,7 @@ function App() {
                         setTimeout(() => {
                           try {
                             fitAddon.current?.fit();
+                            term.current?.scrollToBottom?.();
                           } catch {}
                         }, 60);
                       }}

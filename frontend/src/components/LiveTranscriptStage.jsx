@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from './Icons';
 
 export default function LiveTranscriptStage({
@@ -9,60 +9,106 @@ export default function LiveTranscriptStage({
   termFontSize = 14,
   termTheme = 'match',
   optimisticMessages = [],
+  onReconcileOptimistic,
   onSpeakText,
   onSendRawCommand,
   onSwitchToTerminal,
 }) {
-  const [turnsData, setTurnsData] = useState({ vessel: 'AGY', source: '', turns: [] });
+  const [turnsData, setTurnsData] = useState({
+    vessel: 'AGY',
+    source: '',
+    turns: [],
+    loadedFor: '',
+  });
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef(null);
+  const activeSessionRef = useRef(activeSession);
+  const needsBottomAnchorRef = useRef(true);
   const lastTurnSigRef = useRef('');
+  const prevTurnCountRef = useRef(0);
 
-  const fetchLiveTurns = useCallback(async (isInitial = false) => {
-    if (!activeSession) return;
+  activeSessionRef.current = activeSession;
+
+  const fetchLiveTurns = useCallback(async (isInitial = false, targetSession = activeSession) => {
+    if (!targetSession) return;
     if (isInitial) setLoading(true);
     try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(activeSession)}/live-turns?limit=30`);
-      if (res.ok) {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(targetSession)}/live-turns?limit=30`);
+      if (res.ok && activeSessionRef.current === targetSession) {
         const data = await res.json();
+        const nextTurns = Array.isArray(data.turns) ? data.turns : [];
+        const rewound = !isInitial && nextTurns.length < prevTurnCountRef.current;
+        prevTurnCountRef.current = nextTurns.length;
         setTurnsData({
           vessel: data.vessel || (fleetItem?.vessel || 'AGY').toUpperCase(),
           source: data.source || '',
-          turns: Array.isArray(data.turns) ? data.turns : [],
+          turns: nextTurns,
+          loadedFor: targetSession,
         });
+        onReconcileOptimistic?.(targetSession, nextTurns, { rewound });
       }
     } catch {
       // Keep last known turns on transient failure
     } finally {
-      if (isInitial) setLoading(false);
+      if (isInitial && activeSessionRef.current === targetSession) {
+        setLoading(false);
+      }
     }
-  }, [activeSession, fleetItem?.vessel]);
+  }, [activeSession, fleetItem?.vessel, onReconcileOptimistic]);
 
   useEffect(() => {
+    needsBottomAnchorRef.current = true;
     lastTurnSigRef.current = '';
-    fetchLiveTurns(true);
+    prevTurnCountRef.current = 0;
+    setTurnsData((prev) =>
+      prev.loadedFor === activeSession
+        ? prev
+        : {
+            vessel: (fleetItem?.vessel || 'AGY').toUpperCase(),
+            source: '',
+            turns: [],
+            loadedFor: '',
+          }
+    );
+    fetchLiveTurns(true, activeSession);
     const timer = setInterval(() => {
       if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        fetchLiveTurns(false);
+        fetchLiveTurns(false, activeSession);
       }
     }, 2800);
     return () => clearInterval(timer);
-  }, [fetchLiveTurns]);
+  }, [activeSession, fetchLiveTurns]);
 
-  useEffect(() => {
+  // Always anchor at the bottom when clicking a session or mounting Chat View;
+  // on subsequent live polls, auto-scroll only if the Operator is already near the bottom (#261).
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || turnsData.loadedFor !== activeSession) return;
+
     const lastTurn = turnsData.turns[turnsData.turns.length - 1];
     const sig = `${activeSession}:${turnsData.turns.length}:${lastTurn?.body?.length || 0}:${lastTurn?.spoken?.length || 0}:${optimisticMessages.length}`;
-    if (sig === lastTurnSigRef.current) return;
-    const prevSig = lastTurnSigRef.current;
+
+    if (needsBottomAnchorRef.current) {
+      needsBottomAnchorRef.current = false;
+      lastTurnSigRef.current = sig;
+      el.scrollTop = el.scrollHeight;
+      const raf = window.requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
+      return () => window.cancelAnimationFrame(raf);
+    }
+
+    if (sig === lastTurnSigRef.current) return undefined;
     lastTurnSigRef.current = sig;
 
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 180;
-    if (!prevSig || nearBottom) {
+    if (nearBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [activeSession, turnsData.turns, optimisticMessages.length]);
+    return undefined;
+  }, [activeSession, turnsData.loadedFor, turnsData.turns, optimisticMessages.length]);
 
   const overrideStyle =
     termTheme === 'hacker'
@@ -72,9 +118,11 @@ export default function LiveTranscriptStage({
         : undefined;
 
   const vesselLabel = (turnsData.vessel || fleetItem?.vessel || 'AGY').toUpperCase();
-  const lastServerUserPrompt = (turnsData.turns[turnsData.turns.length - 1]?.user || '').trim();
+  const serverPrompts = new Set(
+    turnsData.turns.map((t) => (t.user || '').trim()).filter(Boolean)
+  );
   const pendingOptimistic = optimisticMessages.filter(
-    (m) => m.text && m.text.trim() !== lastServerUserPrompt
+    (m) => m.text && !serverPrompts.has(m.text.trim())
   );
 
   return (
