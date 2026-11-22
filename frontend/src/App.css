@@ -1389,8 +1389,73 @@ body {
 }
 
 .file-explorer-pane.split-mode {
-  flex: 1.05;
-  max-width: 58%;
+  flex: 0 0 var(--split-pane-width, 52%);
+  width: var(--split-pane-width, 52%);
+  max-width: calc(100% - 260px);
+  min-width: 320px;
+}
+
+.split-pane-resizer {
+  width: 10px;
+  margin: 0 -5px;
+  position: relative;
+  z-index: 48;
+  flex-shrink: 0;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.split-pane-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
+}
+
+.split-pane-resizer:hover::before,
+.split-pane-resizer.dragging::before {
+  background: #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.75);
+}
+
+.split-pane-resizer-grip {
+  width: 4px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+  border: 1px solid rgba(30, 58, 138, 0.55);
+  pointer-events: none;
+  transition: background 0.14s ease, transform 0.14s ease;
+}
+
+.split-pane-resizer:hover .split-pane-resizer-grip,
+.split-pane-resizer.dragging .split-pane-resizer-grip {
+  background: #60a5fa;
+  border-color: #93c5fd;
+  transform: scaleY(1.15);
+}
+
+.cockpit-body.is-resizing-split,
+.cockpit-body.is-resizing-split * {
+  cursor: col-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.cockpit-body.is-resizing-split .browser-screencast-canvas,
+.cockpit-body.is-resizing-split .terminal-container,
+.cockpit-body.is-resizing-split iframe {
+  pointer-events: none !important;
 }
 
 .file-explorer-pane.full-mode {
@@ -1399,13 +1464,19 @@ body {
 }
 
 @media (max-width: 900px) {
+  .split-pane-resizer {
+    display: none;
+  }
+
   .file-explorer-pane.split-mode {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
+    width: 100%;
     max-width: 100%;
+    min-width: 0;
     z-index: 55;
   }
 }
