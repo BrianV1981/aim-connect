@@ -1,0 +1,21 @@
+{
+  "name": "AIM CONNECT // Sovereign Fleet Node",
+  "short_name": "AIM Connect",
+  "description": "Day-Zero Sovereign Agent Cockpit & Co-Pilot Browser",
+  "start_url": "./",
+  "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

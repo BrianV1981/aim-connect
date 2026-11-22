@@ -1,11 +1,25 @@
-# 🛸 AIM-Connect
+# 🛸 AIM-Connect — *Own your stack. Don't rent a seat.*
 
-[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![MIT License](https://img.shields.io/badge/License-MIT-00FFA3.svg?style=flat-square&labelColor=050505)](LICENSE)
+[![Interactive 12-Node Ecosystem Demo](https://img.shields.io/badge/LIVE_DEMO-12--Node_%2F_40--Session_Interactive_Cockpit-00FFA3?style=for-the-badge&logo=googlechrome&logoColor=050505&labelColor=050505)](https://brianv1981.github.io/aim-connect/)
 [![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/brianv1981)
 
-**A Clientless, Sovereign Web Terminal & AI Agent Fleet Cockpit.**
+**A Clientless, Sovereign Web Terminal, Co-Pilot Browser & AI Agent Fleet Cockpit.**
 
-AIM-Connect transforms any web browser on any device into a secure, root-level command center for your Linux server and autonomous CLI coding agents. No SSH keys to carry, no terminal apps to download, and no corporate bouncers. Just raw, unrestricted access to your machine and your entire `tmux` fleet from anywhere on Earth.
+AIM-Connect transforms any web browser on any device into a zero-trust, end-to-end encrypted command center for your Linux/WSL2 server, embedded Chromium Co-Pilot Browser, and autonomous CLI coding agents (`Antigravity`, `Grok`, `OpenCode`, `Codex`, `Claude`). No SSH keys to carry, no terminal apps to download, and no per-seat cloud tax.
+
+> ### 🚀 [Launch the Interactive 12-Node / 40-Session A.I.M. Ecosystem Showcase →](https://brianv1981.github.io/aim-connect/)
+> **Try the Emerald Matrix V4 Cockpit live in your browser (zero backend required):** Click through 12 live-modeled `tmux` & agent workspaces (`aim-auditor`, `aim-calendar`, `aim-connect`, `aim-joshua`, `aim-ld`, `aim-youtube`, raw split-`tmux` servers), test all **4 semantic color themes**, inspect **40 multi-generation cross-harness `HISTORY` baton relays**, search **2,000+ scrollback lines**, trigger **Custom Spoken Voice Macros**, and drive the **color-leased Co-Pilot Browser** on Desktop or `390px` Mobile.
+
+<p align="center">
+  <a href="https://brianv1981.github.io/aim-connect/">
+    <img src="docs/screenshots/emerald-matrix-showcase.png" alt="Click to launch the interactive 12-node / 40-session A.I.M. Ecosystem Showcase" width="880" />
+  </a>
+</p>
+
+<details>
+<summary><strong>📸 Additional Desktop &amp; Mobile Production Screenshots</strong></summary>
+<br />
 
 <p align="center">
   <img src="docs/screenshots/aim-connect_homepage.png" alt="AIM-Connect desktop home" width="820" />
@@ -21,6 +35,8 @@ AIM-Connect transforms any web browser on any device into a secure, root-level c
 |---|---|---|---|
 | <img src="docs/screenshots/aim-joshua-login-android.jpg" alt="Android login" width="160" /> | <img src="docs/screenshots/aim-joshua-home-android.jpg" alt="Android home" width="160" /> | <img src="docs/screenshots/aim-joshua-settings-android.jpg" alt="Android settings" width="160" /> | <img src="docs/screenshots/aim-joshua-voice-settings-android.jpg" alt="Android voice" width="160" /> |
 
+</details>
+
 ---
 
 ## ⚡ The Philosophy
@@ -32,6 +48,9 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 
 ## 🚀 Key Features
 
+*   **Emerald Matrix V4 Design System (`4` Live Color Schemes):** Switch seamlessly between **Emerald Matrix** (`#050505` + `#00FFA3`), **Pure OLED Black**, **Daylight Crisp**, and **Classic AIM Navy**—synced across the frosted `50px` cockpit shell, `xterm.js` terminal, and Monaco `<DiffEditor />`, with customizable Operator reply highlights and standalone pop-out PWA support.
+*   **Embedded `--headless=new` Co-Pilot Browser (`CDP :9222`):** Stream isolated subagent Chromium tabs directly inside a draggable split-pane with deterministic session colors, `<5ms` zero-VLM site-map landmarks, interactive `🎮 Control ON` / `🔑 Type / 2FA` takeover, `0600` server-synced favorites, and 1-click **`↗` External Open**, **`📷+` Screenshot-to-Conversation**, and **`⬇` CDP Downloads**.
+*   **Project Session Notebook (`HISTORY` Baton Relay) & 2,000-Line `Scroll/Copy` Search:** Track multi-generation cross-harness reincarnations (`GEN #01` → `GEN #NN` across `AGY`, `Grok`, `OpenCode`, `Codex`) with `.md` Flight Record exports, and press `Ctrl+F` inside `Scroll/Copy` to search all `2,000+` server-side `tmux` lines across pages.
 *   **Clientless SSH & Immortal `tmux` Streams:** Access your server from Safari, Chrome, or Firefox with zero App Store installs. Close your browser, put your phone in your pocket, and your processes keep running—log back in and instantly re-attach to the live PTY stream.
 *   **Multi-Session AI Fleet Cockpit (`Fleet Sidebar`):** Supervise dozens of concurrent `tmux` workspaces and autonomous CLI coding agents (`Claude`, `Codex`, `OpenCode`, `Grok`, `Antigravity`) from a single sidebar with live status badges (`THINKING`, `✋ Waiting` approval chimes, `ERROR`, `IDLE`), 30%-Rule context saturation meters, and sticky-red compaction radar.
 *   **Keyboard-First `Cmd+K` Command Palette & Token Grabber:** Teleport across sessions, dispatch slash commands, or extract deduplicated URLs (with automatic secret-query redaction), file paths, IPs, and git SHAs straight from terminal scrollback without touching a mouse.
@@ -273,7 +292,7 @@ pip install -r requirements-test.txt
 python -m pytest tests/ -v
 ```
 
-**170+ tests** covering:
+**205+ automated tests (170+ core backend/security assertions + Emerald Matrix UI & showcase contracts)** covering:
 - Three-factor auth flow (passphrase + password + TOTP), TOTP replay protection, and WebAuthn `rp_id` resolution
 - Rate limiting, lockout eviction, token expiry, and loopback/proxy boundaries
 - Fleet Sidebar telemetry, 30%-Rule & compaction radar, `✋ Waiting` alerts, and `🔊` Neural TTS extraction
