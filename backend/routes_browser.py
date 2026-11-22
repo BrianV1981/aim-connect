@@ -223,7 +223,12 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
     for lease_name, meta in leases.items():
         tid = meta.get("targetId")
         if tid:
-            lease_by_target[tid] = {"lease": lease_name, "actor": meta.get("actor") or lease_name}
+            lease_by_target[tid] = {
+                "lease": lease_name,
+                "actor": meta.get("actor") or lease_name,
+                "session": meta.get("session") or "",
+                "updatedAt": int(meta.get("updatedAt") or 0),
+            }
 
     enriched = []
     for idx, p in enumerate(ordered_pages):
@@ -237,6 +242,8 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
                 "url": p.get("url") or "about:blank",
                 "lease": lmeta.get("lease", ""),
                 "actor": lmeta.get("actor", ""),
+                "session": lmeta.get("session", ""),
+                "updatedAt": lmeta.get("updatedAt", 0),
                 "webSocketDebuggerUrl": p.get("webSocketDebuggerUrl", ""),
             }
         )
@@ -290,6 +297,7 @@ class OpenTabRequest(BaseModel):
     url: str = "about:blank"
     lease: str = ""
     actor: str = ""
+    session: str = ""
 
 
 class FavoriteRequest(BaseModel):
@@ -445,6 +453,7 @@ async def open_browser_tab(req: OpenTabRequest):
             "lease": lease,
             "targetId": tid,
             "actor": (req.actor or lease).strip()[:64],
+            "session": (req.session or "").strip()[:64],
             "url": created.get("url") or clean_url,
             "title": created.get("title") or "",
             "updatedAt": int(time.time() * 1000),
@@ -731,6 +740,8 @@ async def browser_viewport_ws(websocket: WebSocket):
                         "title": meta.get("title", ""),
                         "url": meta.get("url", ""),
                         "lease": meta.get("lease", ""),
+                        "actor": meta.get("actor", ""),
+                        "session": meta.get("session", ""),
                     }
                 )
             )
@@ -814,6 +825,8 @@ async def browser_viewport_ws(websocket: WebSocket):
                             "title": meta.get("title", ""),
                             "url": meta.get("url", ""),
                             "lease": meta.get("lease", ""),
+                            "actor": meta.get("actor", ""),
+                            "session": meta.get("session", ""),
                         }
                     )
                 )

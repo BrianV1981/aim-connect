@@ -1805,3 +1805,110 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+
+/* --- Agent-Attributed Browser Borders & Fleet Session Color Swatches (#253) --- */
+.fleet-agent-color-swatch {
+  width: 8px;
+  height: 14px;
+  min-width: 8px;
+  border-radius: 3px;
+  background: var(--agent-color, #38bdf8);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--agent-color, #38bdf8) 55%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.workspace-tab-chip.agent-leased {
+  border-color: rgba(var(--agent-rgb, 56, 189, 248), 0.72);
+  background: rgba(var(--agent-rgb, 56, 189, 248), 0.12);
+  color: #f1f5f9;
+}
+
+.workspace-tab-chip.agent-leased.active {
+  border-color: var(--agent-color, #38bdf8);
+  background: rgba(var(--agent-rgb, 56, 189, 248), 0.24);
+  box-shadow: 0 0 0 1px rgba(var(--agent-rgb, 56, 189, 248), 0.45),
+    0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.28);
+}
+
+.workspace-tab-chip.agent-leased.agent-working {
+  box-shadow: 0 0 0 1px rgba(var(--agent-rgb, 56, 189, 248), 0.65),
+    0 0 12px rgba(var(--agent-rgb, 56, 189, 248), 0.4);
+}
+
+.workspace-tab-chip.agent-leased .browser-tab-lease-badge {
+  background: rgba(var(--agent-rgb, 56, 189, 248), 0.25);
+  color: #f8fafc;
+  border: 1px solid rgba(var(--agent-rgb, 56, 189, 248), 0.55);
+}
+
+.browser-tab-agent-dot {
+  width: 7px;
+  height: 7px;
+  min-width: 7px;
+  border-radius: 50%;
+  background: var(--agent-color, #38bdf8);
+  box-shadow: 0 0 6px var(--agent-color, #38bdf8);
+  display: inline-block;
+}
+
+.browser-tab-agent-dot.working {
+  animation: pulse-status 0.95s infinite;
+}
+
+.browser-viewport-stage.agent-tab-active {
+  border: 2px solid rgba(var(--agent-rgb, 56, 189, 248), 0.82);
+  box-shadow: inset 0 0 0 1px rgba(var(--agent-rgb, 56, 189, 248), 0.28),
+    inset 0 0 18px rgba(var(--agent-rgb, 56, 189, 248), 0.16);
+}
+
+@keyframes agent-border-glow {
+  0%, 100% {
+    border-color: rgba(var(--agent-rgb, 56, 189, 248), 0.98);
+    box-shadow: inset 0 0 0 1px rgba(var(--agent-rgb, 56, 189, 248), 0.55),
+      inset 0 0 24px rgba(var(--agent-rgb, 56, 189, 248), 0.3);
+  }
+  50% {
+    border-color: rgba(var(--agent-rgb, 56, 189, 248), 0.58);
+    box-shadow: inset 0 0 0 1px rgba(var(--agent-rgb, 56, 189, 248), 0.25),
+      inset 0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.12);
+  }
+}
+
+.browser-viewport-stage.agent-tab-active.agent-tab-working {
+  border-width: 3px;
+  animation: agent-border-glow 1.5s ease-in-out infinite;
+}
+
+.browser-agent-border-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 22;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(5, 10, 20, 0.88);
+  border: 1px solid rgba(var(--agent-rgb, 56, 189, 248), 0.85);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55),
+    0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.28);
+  color: #f8fafc;
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.browser-agent-hud-cursor .browser-agent-hud-dot {
+  background: var(--agent-color, #38bdf8);
+  box-shadow: 0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.95);
+}
+
+.browser-agent-hud-cursor .browser-agent-hud-pill {
+  border-color: var(--agent-color, #38bdf8);
+}

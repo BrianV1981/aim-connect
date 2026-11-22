@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { getAgentColor } from '../agentColors';
 
 function formatTokens(n) {
   if (!n || n <= 0) return '0';
@@ -226,6 +227,7 @@ export default function FleetSidebar({
             const rawPct = Math.min(100, Math.max(0, Number(item.context_pct || 0)));
             const barWidth = isCompacted ? Math.max(6, rawPct) : rawPct;
             const effectiveTier = isCompacted ? 'critical' : item.tier || 'normal';
+            const agentColor = getAgentColor(item.session_name);
             const wikiKey = `${item.session_name}:wiki`;
             const handoffKey = `${item.session_name}:handoff`;
 
@@ -245,6 +247,11 @@ export default function FleetSidebar({
                     <span
                       className={`fleet-status-dot ${(item.status || 'IDLE').toLowerCase()}`}
                       title={`Status: ${item.status || 'IDLE'}`}
+                    />
+                    <span
+                      className="fleet-agent-color-swatch"
+                      style={{ '--agent-color': agentColor.hex }}
+                      title={`Browser tab border color: ${agentColor.name} (${agentColor.hex})`}
                     />
                     <span className="fleet-session-name" title={item.session_name}>
                       {item.session_name}

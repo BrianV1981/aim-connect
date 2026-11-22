@@ -22,6 +22,7 @@ import ScrollbackOverlay from './components/ScrollbackOverlay';
 import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelection';
 import { E2EESocketWrapper } from './e2ee';
 import { authenticateWebAuthn } from './webauthn';
+import { getAgentColor } from './agentColors';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -1715,6 +1716,10 @@ function App() {
             className="active-session-badge"
             title={`Active tmux session: ${activeSession}`}
           >
+            <span
+              className="fleet-agent-color-swatch"
+              style={{ '--agent-color': getAgentColor(activeSession).hex }}
+            />
             ⚡ {activeSession}
           </span>
         )}
@@ -1985,6 +1990,7 @@ function App() {
         isOpen={showBrowser}
         splitMode={splitMode}
         apiToken={apiTokenRef.current}
+        fleet={fleet}
         onToggleSplitMode={() => {
           setSplitMode((prev) => !prev);
           setTimeout(() => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getAgentColor, resolveTabAgentInfo } from '../agentColors';
 
 const KEY_CODE_MAP = {
   Enter: 13,
@@ -16,6 +17,7 @@ export default function BrowserPane({
   isOpen,
   splitMode,
   apiToken,
+  fleet = [],
   onToggleSplitMode,
   onClose,
 }) {
@@ -518,6 +520,10 @@ export default function BrowserPane({
     hudVisibleOnCurrentTab && typeof hudOverlay.y === 'number'
       ? Math.min(96, Math.max(4, (hudOverlay.y / (viewportMetaRef.current.deviceHeight || 800)) * 100))
       : null;
+  const activeAgentInfo = resolveTabAgentInfo(activeTabObj, hudOverlay, fleet);
+  const hudColor = hudOverlay
+    ? getAgentColor(hudOverlay.session || hudOverlay.actor || hudOverlay.lease)
+    : null;
 
   return (
     <div className={`file-explorer-pane browser-copilot-pane ${splitMode ? 'split-mode' : 'full-mode'}`}>
@@ -584,18 +590,39 @@ export default function BrowserPane({
       <div className="workspace-tabs-bar">
         {tabs.map((t) => {
           const isSelected = t.id === activeTargetId;
-          const badge = t.lease
-            ? t.lease === 'operator'
-              ? '👤 you'
-              : `🤖 ${t.lease}`
+          const tabAgent = resolveTabAgentInfo(t, hudOverlay, fleet);
+          const badge = tabAgent
+            ? `🤖 ${tabAgent.agentKey}${tabAgent.sublabel ? ` · ${tabAgent.sublabel}` : ''}`
+            : t.lease === 'operator'
+            ? '👤 you'
             : `Tab ${t.index + 1}`;
+          const chipStyle = tabAgent
+            ? { '--agent-color': tabAgent.color.hex, '--agent-rgb': tabAgent.color.rgb }
+            : undefined;
           return (
             <div
               key={t.id}
-              className={`workspace-tab-chip ${isSelected ? 'active' : ''}`}
+              className={`workspace-tab-chip ${isSelected ? 'active' : ''} ${
+                tabAgent ? `agent-leased ${tabAgent.isWorking ? 'agent-working' : ''}` : ''
+              }`}
+              style={chipStyle}
               onClick={() => handleSelectTab(t)}
-              title={`${t.title}\n${t.url}${t.lease ? `\nLease: ${t.lease}` : ''}`}
+              title={`${t.title}\n${t.url}${
+                tabAgent
+                  ? `\nAgent: ${tabAgent.agentKey} (${tabAgent.color.name})${
+                      tabAgent.sublabel ? ` · Lease: ${tabAgent.sublabel}` : ''
+                    }${tabAgent.isWorking ? ' — ACTIVE' : ''}`
+                  : t.lease
+                  ? `\nLease: ${t.lease}`
+                  : ''
+              }`}
             >
+              {tabAgent && (
+                <span
+                  className={`browser-tab-agent-dot ${tabAgent.isWorking ? 'working' : ''}`}
+                  aria-hidden="true"
+                />
+              )}
               <span className="browser-tab-lease-badge">{badge}</span>
               <span style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {t.title || '(untitled)'}
@@ -753,7 +780,22 @@ export default function BrowserPane({
       )}
 
       {/* Live CDP Screencast Viewport + Agent Cursor HUD */}
-      <div className="browser-viewport-stage" ref={stageRef}>
+      <div
+        className={`browser-viewport-stage ${
+          activeAgentInfo
+            ? `agent-tab-active ${activeAgentInfo.isWorking ? 'agent-tab-working' : ''}`
+            : ''
+        }`}
+        style={
+          activeAgentInfo
+            ? {
+                '--agent-color': activeAgentInfo.color.hex,
+                '--agent-rgb': activeAgentInfo.color.rgb,
+              }
+            : undefined
+        }
+        ref={stageRef}
+      >
         {!daemonRunning ? (
           <div className="browser-offline-placeholder">
             <p style={{ margin: '0 0 12px 0', color: '#cbd5e1', fontSize: '14px' }}>
@@ -799,14 +841,38 @@ export default function BrowserPane({
               }}
               onKeyDown={handleCanvasKeyDown}
             />
+            {activeAgentInfo && (
+              <div
+                className={`browser-agent-border-badge ${
+                  activeAgentInfo.isWorking ? 'working' : ''
+                }`}
+                title={`Tab owned by ${activeAgentInfo.agentKey} (${activeAgentInfo.color.name})`}
+              >
+                <span
+                  className={`browser-tab-agent-dot ${
+                    activeAgentInfo.isWorking ? 'working' : ''
+                  }`}
+                />
+                <span>
+                  {activeAgentInfo.agentKey}
+                  {activeAgentInfo.sublabel ? ` · ${activeAgentInfo.sublabel}` : ''}
+                  {activeAgentInfo.isWorking ? ' · WORKING' : ' · AGENT TAB'}
+                </span>
+              </div>
+            )}
             {hudLeftPct !== null && hudTopPct !== null && (
               <div
                 className="browser-agent-hud-cursor"
-                style={{ left: `${hudLeftPct}%`, top: `${hudTopPct}%` }}
+                style={{
+                  left: `${hudLeftPct}%`,
+                  top: `${hudTopPct}%`,
+                  '--agent-color': hudColor?.hex || '#38bdf8',
+                  '--agent-rgb': hudColor?.rgb || '56, 189, 248',
+                }}
               >
                 <span className="browser-agent-hud-dot" />
                 <span className="browser-agent-hud-pill">
-                  🤖 {hudOverlay.actor || 'agent'} · {hudOverlay.action}
+                  🤖 {hudOverlay.session || hudOverlay.actor || 'agent'} · {hudOverlay.action}
                   {hudOverlay.label ? ` "${hudOverlay.label}"` : ''}
                 </span>
               </div>

@@ -325,3 +325,107 @@ def test_browser_favorites_crud_dedup_and_validation(admin_and_user_tokens, monk
     r_del = client.delete(f"/api/browser/favorites/{fav_id}", headers=admin_headers)
     assert r_del.status_code == 200
     assert r_del.json()["favorites"] == []
+
+
+def test_browser_tab_session_attribution_and_hud_metadata(admin_and_user_tokens, monkeypatch):
+    """Verify session, actor, and updatedAt round-trip on /api/browser/tabs, /api/browser/status, and /ws/browser (#253)."""
+    tabs_store = []
+    ready_evt = threading.Event()
+    server_info = {}
+
+    def _run_mock_cdp():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        async def http_handler(connection, request):
+            from websockets.datastructures import Headers
+            from websockets.http11 import Response
+
+            path = request.path
+            port = server_info["port"]
+            if path.startswith("/devtools/page/"):
+                return None
+            if path == "/json/version":
+                body = json.dumps({"Browser": "Chrome/144.0.0.0"}).encode()
+                return Response(200, "OK", Headers([("Content-Type", "application/json")]), body)
+            if path == "/json/list":
+                return Response(200, "OK", Headers([("Content-Type", "application/json")]), json.dumps(tabs_store).encode())
+            if path.startswith("/json/new"):
+                tid = f"TAB_ATTR_{len(tabs_store) + 1}"
+                created = {
+                    "id": tid,
+                    "type": "page",
+                    "title": "Agent Research",
+                    "url": "https://example.org",
+                    "webSocketDebuggerUrl": f"ws://127.0.0.1:{port}/devtools/page/{tid}",
+                }
+                tabs_store.append(created)
+                return Response(200, "OK", Headers([("Content-Type", "application/json")]), json.dumps(created).encode())
+            return Response(404, "Not Found", Headers(), b"{}")
+
+        async def ws_handler(ws):
+            async for raw in ws:
+                msg = json.loads(raw)
+                if "id" in msg and msg.get("method") != "Page.screencastFrameAck":
+                    await ws.send(json.dumps({"id": msg["id"], "result": {}}))
+
+        async def main_srv():
+            stop_fut = loop.create_future()
+            server_info["stop"] = lambda: loop.call_soon_threadsafe(
+                lambda: not stop_fut.done() and stop_fut.set_result(True)
+            )
+            async with websockets.serve(ws_handler, "127.0.0.1", 0, process_request=http_handler) as srv:
+                server_info["port"] = srv.sockets[0].getsockname()[1]
+                ready_evt.set()
+                await stop_fut
+
+        loop.run_until_complete(main_srv())
+
+    t = threading.Thread(target=_run_mock_cdp, daemon=True)
+    t.start()
+    assert ready_evt.wait(timeout=5.0)
+
+    try:
+        monkeypatch.setenv("AIM_BROWSER_CDP_PORT", str(server_info["port"]))
+        client = TestClient(main.app)
+        headers = {"X-API-Token": admin_and_user_tokens["admin"]}
+
+        r_open = client.post(
+            "/api/browser/tabs",
+            headers=headers,
+            json={
+                "url": "https://example.org",
+                "lease": "market-brief",
+                "actor": "aim-connect",
+                "session": "aim-connect",
+            },
+        )
+        assert r_open.status_code == 200
+        tab_entry = r_open.json()["tabs"][0]
+        assert tab_entry["lease"] == "market-brief"
+        assert tab_entry["actor"] == "aim-connect"
+        assert tab_entry["session"] == "aim-connect"
+        assert tab_entry["updatedAt"] > 0
+
+        st = client.get("/api/browser/status", headers=headers).json()
+        assert st["tabs"][0]["session"] == "aim-connect"
+
+        with client.websocket_connect("/ws/browser") as ws:
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "auth",
+                        "token": admin_and_user_tokens["admin"],
+                        "target_id": tab_entry["id"],
+                    }
+                )
+            )
+            ready = json.loads(ws.receive_text())
+            assert ready["type"] == "ready"
+            assert ready["lease"] == "market-brief"
+            assert ready["actor"] == "aim-connect"
+            assert ready["session"] == "aim-connect"
+    finally:
+        if "stop" in server_info:
+            server_info["stop"]()
+        t.join(timeout=2.0)
