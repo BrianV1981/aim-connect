@@ -68,7 +68,7 @@ export default function AuthScreen({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div className="ld-brand-box">
-                <Icon name="shield" />
+                <Icon name="aimMark" size={18} />
               </div>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)' }}>

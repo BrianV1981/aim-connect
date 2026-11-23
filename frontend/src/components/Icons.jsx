@@ -3,6 +3,20 @@ export function Icon({ name, size, style }) {
   const s = size ? { width: `${size}px`, height: `${size}px`, ...style } : style;
 
   switch (name) {
+    case 'aimMark':
+      return (
+        <svg className="lucide" style={s || { width: '18px', height: '18px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <line x1="15.1" y1="6.9" x2="18.3" y2="10.6" stroke="var(--accent)" strokeWidth="1.9" />
+          <line x1="15.1" y1="17.1" x2="18.3" y2="13.4" stroke="var(--accent)" strokeWidth="1.9" />
+          <path d="M 7.8 9.4 C 10.6 9.7, 13.8 9.2, 13.8 7.3" stroke="var(--accent)" strokeWidth="1.9" />
+          <path d="M 8.1 14.2 C 10.9 12, 14.3 12, 17.5 12" stroke="var(--accent)" strokeWidth="1.9" />
+          <path d="M 11.2 12.5 C 13.1 13, 13.8 14.6, 13.8 16.7" stroke="var(--accent)" strokeWidth="1.8" />
+          <polyline points="4.6 6.2 10.2 12 4.6 17.8" stroke="var(--accent-secondary)" strokeWidth="2.2" />
+          <circle cx="13.8" cy="5.4" r="1.85" fill="var(--bg-canvas)" stroke="var(--accent)" strokeWidth="1.9" />
+          <circle cx="19.4" cy="12" r="1.85" fill="var(--bg-canvas)" stroke="var(--accent)" strokeWidth="1.9" />
+          <circle cx="13.8" cy="18.6" r="1.85" fill="var(--bg-canvas)" stroke="var(--accent)" strokeWidth="1.9" />
+        </svg>
+      );
     case 'terminal':
       return (
         <svg className="lucide" style={s} viewBox="0 0 24 24" aria-hidden="true">

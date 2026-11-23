@@ -2119,7 +2119,7 @@ function App() {
             title="Return to A.I.M. Connect Welcome Screen"
           >
             <div className="ld-brand-box">
-              <Icon name="terminal" />
+              <Icon name="aimMark" size={18} />
             </div>
             <div className="ld-brand-word">
               <strong style={{ color: 'var(--text-primary)' }}>{brandAimScramble.display}</strong>

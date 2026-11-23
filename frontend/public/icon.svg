@@ -1,6 +1,66 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="108" fill="#050505" stroke="#00FFA3" stroke-opacity="0.45" stroke-width="14"/>
-  <rect x="44" y="44" width="424" height="424" rx="80" fill="#00FFA3" fill-opacity="0.06"/>
-  <polyline points="144 184 228 260 144 336" fill="none" stroke="#00FFA3" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
-  <line x1="258" y1="336" x2="376" y2="336" stroke="#00B8FF" stroke-width="36" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="auroraEm" cx="58%" cy="50%" r="52%">
+      <stop offset="0%" stop-color="#00FFA3" stop-opacity="0.16" />
+      <stop offset="55%" stop-color="#00B8FF" stop-opacity="0.06" />
+      <stop offset="100%" stop-color="#050505" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="aimGrad" x1="96" y1="256" x2="436" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00B8FF" />
+      <stop offset="46%" stop-color="#00E5CC" />
+      <stop offset="100%" stop-color="#00FFA3" />
+    </linearGradient>
+    <linearGradient id="aimCore" x1="96" y1="256" x2="436" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#DDF7FF" />
+      <stop offset="50%" stop-color="#E4FFF7" />
+      <stop offset="100%" stop-color="#E6FFF3" />
+    </linearGradient>
+    <pattern id="matrixGrid" width="42.6667" height="42.6667" patternUnits="userSpaceOnUse">
+      <path d="M 42.6667 0 L 0 0 0 42.6667" fill="none" stroke="#FFFFFF" stroke-opacity="0.042" stroke-width="1" />
+    </pattern>
+    <filter id="neonBloom" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="14" result="blurWide" />
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blurTight" />
+      <feMerge>
+        <feMergeNode in="blurWide" />
+        <feMergeNode in="blurTight" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed #050505 Obsidian Canvas + Emerald Matrix Grid -->
+  <rect width="512" height="512" fill="#050505" />
+  <rect width="512" height="512" fill="url(#auroraEm)" />
+  <rect width="512" height="512" fill="url(#matrixGrid)" />
+
+  <!-- Outer Ambient Neon Bloom -->
+  <g filter="url(#neonBloom)" opacity="0.95" fill="none" stroke="url(#aimGrad)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Fleet Mesh Edges -->
+    <line x1="313.5" y1="155.7" x2="382.5" y2="232.3" stroke-width="21" />
+    <line x1="313.5" y1="356.3" x2="382.5" y2="279.7" stroke-width="21" />
+    <!-- Neural Trace Bridges from Terminal Prompt to Fleet Nodes -->
+    <path d="M 176 206 C 232 212, 292 204, 292 164" stroke-width="21" />
+    <path d="M 182 300 C 236 256, 304 256, 372 256" stroke-width="21" />
+    <path d="M 244 266 C 282 276, 292 308, 292 348" stroke-width="20" />
+    <!-- Terminal Prompt Chevron `>` -->
+    <polyline points="116 146 226 256 116 366" stroke="#00B8FF" stroke-width="25" />
+    <!-- 3 Sovereign Fleet Ring-Nodes -->
+    <circle cx="292" cy="132" r="32" fill="#050505" stroke-width="21" />
+    <circle cx="404" cy="256" r="32" fill="#050505" stroke="#00FFA3" stroke-width="21" />
+    <circle cx="292" cy="380" r="32" fill="#050505" stroke-width="21" />
+  </g>
+
+  <!-- Crisp Specular Hot-Filament Core -->
+  <g fill="none" stroke="url(#aimCore)" stroke-linecap="round" stroke-linejoin="round" opacity="0.92">
+    <line x1="313.5" y1="155.7" x2="382.5" y2="232.3" stroke-width="5.5" />
+    <line x1="313.5" y1="356.3" x2="382.5" y2="279.7" stroke-width="5.5" />
+    <path d="M 176 206 C 232 212, 292 204, 292 164" stroke-width="5.5" />
+    <path d="M 182 300 C 236 256, 304 256, 372 256" stroke-width="5.5" />
+    <path d="M 244 266 C 282 276, 292 308, 292 348" stroke-width="5" />
+    <polyline points="116 146 226 256 116 366" stroke-width="6.5" />
+    <circle cx="292" cy="132" r="32" stroke-width="5.5" />
+    <circle cx="404" cy="256" r="32" stroke-width="5.5" />
+    <circle cx="292" cy="380" r="32" stroke-width="5.5" />
+  </g>
 </svg>

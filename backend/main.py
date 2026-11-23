@@ -494,7 +494,7 @@ def _render_frontend_file(dist_dir: str, catchall: str):
         if app_color:
             manifest["background_color"] = app_color
             manifest["theme_color"] = app_color
-        return JSONResponse(manifest)
+        return JSONResponse(manifest, headers=_NO_STORE_HEADERS)
 
     if file_path.endswith("sw.js"):
         return FileResponse(
