@@ -3,6 +3,13 @@ import Editor, { DiffEditor } from '@monaco-editor/react';
 import Icon from './Icons';
 import MarkdownBody from './MarkdownBody';
 import {
+  DOCS_READER_TAB_ID,
+  formatBrainChipLabel,
+  pushDocsHistory,
+  stepDocsHistory,
+  upsertDocsReaderTab,
+} from '../docsReaderHistory';
+import {
   copyTextToClipboard,
   getSelectionWithinNode,
   shouldPreserveSelectionOnMouseDown,
@@ -127,6 +134,8 @@ export default function FileExplorer({
   onToggleTreeSide,
   hideDotfiles = true,
   onToggleHideDotfiles,
+  docsSingleTabMode = false,
+  onToggleDocsSingleTabMode,
   editorFontSize = 13,
   editorWordWrap = true,
   requestedFile = null,
@@ -145,6 +154,7 @@ export default function FileExplorer({
   const [gitStatus, setGitStatus] = useState({ branch: '', files: [], repo_path: '' });
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState('');
+  const [docsHistory, setDocsHistory] = useState({ entries: [], index: -1 });
   const [mdViewMode, setMdViewMode] = useState('preview'); // preview | code
   const [imageZoomMode, setImageZoomMode] = useState('fit'); // fit | actual
   const [saveBadge, setSaveBadge] = useState('');
@@ -166,12 +176,15 @@ export default function FileExplorer({
   const selectSurfaceRef = useRef(null);
   const mediaPlayerRef = useRef(null);
   const autoOpenedSessionRef = useRef('');
+  const lastDocsRepoSigRef = useRef('');
   const tabsCountRef = useRef(0);
   const requestedFileRef = useRef(requestedFile);
+  const docsSingleTabModeRef = useRef(docsSingleTabMode);
   const blobUrlsRef = useRef(new Set());
 
   requestedFileRef.current = requestedFile;
   tabsCountRef.current = tabs.length;
+  docsSingleTabModeRef.current = docsSingleTabMode;
 
   const isSelectMode = onToggleSelectMode ? selectMode : localSelectMode;
   const toggleSelectMode = () => {
@@ -426,18 +439,37 @@ export default function FileExplorer({
 
   const openFileTab = async (path, customLabel = '', opts = {}) => {
     if (!path) return;
-    const tabId = `file:${path}`;
-    const existing = tabs.find((t) => t.id === tabId);
+    const useDocsReader = Boolean(opts.docsReader);
+    const tabId = useDocsReader ? DOCS_READER_TAB_ID : `file:${path}`;
     if (opts.forceCode) {
       setMdViewMode('code');
     }
-    if (existing) {
-      setActiveTabId(tabId);
-      if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-        setShowMobileTree(false);
+
+    if (useDocsReader) {
+      const existingReader = tabs.find((t) => t.id === DOCS_READER_TAB_ID);
+      if (existingReader && existingReader.path === path) {
+        setActiveTabId(DOCS_READER_TAB_ID);
+        if (!opts.skipHistoryPush) {
+          setDocsHistory((prev) =>
+            pushDocsHistory(prev, { path, label: customLabel || existingReader.label })
+          );
+        }
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+          setShowMobileTree(false);
+        }
+        expandAncestorsToFile(existingReader.path, rootPath);
+        return;
       }
-      expandAncestorsToFile(existing.path, rootPath);
-      return;
+    } else {
+      const existing = tabs.find((t) => t.id === tabId);
+      if (existing) {
+        setActiveTabId(tabId);
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+          setShowMobileTree(false);
+        }
+        expandAncestorsToFile(existing.path, rootPath);
+        return;
+      }
     }
 
     const mediaType = isImagePath(path)
@@ -459,7 +491,7 @@ export default function FileExplorer({
           } catch {}
           pushOrFocusTab(
             {
-              id: tabId,
+              id: `file:${path}`,
               type: 'binary',
               path,
               label: customLabel || path.split('/').pop(),
@@ -478,7 +510,7 @@ export default function FileExplorer({
         const blobUrl = URL.createObjectURL(blob);
         blobUrlsRef.current.add(blobUrl);
         const newTab = {
-          id: tabId,
+          id: `file:${path}`,
           type: mediaType,
           path,
           label: customLabel || path.split('/').pop(),
@@ -527,11 +559,40 @@ export default function FileExplorer({
       }
       if (data.content !== undefined) {
         const resolvedPath = data.path || path;
+        const resolvedLabel = customLabel || resolvedPath.split('/').pop();
+        if (useDocsReader) {
+          const readerPayload = {
+            type: 'file',
+            path: resolvedPath,
+            label: resolvedLabel,
+            content: data.content,
+            savedContent: data.content,
+            mtime: data.mtime || null,
+            language: data.language || 'markdown',
+            conflict: null,
+          };
+          setTabs((prev) => upsertDocsReaderTab(prev, readerPayload, MAX_TABS));
+          setActiveTabId(DOCS_READER_TAB_ID);
+          if (!opts.skipHistoryPush) {
+            setDocsHistory((prev) =>
+              pushDocsHistory(prev, { path: resolvedPath, label: resolvedLabel })
+            );
+          }
+          if (isMarkdownPath(resolvedPath) && !opts.forceCode) {
+            setMdViewMode('preview');
+          }
+          if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+            setShowMobileTree(false);
+          }
+          expandAncestorsToFile(resolvedPath, rootPath);
+          return;
+        }
+
         const newTab = {
           id: `file:${resolvedPath}`,
           type: 'file',
           path: resolvedPath,
-          label: customLabel || resolvedPath.split('/').pop(),
+          label: resolvedLabel,
           content: data.content,
           savedContent: data.content,
           mtime: data.mtime || null,
@@ -546,6 +607,34 @@ export default function FileExplorer({
     } catch (e) {
       console.error('Failed to open file tab', e);
     }
+  };
+
+  const openBrainDoc = (path, rawLabel = '', event = null) => {
+    if (!path) return;
+    const cleanLabel = formatBrainChipLabel(rawLabel) || rawLabel;
+    const forceSeparateTab = Boolean(event?.ctrlKey || event?.metaKey);
+    openFileTab(path, cleanLabel, {
+      docsReader: Boolean(docsSingleTabMode && !forceSeparateTab),
+    });
+  };
+
+  const handleStepDocsHistory = (delta) => {
+    const { state: nextHist, target } = stepDocsHistory(docsHistory, delta);
+    if (!target?.path) return;
+    setDocsHistory(nextHist);
+    openFileTab(target.path, target.label, { docsReader: true, skipHistoryPush: true });
+  };
+
+  const pinActiveDocsReaderTab = () => {
+    if (!activeTab || activeTab.id !== DOCS_READER_TAB_ID) return;
+    const pinnedId = `file:${activeTab.path}`;
+    setTabs((prev) => {
+      const withoutExisting = prev.filter((t) => t.id !== pinnedId);
+      return withoutExisting.map((t) =>
+        t.id === DOCS_READER_TAB_ID ? { ...t, id: pinnedId, isDocsReader: false } : t
+      );
+    });
+    setActiveTabId(pinnedId);
   };
 
   const loadGitStatus = async (sessionName = activeSession, targetPath = rootPath || currentPath) => {
@@ -581,7 +670,13 @@ export default function FileExplorer({
           await loadFiles(startRoot, true);
           loadGitStatus(sessionName, startRoot);
         }
-        const sigKey = `${sessionName || 'default'}:${data.main_repo_root || startRoot || ''}`;
+        const repoSig = data.main_repo_root || startRoot || '';
+        if (repoSig && lastDocsRepoSigRef.current && lastDocsRepoSigRef.current !== repoSig) {
+          setDocsHistory({ entries: [], index: -1 });
+        }
+        lastDocsRepoSigRef.current = repoSig;
+
+        const sigKey = `${sessionName || 'default'}:${repoSig}`;
         if (
           tabsCountRef.current === 0 &&
           !requestedFileRef.current?.path &&
@@ -594,7 +689,10 @@ export default function FileExplorer({
               (bf.label === 'README.md' || bf.label === 'HANDOFF.md' || bf.label === 'AGENTS.md')
           );
           if (preferred?.path) {
-            openFileTab(preferred.path, preferred.label);
+            const cleanLbl = formatBrainChipLabel(preferred.label) || preferred.label;
+            openFileTab(preferred.path, cleanLbl, {
+              docsReader: Boolean(docsSingleTabModeRef.current),
+            });
           }
         }
       }
@@ -1023,41 +1121,85 @@ export default function FileExplorer({
             <span>GIT DIFF ({gitStatus.files.length})</span>
           </button>
 
-          {(coreBrainFiles.length > 0 || wikiPageFiles.length > 0 || worktrees.length > 0) && (
-            <span style={{ opacity: 0.25 }}>|</span>
-          )}
+          {(coreBrainFiles.length > 0 || wikiPageFiles.length > 0) && (
+            <div className="project-docs-hub-bar" role="group" aria-label="Project Docs Hub">
+              <span className="project-docs-hub-badge" title="Project Docs & Memory Wiki Hub">
+                <Icon name="bookOpen" size={12} />
+                <span>DOCS</span>
+              </span>
 
-          {coreBrainFiles.map((bf) => (
-            <button
-              key={bf.path}
-              type="button"
-              className={`fav-chip ${activeTab?.path === bf.path ? 'active' : ''}`}
-              onClick={() => openFileTab(bf.path, bf.label)}
-              title={bf.path}
-            >
-              {bf.label}
-            </button>
-          ))}
+              {docsSingleTabMode && (
+                <>
+                  <button
+                    type="button"
+                    className="docs-nav-arrow-btn"
+                    disabled={docsHistory.index <= 0}
+                    onClick={() => handleStepDocsHistory(-1)}
+                    title="Back to previous Project Doc"
+                  >
+                    ←
+                  </button>
+                  <button
+                    type="button"
+                    className="docs-nav-arrow-btn"
+                    disabled={
+                      docsHistory.entries.length === 0 ||
+                      docsHistory.index >= docsHistory.entries.length - 1
+                    }
+                    onClick={() => handleStepDocsHistory(1)}
+                    title="Forward to next Project Doc"
+                  >
+                    →
+                  </button>
+                </>
+              )}
 
-          {wikiPageFiles.length > 0 && (
-            <select
-              className="ld-select"
-              style={{ width: 'auto', height: '24px', padding: '0 8px', fontSize: '10.5px' }}
-              value=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  const chosen = wikiPageFiles.find((w) => w.path === e.target.value);
-                  openFileTab(e.target.value, chosen?.label || '');
-                }
-              }}
-            >
-              <option value="">memory-wiki/ ({wikiPageFiles.length})</option>
-              {wikiPageFiles.map((w) => (
-                <option key={w.path} value={w.path}>
-                  {w.label}
-                </option>
+              {coreBrainFiles.map((bf) => (
+                <button
+                  key={bf.path}
+                  type="button"
+                  className={`fav-chip ${activeTab?.path === bf.path ? 'active' : ''}`}
+                  onClick={(e) => openBrainDoc(bf.path, bf.label, e)}
+                  title={`${bf.label} (${bf.path})\n${
+                    docsSingleTabMode
+                      ? 'Click to navigate in place · Ctrl/Cmd+Click to open separate tab'
+                      : 'Click to open tab'
+                  }`}
+                >
+                  {formatBrainChipLabel(bf.label)}
+                </button>
               ))}
-            </select>
+
+              {wikiPageFiles.length > 0 && (
+                <select
+                  className="ld-select"
+                  style={{ width: 'auto', height: '24px', padding: '0 8px', fontSize: '10.5px' }}
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const chosen = wikiPageFiles.find((w) => w.path === e.target.value);
+                      openBrainDoc(e.target.value, chosen?.label || '');
+                    }
+                  }}
+                >
+                  <option value="">memory-wiki/ ({wikiPageFiles.length})</option>
+                  {wikiPageFiles.map((w) => (
+                    <option key={w.path} value={w.path}>
+                      {formatBrainChipLabel(w.label)}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <button
+                type="button"
+                className={`docs-webnav-toggle ${docsSingleTabMode ? 'active' : ''}`}
+                onClick={() => onToggleDocsSingleTabMode?.()}
+                title="Toggle Single-Tab Website Navigation (navigate Project Docs & Wiki in 1 reusable tab with Back/Forward vs opening a new tab per page)"
+              >
+                <span>{docsSingleTabMode ? '1-TAB: ON' : '1-TAB: OFF'}</span>
+              </button>
+            </div>
           )}
 
           {worktrees.length > 0 && (
@@ -1370,7 +1512,10 @@ export default function FileExplorer({
               {tabs.map((t) => {
                 const isDirty = t.type === 'file' && t.content !== t.savedContent;
                 const isSelected = t.id === activeTabId;
-                const tabMeta = getTabIconMeta(t.type);
+                const tabMeta = t.isDocsReader
+                  ? { icon: 'bookOpen', color: 'var(--accent)' }
+                  : getTabIconMeta(t.type);
+                const shownLabel = t.isDocsReader ? `DOCS · ${t.label}` : t.label;
                 return (
                   <div
                     key={t.id}
@@ -1385,7 +1530,7 @@ export default function FileExplorer({
                         </span>
                       )}
                       {isDirty ? '● ' : ''}
-                      {t.label}
+                      {shownLabel}
                     </span>
                     <span
                       style={{ opacity: 0.65, paddingLeft: '3px' }}
@@ -1448,6 +1593,18 @@ export default function FileExplorer({
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
+                {activeTab?.id === DOCS_READER_TAB_ID && (
+                  <button
+                    type="button"
+                    className="fav-chip"
+                    onClick={pinActiveDocsReaderTab}
+                    title="Pin current doc as its own standalone tab so future Docs navigation opens alongside it"
+                  >
+                    <Icon name="pin" size={11} />
+                    <span style={{ marginLeft: '4px' }}>PIN TAB</span>
+                  </button>
+                )}
+
                 {activeIsMarkdown && (
                   <button
                     type="button"
@@ -1792,7 +1949,16 @@ export default function FileExplorer({
                   fontSize={editorFontSize + 1}
                   baseFilePath={activeTab.path}
                   onOpenFileLink={(targetPath, line) => {
-                    openFileTab(targetPath, '', { forceCode: Boolean(line && line > 0) });
+                    const hasLine = Boolean(line && line > 0);
+                    const inPlaceDocs =
+                      docsSingleTabMode &&
+                      activeTab?.id === DOCS_READER_TAB_ID &&
+                      isMarkdownPath(targetPath) &&
+                      !hasLine;
+                    openFileTab(targetPath, '', {
+                      forceCode: hasLine,
+                      docsReader: inPlaceDocs,
+                    });
                   }}
                 />
               </div>

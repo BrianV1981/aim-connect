@@ -486,6 +486,20 @@ export function Icon({ name, size, style }) {
           <path d="M13.5 13h1.5" />
         </svg>
       );
+    case 'bookOpen':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+        </svg>
+      );
+    case 'pin':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <line x1="12" y1="17" x2="12" y2="22" />
+          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+        </svg>
+      );
     case 'code':
       return (
         <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">

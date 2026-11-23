@@ -652,6 +652,9 @@ function App() {
   const [filesHideDotfiles, setFilesHideDotfiles] = useState(() =>
     JSON.parse(localStorage.getItem('aim-files-hide-dotfiles') ?? 'true')
   );
+  const [docsSingleTabMode, setDocsSingleTabMode] = useState(
+    () => localStorage.getItem('aim-docs-single-tab') === 'true'
+  );
   const [editorFontSize, setEditorFontSize] = useState(() =>
     parseInt(localStorage.getItem('aim-editor-fontsize') || '13', 10)
   );
@@ -2945,6 +2948,14 @@ function App() {
               return next;
             });
           }}
+          docsSingleTabMode={docsSingleTabMode}
+          onToggleDocsSingleTabMode={() => {
+            setDocsSingleTabMode((prev) => {
+              const next = !prev;
+              localStorage.setItem('aim-docs-single-tab', String(next));
+              return next;
+            });
+          }}
           editorFontSize={editorFontSize}
           editorWordWrap={editorWordWrap}
           requestedFile={requestedExplorerFile}
@@ -3186,6 +3197,8 @@ function App() {
           setFilesTreeSide={setFilesTreeSide}
           filesHideDotfiles={filesHideDotfiles}
           setFilesHideDotfiles={setFilesHideDotfiles}
+          docsSingleTabMode={docsSingleTabMode}
+          setDocsSingleTabMode={setDocsSingleTabMode}
           editorFontSize={editorFontSize}
           setEditorFontSize={setEditorFontSize}
           editorWordWrap={editorWordWrap}

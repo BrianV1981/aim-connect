@@ -44,6 +44,8 @@ export default function SettingsModal({
   setFilesTreeSide,
   filesHideDotfiles = true,
   setFilesHideDotfiles,
+  docsSingleTabMode = false,
+  setDocsSingleTabMode,
   editorFontSize = 13,
   setEditorFontSize,
   editorWordWrap = true,
@@ -565,6 +567,26 @@ export default function SettingsModal({
                         const next = e.target.checked;
                         setEditorWordWrap?.(next);
                         localStorage.setItem('aim-editor-wordwrap', JSON.stringify(next));
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '12px', cursor: 'pointer' }}>
+                    <div>
+                      <div>Project Docs Single-Tab Website Reader (Optional Test-Drive)</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Navigate README, HANDOFF, AGENTS &amp; memory-wiki in place inside one reusable tab with Back/Forward history instead of opening a new tab per doc.
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(docsSingleTabMode)}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setDocsSingleTabMode?.(next);
+                        localStorage.setItem('aim-docs-single-tab', String(next));
                       }}
                     />
                   </label>

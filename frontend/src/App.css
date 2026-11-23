@@ -4159,6 +4159,79 @@ mark.find-hit-mark.active-hit {
   border: 1px solid rgba(245, 158, 11, 0.38);
 }
 
+/* Project Docs Hub Capsule & Single-Tab Website Reader Controls (#262) */
+.project-docs-hub-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(var(--accent-rgb), 0.055);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+}
+
+.project-docs-hub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 0 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.docs-nav-arrow-btn {
+  height: 22px;
+  min-width: 22px;
+  padding: 0 5px;
+  border-radius: 6px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-canvas);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.docs-nav-arrow-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
+}
+
+.docs-nav-arrow-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.docs-webnav-toggle {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-canvas);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.docs-webnav-toggle.active {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.14);
+}
+
 .files-md-preview {
   flex: 1;
   min-height: 0;
