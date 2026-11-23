@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getAgentColor } from '../agentColors';
 import { copyTextToClipboard } from '../scrollbackSelection';
 import Icon from './Icons';
+import MarkdownBody from './MarkdownBody';
 
 export default function HistoryVault({
   activeSession = '',
   fleet = [],
   operatorStyle = 'cyan',
   operatorSide = 'right',
+  onOpenFileLink,
   onInjectToAgent,
   onClose,
   onHistoryCountsChange,
@@ -431,11 +433,17 @@ export default function HistoryVault({
                           </div>
                           <div className="history-turn-ag">
                             {t.tool && <div className="history-turn-tool">&gt;_ {t.tool}</div>}
-                            <div style={{ whiteSpace: 'pre-wrap' }}>
+                            <div>
                               <strong style={{ color: 'var(--accent)', fontSize: '9.5px', letterSpacing: '0.08em' }}>
                                 [J.O.S.H.U.A.]
-                              </strong>{' '}
-                              {t.agent}
+                              </strong>
+                              <div style={{ marginTop: '4px' }}>
+                                <MarkdownBody
+                                  content={t.agent}
+                                  fontSize={13}
+                                  onOpenFileLink={onOpenFileLink}
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>

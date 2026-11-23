@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from './Icons';
+import MarkdownBody from './MarkdownBody';
 
 export default function LiveTranscriptStage({
   activeSession = '',
@@ -10,6 +11,7 @@ export default function LiveTranscriptStage({
   termTheme = 'match',
   optimisticMessages = [],
   onReconcileOptimistic,
+  onOpenFileLink,
   onSpeakText,
   onSendRawCommand,
   onSwitchToTerminal,
@@ -193,17 +195,11 @@ export default function LiveTranscriptStage({
                     )}
 
                     {turn.body && (
-                      <div
-                        style={{
-                          fontSize: `${termFontSize}px`,
-                          lineHeight: 1.65,
-                          color: 'var(--text-primary)',
-                          whiteSpace: 'pre-wrap',
-                          overflowWrap: 'anywhere',
-                        }}
-                      >
-                        {turn.body}
-                      </div>
+                      <MarkdownBody
+                        content={turn.body}
+                        fontSize={termFontSize}
+                        onOpenFileLink={onOpenFileLink}
+                      />
                     )}
 
                     {turn.spoken && (

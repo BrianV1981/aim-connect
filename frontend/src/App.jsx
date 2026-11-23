@@ -203,6 +203,7 @@ function App() {
   const [isSpawnModalOpen, setIsSpawnModalOpen] = useState(false);
   const [scrollFocusSearch, setScrollFocusSearch] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [requestedExplorerFile, setRequestedExplorerFile] = useState(null);
   const [showBrowser, setShowBrowser] = useState(false);
   const [preferredBrowserTargetId, setPreferredBrowserTargetId] = useState('');
   const [agentStageMode, setAgentStageModeState] = useState(() =>
@@ -1999,6 +2000,26 @@ function App() {
     setShowSettings(true);
   };
 
+  const handleOpenFileFromChat = useCallback((filePath, line = null, endLine = null) => {
+    if (!filePath) return;
+    setShowFiles(true);
+    setShowBrowser(false);
+    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+      setSplitMode(true);
+    }
+    setRequestedExplorerFile({
+      path: filePath,
+      line: line || null,
+      endLine: endLine || null,
+      seq: Date.now(),
+    });
+    setTimeout(() => {
+      try {
+        fitAddon.current?.fit();
+      } catch {}
+    }, 80);
+  }, []);
+
   const selectWorkspaceTool = (tool) => {
     if (tool === 'none') {
       setShowBrowser(false);
@@ -2576,6 +2597,7 @@ function App() {
                       termTheme={termTheme}
                       optimisticMessages={optimisticChatBySession[activeSession] || []}
                       onReconcileOptimistic={reconcileOptimisticChat}
+                      onOpenFileLink={handleOpenFileFromChat}
                       onSpeakText={(txt) => speakSummaryText(txt)}
                       onSendRawCommand={sendCommand}
                       onSwitchToTerminal={() => {
@@ -2613,6 +2635,7 @@ function App() {
                 operatorStyle={operatorStyle}
                 operatorSide={operatorSide}
                 onHistoryCountsChange={setHistoryCounts}
+                onOpenFileLink={handleOpenFileFromChat}
                 onInjectToAgent={(text) => {
                   setShowHistory(false);
                   pasteToTerminal(text);
@@ -2894,6 +2917,7 @@ function App() {
           activeSession={activeSession}
           splitMode={splitMode}
           uiTheme={theme}
+          requestedFile={requestedExplorerFile}
           selectMode={fileSelectMode}
           onToggleSelectMode={() => setFileSelectMode((prev) => !prev)}
           onToggleSplitMode={() => {

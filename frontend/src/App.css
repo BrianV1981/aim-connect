@@ -4333,3 +4333,199 @@ mark.find-hit-mark.active-hit {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+
+
+/* ==========================================================================
+   STRUCTURED GFM MARKDOWN IN CHAT VIEW & HISTORY (#264)
+   ========================================================================== */
+.ld-markdown-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.ld-markdown-body .md-p {
+  margin: 0;
+}
+
+.ld-markdown-body .md-heading {
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary);
+  margin: 4px 0 0;
+  letter-spacing: -0.01em;
+}
+
+.ld-markdown-body .md-h1 {
+  font-size: 1.25em;
+  border-bottom: 1px solid var(--border-hairline);
+  padding-bottom: 4px;
+}
+
+.ld-markdown-body .md-h2 {
+  font-size: 1.14em;
+  border-bottom: 1px solid var(--border-hairline);
+  padding-bottom: 3px;
+}
+
+.ld-markdown-body .md-h3 {
+  font-size: 1.06em;
+  color: var(--accent);
+}
+
+.ld-markdown-body .md-h4,
+.ld-markdown-body .md-h5,
+.ld-markdown-body .md-h6 {
+  font-size: 1em;
+}
+
+.ld-markdown-body .md-list {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ld-markdown-body .md-li > .ld-markdown-body {
+  margin-top: 5px;
+  gap: 5px;
+}
+
+.ld-markdown-body .md-inline-code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 1.5px 6px;
+  border-radius: 5px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-hairline);
+  color: var(--accent);
+}
+
+.ld-markdown-body .md-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: baseline;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  font-weight: 600;
+  padding: 1px 7px;
+  margin: 0 1px;
+  border-radius: 6px;
+  background: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.42);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.ld-markdown-body .md-file-link:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: var(--accent);
+}
+
+.ld-markdown-body .md-ext-link {
+  color: var(--accent-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ld-markdown-body .md-blockquote {
+  margin: 0;
+  padding: 7px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-subtle);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+
+.ld-markdown-body .md-hr {
+  border: none;
+  border-top: 1px solid var(--border-hairline);
+  margin: 4px 0;
+}
+
+.ld-markdown-body .md-code-card {
+  border-radius: 9px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-input);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.ld-markdown-body .md-code-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-hairline);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.ld-markdown-body .md-code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ld-markdown-body .md-code-copy-btn:hover,
+.ld-markdown-body .md-code-copy-btn.copied {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
+
+.ld-markdown-body .md-code-pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.ld-markdown-body .md-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-hairline);
+}
+
+.ld-markdown-body .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.ld-markdown-body .md-table th,
+.ld-markdown-body .md-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-hairline);
+  text-align: left;
+}
+
+.ld-markdown-body .md-table th {
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--accent);
+}

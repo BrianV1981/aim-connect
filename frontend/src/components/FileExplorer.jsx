@@ -14,6 +14,7 @@ export default function FileExplorer({
   activeSession,
   splitMode,
   uiTheme = 'emerald',
+  requestedFile = null,
   selectMode = false,
   onToggleSelectMode,
   onToggleSplitMode,
@@ -186,6 +187,35 @@ export default function FileExplorer({
       loadWorkspaceContext(activeSession);
     }
   }, [isOpen, activeSession]);
+
+  // Open file:// links clicked inside Chat View / History directly in Monaco and reveal target line (#264)
+  useEffect(() => {
+    if (!isOpen || !requestedFile?.path) return;
+    let cancelled = false;
+    (async () => {
+      const parentDir = requestedFile.path.includes('/')
+        ? requestedFile.path.slice(0, requestedFile.path.lastIndexOf('/'))
+        : '';
+      if (parentDir) {
+        loadFiles(parentDir);
+      }
+      await openFileTab(requestedFile.path);
+      if (!cancelled && requestedFile.line && requestedFile.line > 0) {
+        setTimeout(() => {
+          const ed = editorRef?.current;
+          if (ed) {
+            try {
+              ed.revealLineInCenter?.(requestedFile.line);
+              ed.setPosition?.({ lineNumber: requestedFile.line, column: 1 });
+            } catch {}
+          }
+        }, 120);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, requestedFile?.seq]);
 
   const openDiffTab = async (path, relPath = '') => {
     const tabId = `diff:${path}`;
