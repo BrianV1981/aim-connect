@@ -411,6 +411,21 @@ export function Icon({ name, size, style }) {
           <polyline points="5 12 12 5 19 12" />
         </svg>
       );
+    case 'arrowDown':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <polyline points="19 12 12 19 5 12" />
+        </svg>
+      );
+    case 'arrowDownToLine':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 17V3" />
+          <path d="m6 11 6 6 6-6" />
+          <path d="M19 21H5" />
+        </svg>
+      );
     case 'alert':
       return (
         <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">

@@ -658,6 +658,10 @@ function App() {
   const [docsSingleTabMode, setDocsSingleTabMode] = useState(
     () => localStorage.getItem('aim-docs-single-tab') === 'true'
   );
+  const [sessionAutoScroll, setSessionAutoScroll] = useState(
+    () => localStorage.getItem('aim-session-autoscroll') === 'true'
+  );
+  const [xtermScrolledUp, setXtermScrolledUp] = useState(false);
   const [editorFontSize, setEditorFontSize] = useState(() =>
     parseInt(localStorage.getItem('aim-editor-fontsize') || '13', 10)
   );
@@ -1598,6 +1602,14 @@ function App() {
     term.current.writeln('\x1b[37m    Welcome, Operator. The Sovereign AI is ready.\x1b[0m');
     term.current.writeln('');
 
+    const syncXtermScrollState = () => {
+      const buf = term.current?.buffer?.active;
+      const up = Boolean(buf && buf.baseY > 0 && buf.viewportY < buf.baseY);
+      setXtermScrolledUp((prev) => (prev === up ? prev : up));
+    };
+    const scrollDisp = term.current.onScroll?.(syncXtermScrollState);
+    const writeDisp = term.current.onWriteParsed?.(syncXtermScrollState);
+
     term.current.onData((data) => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         if (data.startsWith('\x1b[200~') && data.endsWith('\x1b[201~')) {
@@ -1778,6 +1790,8 @@ function App() {
         termEl.removeEventListener('touchmove', handleTouchMove);
       }
       if (term.current) term.current.dispose();
+      scrollDisp?.dispose?.();
+      writeDisp?.dispose?.();
     };
   }, [isAuthenticated]);
 
@@ -2468,6 +2482,26 @@ function App() {
                       <span>{agentStageMode === 'chat' ? 'CHAT VIEW' : 'RAW TERM'}</span>
                     </button>
                   )}
+                  {!isRawTmux && (
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${sessionAutoScroll ? 'active' : ''}`}
+                      style={{ padding: '0 6px' }}
+                      onClick={() => {
+                        setSessionAutoScroll((prev) => {
+                          const next = !prev;
+                          localStorage.setItem('aim-session-autoscroll', String(next));
+                          return next;
+                        });
+                      }}
+                      title={`Auto-Scroll to Latest Reply: ${
+                        sessionAutoScroll ? 'ON (click to turn OFF)' : 'OFF (click to follow new replies)'
+                      }`}
+                      aria-label="Toggle Session Auto-Scroll"
+                    >
+                      <Icon name="arrowDownToLine" size={12} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={`subbar-util-btn ${pasteFlash ? 'active' : ''}`}
@@ -2710,6 +2744,22 @@ function App() {
                       ref={terminalRef}
                     />
                   </div>
+                  {!hideXterm && activeSession && !isNativeScrollMode && xtermScrolledUp && (
+                    <button
+                      type="button"
+                      className="hop-bottom-fab"
+                      onClick={() => {
+                        try {
+                          term.current?.scrollToBottom?.();
+                        } catch {}
+                        setXtermScrolledUp(false);
+                      }}
+                      title="Hop to bottom of terminal"
+                      aria-label="Hop to bottom of terminal"
+                    >
+                      <Icon name="arrowDown" size={14} />
+                    </button>
+                  )}
                   {showLiveChat && (
                     <LiveTranscriptStage
                       activeSession={activeSession}
@@ -2718,6 +2768,7 @@ function App() {
                       operatorSide={operatorSide}
                       termFontSize={termFontSize}
                       termTheme={termTheme}
+                      autoScroll={sessionAutoScroll}
                       optimisticMessages={optimisticChatBySession[activeSession] || []}
                       onReconcileOptimistic={reconcileOptimisticChat}
                       onOpenFileLink={handleOpenFileFromChat}
@@ -3337,6 +3388,8 @@ function App() {
           setFilesHideDotfiles={setFilesHideDotfiles}
           docsSingleTabMode={docsSingleTabMode}
           setDocsSingleTabMode={setDocsSingleTabMode}
+          sessionAutoScroll={sessionAutoScroll}
+          setSessionAutoScroll={setSessionAutoScroll}
           editorFontSize={editorFontSize}
           setEditorFontSize={setEditorFontSize}
           editorWordWrap={editorWordWrap}

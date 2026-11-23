@@ -4661,6 +4661,46 @@ mark.find-hit-mark.active-hit {
   background: var(--bg-header);
 }
 
+/* Discord-Style Floating Hop-to-Bottom Pill (#277) */
+.hop-bottom-fab {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  z-index: 22;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--bg-header);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.hop-bottom-fab:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--accent-rgb), 0.6);
+  color: var(--accent);
+}
+
+.hop-bottom-fab.has-unseen {
+  border-color: rgba(var(--accent-rgb), 0.72);
+  color: var(--accent);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5), 0 0 14px rgba(var(--accent-rgb), 0.22);
+}
+
 .chat-gate-banner {
   padding: 9px 14px;
   background: rgba(245, 158, 11, 0.14);

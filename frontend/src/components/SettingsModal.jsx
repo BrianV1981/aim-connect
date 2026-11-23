@@ -46,6 +46,8 @@ export default function SettingsModal({
   setFilesHideDotfiles,
   docsSingleTabMode = false,
   setDocsSingleTabMode,
+  sessionAutoScroll = false,
+  setSessionAutoScroll,
   editorFontSize = 13,
   setEditorFontSize,
   editorWordWrap = true,
@@ -587,6 +589,26 @@ export default function SettingsModal({
                         const next = e.target.checked;
                         setDocsSingleTabMode?.(next);
                         localStorage.setItem('aim-docs-single-tab', String(next));
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '12px', cursor: 'pointer' }}>
+                    <div>
+                      <div>Auto-Scroll Session Stream to Latest Reply (Optional)</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        OFF by default so tall replies never yank your reading position; pair with the floating ↓ Hop-to-Bottom button.
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(sessionAutoScroll)}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setSessionAutoScroll?.(next);
+                        localStorage.setItem('aim-session-autoscroll', String(next));
                       }}
                     />
                   </label>

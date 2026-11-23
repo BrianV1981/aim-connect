@@ -2,6 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import Icon from './Icons';
 import MarkdownBody from './MarkdownBody';
 import { extractOperatorTurnAttachments } from '../shotMarkupUtils';
+import {
+  HOP_BOTTOM_THRESHOLD_PX,
+  computeScrollDistanceFromBottom,
+  decideTurnScrollAction,
+} from '../sessionScrollUtils';
 
 export default function LiveTranscriptStage({
   activeSession = '',
@@ -10,6 +15,7 @@ export default function LiveTranscriptStage({
   operatorSide = 'right',
   termFontSize = 14,
   termTheme = 'match',
+  autoScroll = false,
   optimisticMessages = [],
   onReconcileOptimistic,
   onOpenFileLink,
@@ -25,13 +31,38 @@ export default function LiveTranscriptStage({
     loadedFor: '',
   });
   const [loading, setLoading] = useState(true);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const [hasUnseenBelow, setHasUnseenBelow] = useState(false);
   const scrollRef = useRef(null);
   const activeSessionRef = useRef(activeSession);
   const needsBottomAnchorRef = useRef(true);
+  const wasPinnedRef = useRef(true);
+  const prevOptimisticLenRef = useRef(0);
   const lastTurnSigRef = useRef('');
   const prevTurnCountRef = useRef(0);
 
   activeSessionRef.current = activeSession;
+
+  const handleStreamScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const dist = computeScrollDistanceFromBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+    const up = dist > HOP_BOTTOM_THRESHOLD_PX;
+    wasPinnedRef.current = !up;
+    setIsScrolledUp((prev) => (prev === up ? prev : up));
+    if (!up) {
+      setHasUnseenBelow((prev) => (prev ? false : prev));
+    }
+  }, []);
+
+  const hopToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    wasPinnedRef.current = true;
+    setHasUnseenBelow(false);
+    setIsScrolledUp(false);
+    el.scrollTop = el.scrollHeight;
+  }, []);
 
   const fetchLiveTurns = useCallback(async (isInitial = false, targetSession = activeSession) => {
     if (!targetSession) return;
@@ -62,8 +93,12 @@ export default function LiveTranscriptStage({
 
   useEffect(() => {
     needsBottomAnchorRef.current = true;
+    wasPinnedRef.current = true;
+    prevOptimisticLenRef.current = 0;
     lastTurnSigRef.current = '';
     prevTurnCountRef.current = 0;
+    setIsScrolledUp(false);
+    setHasUnseenBelow(false);
     setTurnsData((prev) =>
       prev.loadedFor === activeSession
         ? prev
@@ -84,17 +119,22 @@ export default function LiveTranscriptStage({
   }, [activeSession, fetchLiveTurns]);
 
   // Always anchor at the bottom when clicking a session or mounting Chat View;
-  // on subsequent live polls, auto-scroll only if the Operator is already near the bottom (#261).
+  // on subsequent live polls, honor optional Auto-Scroll or default parked reading mode (#261, #277).
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || turnsData.loadedFor !== activeSession) return;
+    if (!el || turnsData.loadedFor !== activeSession) return undefined;
 
     const lastTurn = turnsData.turns[turnsData.turns.length - 1];
     const sig = `${activeSession}:${turnsData.turns.length}:${lastTurn?.body?.length || 0}:${lastTurn?.spoken?.length || 0}:${optimisticMessages.length}`;
+    const optimisticAdded = optimisticMessages.length > prevOptimisticLenRef.current;
+    prevOptimisticLenRef.current = optimisticMessages.length;
 
     if (needsBottomAnchorRef.current) {
       needsBottomAnchorRef.current = false;
+      wasPinnedRef.current = true;
       lastTurnSigRef.current = sig;
+      setIsScrolledUp(false);
+      setHasUnseenBelow(false);
       el.scrollTop = el.scrollHeight;
       const raf = window.requestAnimationFrame(() => {
         if (scrollRef.current) {
@@ -107,12 +147,28 @@ export default function LiveTranscriptStage({
     if (sig === lastTurnSigRef.current) return undefined;
     lastTurnSigRef.current = sig;
 
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 180;
-    if (nearBottom) {
+    const dist = computeScrollDistanceFromBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+    const decision = decideTurnScrollAction({
+      autoScroll,
+      wasPinnedBeforeUpdate: wasPinnedRef.current,
+      postRenderDistancePx: dist,
+      optimisticAdded,
+    });
+
+    if (decision.shouldScrollToBottom) {
+      wasPinnedRef.current = true;
       el.scrollTop = el.scrollHeight;
+      setIsScrolledUp(false);
+      setHasUnseenBelow(false);
+    } else {
+      const up = dist > HOP_BOTTOM_THRESHOLD_PX;
+      setIsScrolledUp(up);
+      if (decision.markUnseenBelow) {
+        setHasUnseenBelow(true);
+      }
     }
     return undefined;
-  }, [activeSession, turnsData.loadedFor, turnsData.turns, optimisticMessages.length]);
+  }, [activeSession, autoScroll, turnsData.loadedFor, turnsData.turns, optimisticMessages.length]);
 
   const overrideStyle =
     termTheme === 'hacker'
@@ -131,7 +187,7 @@ export default function LiveTranscriptStage({
 
   return (
     <div className="live-transcript-stage" style={overrideStyle}>
-      <div className="stream-scroll" ref={scrollRef}>
+      <div className="stream-scroll" ref={scrollRef} onScroll={handleStreamScroll}>
         {loading && turnsData.turns.length === 0 ? (
           <div className="fleet-empty-state">Loading live structured session turns...</div>
         ) : turnsData.turns.length === 0 && pendingOptimistic.length === 0 ? (
@@ -321,6 +377,20 @@ export default function LiveTranscriptStage({
           </div>
         )}
       </div>
+
+      {isScrolledUp && (
+        <button
+          type="button"
+          className={`hop-bottom-fab ${hasUnseenBelow ? 'has-unseen' : ''}`}
+          style={fleetItem?.status === 'WAITING' ? { bottom: '58px' } : undefined}
+          onClick={hopToBottom}
+          title="Hop to bottom of session"
+          aria-label="Hop to bottom of session"
+        >
+          <Icon name="arrowDown" size={14} />
+          {hasUnseenBelow && <span>NEW</span>}
+        </button>
+      )}
 
       {fleetItem?.status === 'WAITING' && (
         <div className="chat-gate-banner">
