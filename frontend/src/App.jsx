@@ -1502,14 +1502,31 @@ function App() {
     syncMacrosToServer(updated);
   };
 
-  // Sync xterm.js font size and theme across UI schemes + Terminal Palette overrides (#256)
+  const syncTerminalFitAndResize = useCallback(() => {
+    if (!fitAddon.current || !terminalRef.current) return;
+    try {
+      fitAddon.current.fit();
+      const dims = fitAddon.current.proposeDimensions();
+      if (
+        dims &&
+        dims.cols > 0 &&
+        dims.rows > 0 &&
+        ws.current &&
+        ws.current.readyState === WebSocket.OPEN
+      ) {
+        ws.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+      }
+    } catch {}
+  }, []);
+
+  // Sync xterm.js font size and theme across UI schemes + Terminal Palette overrides (#256, #272)
   useEffect(() => {
     if (term.current) {
       term.current.options.fontSize = termFontSize;
       term.current.options.theme = resolveXtermPalette(theme, termTheme);
-      setTimeout(() => fitAddon.current?.fit(), 50);
+      setTimeout(() => syncTerminalFitAndResize(), 50);
     }
-  }, [termFontSize, termTheme, theme]);
+  }, [termFontSize, termTheme, theme, syncTerminalFitAndResize]);
 
   // Initialize terminal once authenticated
   useEffect(() => {
@@ -1542,6 +1559,14 @@ function App() {
         fitAttempts++;
         if (fitAttempts >= 10) clearInterval(fitInterval);
       }, 150);
+
+      if (typeof document !== 'undefined' && document.fonts?.ready) {
+        document.fonts.ready
+          .then(() => {
+            syncTerminalFitAndResize();
+          })
+          .catch(() => {});
+      }
 
       const textarea = terminalRef.current.querySelector('textarea');
       if (textarea) {
@@ -2328,9 +2353,7 @@ function App() {
                           const next = prev === 'grid' ? 'pty' : 'grid';
                           if (next === 'pty') {
                             setTimeout(() => {
-                              try {
-                                fitAddon.current?.fit();
-                              } catch {}
+                              syncTerminalFitAndResize();
                             }, 60);
                           }
                           return next;
@@ -2351,7 +2374,7 @@ function App() {
                         if (next === 'pty') {
                           setTimeout(() => {
                             try {
-                              fitAddon.current?.fit();
+                              syncTerminalFitAndResize();
                               term.current?.scrollToBottom?.();
                             } catch {}
                           }, 60);
@@ -2594,14 +2617,17 @@ function App() {
               return (
                 <>
                   <div
-                    className="terminal-container"
-                    ref={terminalRef}
+                    className="terminal-stage-pad"
                     style={{
-                      height: '100%',
                       pointerEvents: isNativeScrollMode || hideXterm ? 'none' : 'auto',
                       visibility: hideXterm ? 'hidden' : 'visible',
                     }}
-                  />
+                  >
+                    <div
+                      className="terminal-container"
+                      ref={terminalRef}
+                    />
+                  </div>
                   {showLiveChat && (
                     <LiveTranscriptStage
                       activeSession={activeSession}
@@ -2619,7 +2645,7 @@ function App() {
                         setAgentStageMode('pty');
                         setTimeout(() => {
                           try {
-                            fitAddon.current?.fit();
+                            syncTerminalFitAndResize();
                             term.current?.scrollToBottom?.();
                           } catch {}
                         }, 60);
@@ -2633,9 +2659,7 @@ function App() {
                       onSwitchToInteractiveTerm={() => {
                         setTmuxStageMode('pty');
                         setTimeout(() => {
-                          try {
-                            fitAddon.current?.fit();
-                          } catch {}
+                          syncTerminalFitAndResize();
                         }, 60);
                       }}
                     />
