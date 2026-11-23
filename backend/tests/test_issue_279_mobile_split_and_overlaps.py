@@ -19,33 +19,31 @@ BROWSER_PANE_JSX = FRONTEND_SRC / "components" / "BrowserPane.jsx"
 FILE_EXPLORER_JSX = FRONTEND_SRC / "components" / "FileExplorer.jsx"
 
 
-def test_issue_279_mobile_split_and_flex_contracts():
-    """#279: Verify mobile Full-View default, visible SPLIT/FULL button, no inline relative override, and non-zero flex-basis classes."""
+def test_issue_279_280_mobile_no_split_and_header_declutter_contracts():
+    """#279, #280: Split View locked strictly to widescreen (>900px); mobile hides duplicate Fleet/Settings/Split header controls."""
     app_jsx = APP_JSX.read_text(encoding="utf-8")
     browser_jsx = BROWSER_PANE_JSX.read_text(encoding="utf-8")
     files_jsx = FILE_EXPLORER_JSX.read_text(encoding="utf-8")
     css = APP_CSS.read_text(encoding="utf-8")
 
-    # 1. BrowserPane no longer sets inline style={{ position: 'relative' }} on root pane or desktop-only on pane-full-upgrade-btn
-    assert "className={`file-explorer-pane browser-copilot-pane ${splitMode ? 'split-mode' : 'full-mode'}`}" in browser_jsx
-    assert "pane-full-upgrade-btn desktop-only" not in browser_jsx
-    assert "pane-full-upgrade-btn desktop-only" not in files_jsx
-    assert "pane-upgrade-label-compact" in browser_jsx
-    assert "pane-upgrade-label-compact" in files_jsx
+    # 1. Widescreen-only effectiveSplitMode gate in App.jsx
+    assert "const effectiveSplitMode = splitMode && isWidescreen;" in app_jsx
+    assert "splitMode={effectiveSplitMode}" in app_jsx
 
-    # 2. App.jsx selectWorkspaceTool & mobile dock default mobile (< 900px) to Full View (splitMode = false)
-    assert "window.innerWidth > 900" in app_jsx
-    assert "setSplitMode(false)" in app_jsx
+    # 2. Split button + top-row Fleet & Settings buttons carry desktop-only; mobile dock carries unread dot
+    assert "pane-full-upgrade-btn desktop-only" in browser_jsx
+    assert "pane-full-upgrade-btn desktop-only" in files_jsx
+    assert "ghost-btn desktop-only ${showFleetSidebar ? 'active' : ''}" in app_jsx
+    assert "ghost-btn desktop-only ${showSettings ? 'active' : ''}" in app_jsx
 
-    # 3. CSS uses non-zero flex-basis (.copilot-top-left, .files-breadcrumb-trail) + mobile vertical split (.cockpit-body.has-split)
+    # 3. Non-zero flex-basis header & breadcrumb classes remain active
     assert ".copilot-top-left" in css
     assert ".copilot-top-right" in css
     assert ".files-breadcrumb-actions" in css
-    assert ".cockpit-body.has-split" in css
 
 
-def test_live_mobile_390px_geometry_zero_button_overlap():
-    """#279: Render App.css at 390x844 in real headless Chromium and prove 0px overlap across Browser, Files 1-TAB ON/OFF, and Vertical Split."""
+def test_live_mobile_390px_geometry_zero_overlap_and_hidden_redundant_buttons():
+    """#279, #280: Render App.css at 390x844 in real headless Chromium and prove 0px overlaps + hidden redundant mobile buttons."""
     binary = (
         shutil.which("chromium")
         or shutil.which("chromium-browser")
@@ -67,8 +65,22 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
 </style>
 </head>
 <body>
-  <!-- Case 1: Files Pane at 390px with 1-TAB ON -->
-  <div id="files-1tab-on" class="file-explorer-pane full-mode" style="width:390px;height:400px;">
+  <!-- Mobile Top Header: Fleet & Settings buttons hidden on mobile; Brand + Session + Keyboard + Status remain -->
+  <header id="mob-hdr" class="app-header ld-header" style="width:390px;">
+    <div class="hdr-cluster">
+      <button id="hdr-fleet-btn" class="ghost-btn desktop-only">☰</button>
+      <div id="hdr-brand" class="ld-brand"><strong>AIM</strong><span>CONNECT</span></div>
+      <span id="hdr-sess" class="active-session-badge">aim-connect</span>
+    </div>
+    <div class="hdr-cluster">
+      <button id="hdr-kb-btn" class="ghost-btn">⌨</button>
+      <button id="hdr-settings-btn" class="ghost-btn desktop-only">⚙</button>
+      <div id="hdr-status" class="status-indicator connected"></div>
+    </div>
+  </header>
+
+  <!-- Files Pane at 390px (Full View only on mobile; Split button hidden) -->
+  <div id="files-1tab-on" class="file-explorer-pane full-mode" style="width:390px;height:360px;">
     <div class="copilot-top-bar files-top-bar">
       <div class="copilot-top-left">
         <button id="f-btn-files" class="subbar-util-btn active">FILES</button>
@@ -93,10 +105,7 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
       </div>
       <div class="copilot-top-right">
         <button id="f-btn-copy" class="subbar-util-btn">COPY ALL</button>
-        <button id="f-btn-split" class="pane-full-upgrade-btn is-full">
-          <span class="pane-upgrade-label-full">SPLIT VIEW</span>
-          <span class="pane-upgrade-label-compact">SPLIT</span>
-        </button>
+        <button id="f-btn-split" class="pane-full-upgrade-btn desktop-only is-full">SPLIT VIEW</button>
         <button id="f-btn-menu" class="ghost-btn active" style="height:26px;padding:0 7px;">≡</button>
         <button id="f-btn-close" class="ghost-btn" style="height:26px;padding:0 6px;">×</button>
       </div>
@@ -117,7 +126,6 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
       </div>
     </div>
 
-    <!-- Breadcrumb with 1-TAB OFF (no PIN TAB — previously caused EDIT CODE to collide with HANDOFF.md) -->
     <div id="bc-1tab-off" class="files-breadcrumb-bar">
       <div id="bc-trail-off" class="files-breadcrumb-trail">
         <button class="breadcrumb-seg-btn">aim-connect</button>
@@ -133,28 +141,22 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
     </div>
   </div>
 
-  <!-- Case 2: Mobile Cockpit Body in Vertical Split Mode (390px wide, top Chat + bottom Browser) -->
-  <div id="mobile-split-cockpit" class="cockpit-body has-split" style="width:390px;height:440px;">
-    <div id="mobile-term-col" style="display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;">Terminal/Chat</div>
-    <div id="mobile-browser-pane" class="file-explorer-pane browser-copilot-pane split-mode">
-      <div class="copilot-top-bar">
-        <div class="copilot-top-left">
-          <span class="pulse-led"></span>
-          <span id="bp-title" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.1em;white-space:nowrap;">CO-PILOT // :9222</span>
-          <button id="bp-ctrl" class="fav-chip active">CONTROL ON</button>
-          <button id="bp-2fa" class="fav-chip">TYPE / 2FA</button>
-        </div>
-        <div class="cp-topright-actions">
-          <button id="bp-ext" class="cp-action-icon-btn">↗</button>
-          <button id="bp-shot" class="cp-action-icon-btn">📷</button>
-          <button id="bp-scope" class="fav-chip">PANE</button>
-          <button id="bp-dl" class="cp-action-icon-btn">⬇</button>
-          <button id="bp-split" class="pane-full-upgrade-btn">
-            <span class="pane-upgrade-label-full">FULL VIEW</span>
-            <span class="pane-upgrade-label-compact">FULL</span>
-          </button>
-          <button id="bp-close" class="ghost-btn">×</button>
-        </div>
+  <!-- Browser Pane Full View at 390px (Split button hidden) -->
+  <div id="mobile-browser-pane" class="file-explorer-pane browser-copilot-pane full-mode" style="width:390px;height:360px;">
+    <div class="copilot-top-bar">
+      <div class="copilot-top-left">
+        <span class="pulse-led"></span>
+        <span id="bp-title" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.1em;white-space:nowrap;">CO-PILOT // :9222</span>
+        <button id="bp-ctrl" class="fav-chip active">CONTROL ON</button>
+        <button id="bp-2fa" class="fav-chip">TYPE / 2FA</button>
+      </div>
+      <div class="cp-topright-actions">
+        <button id="bp-ext" class="cp-action-icon-btn">↗</button>
+        <button id="bp-shot" class="cp-action-icon-btn">📷</button>
+        <button id="bp-scope" class="fav-chip">PANE</button>
+        <button id="bp-dl" class="cp-action-icon-btn">⬇</button>
+        <button id="bp-split" class="pane-full-upgrade-btn desktop-only">SPLIT VIEW</button>
+        <button id="bp-close" class="ghost-btn">×</button>
       </div>
     </div>
   </div>
@@ -167,7 +169,7 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
     port = sock.getsockname()[1]
     sock.close()
 
-    tmp_dir = tempfile.mkdtemp(prefix="aim_issue279_geom_")
+    tmp_dir = tempfile.mkdtemp(prefix="aim_issue280_geom_")
 
     proc = subprocess.Popen(
         [
@@ -237,21 +239,14 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
                     return ix * iy > 0.5;
                   };
                   return {
-                    copyBtn: box('f-btn-copy'),
-                    readmeBtn: box('f-btn-readme'),
-                    docsBar: box('f-docs-bar'),
+                    hdrFleetBtn: box('hdr-fleet-btn'),
+                    hdrSettingsBtn: box('hdr-settings-btn'),
+                    hdrKbBtn: box('hdr-kb-btn'),
                     filesSplitBtn: box('f-btn-split'),
-                    bcLeafOn: box('bc-leaf-on'),
-                    bcEditOn: box('bc-edit-on'),
+                    bpSplitBtn: box('bp-split'),
                     bcDiffOn: box('bc-diff-on'),
                     bcRefOn: box('bc-ref-on'),
-                    bcLeafOff: box('bc-leaf-off'),
-                    bcEditOff: box('bc-edit-off'),
                     bcDiffOff: box('bc-diff-off'),
-                    bpTitle: box('bp-title'),
-                    bpExt: box('bp-ext'),
-                    bpSplitBtn: box('bp-split'),
-                    termCol: box('mobile-term-col'),
                     browserPane: box('mobile-browser-pane'),
                     copyOverlapsReadme: overlaps(box('f-btn-copy'), box('f-btn-readme')),
                     copyOverlapsDocsBar: overlaps(box('f-btn-copy'), box('f-docs-bar')),
@@ -265,28 +260,25 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
 
         geom = asyncio.run(_measure())
 
-        # 1. Zero overlaps between COPY ALL and README / DOCS capsule
+        # 1. Redundant mobile buttons (top Fleet, top Settings, Split buttons) are completely hidden (0x0) at 390px
+        assert geom["hdrFleetBtn"]["width"] == 0 and geom["hdrFleetBtn"]["height"] == 0, geom
+        assert geom["hdrSettingsBtn"]["width"] == 0 and geom["hdrSettingsBtn"]["height"] == 0, geom
+        assert geom["filesSplitBtn"]["width"] == 0 and geom["filesSplitBtn"]["height"] == 0, geom
+        assert geom["bpSplitBtn"]["width"] == 0 and geom["bpSplitBtn"]["height"] == 0, geom
+
+        # 2. Keyboard toggle remains visible in top header
+        assert geom["hdrKbBtn"]["width"] > 20 and geom["hdrKbBtn"]["height"] > 20, geom
+
+        # 3. Zero button overlaps across Files (1-TAB ON & OFF) and Full-View Browser at 390px
         assert geom["copyOverlapsReadme"] is False, geom
         assert geom["copyOverlapsDocsBar"] is False, geom
-
-        # 2. Zero overlaps between EDIT CODE and breadcrumb filename in BOTH 1-TAB ON and 1-TAB OFF
         assert geom["editOverlapsLeafOn"] is False, geom
         assert geom["editOverlapsLeafOff"] is False, geom
-
-        # 3. Breadcrumb buttons stay inside the 390px viewport (never clipped off the right edge)
+        assert geom["bpIconsOverlapTitle"] is False, geom
         assert geom["bcDiffOn"]["right"] <= 390.5, geom
         assert geom["bcRefOn"]["right"] <= 390.5, geom
         assert geom["bcDiffOff"]["right"] <= 390.5, geom
-
-        # 4. Mobile SPLIT / FULL buttons are visible (width > 0, height > 0) on <= 768px phones
-        assert geom["filesSplitBtn"]["width"] > 30 and geom["filesSplitBtn"]["height"] >= 20, geom
-        assert geom["bpSplitBtn"]["width"] > 30 and geom["bpSplitBtn"]["height"] >= 20, geom
-
-        # 5. Browser top-bar icons do not overlap CO-PILOT // :9222, and mobile split stacks full-width top/bottom (390px wide, not 195px columns)
-        assert geom["bpIconsOverlapTitle"] is False, geom
         assert geom["browserPane"]["width"] >= 388, geom
-        assert geom["termCol"]["width"] >= 388, geom
-        assert geom["browserPane"]["top"] >= geom["termCol"]["bottom"] - 1.5, geom
     finally:
         proc.terminate()
         try:

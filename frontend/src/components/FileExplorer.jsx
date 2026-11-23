@@ -1261,13 +1261,12 @@ export default function FileExplorer({
           )}
           <button
             type="button"
-            className={`pane-full-upgrade-btn ${!splitMode ? 'is-full' : ''}`}
+            className={`pane-full-upgrade-btn desktop-only ${!splitMode ? 'is-full' : ''}`}
             onClick={onToggleSplitMode}
             title={splitMode ? 'Upgrade Files to Full View' : 'Return Files to Split Screen'}
           >
             <Icon name={splitMode ? 'maximize' : 'split'} size={12} />
-            <span className="pane-upgrade-label-full">{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
-            <span className="pane-upgrade-label-compact">{splitMode ? 'FULL' : 'SPLIT'}</span>
+            <span>{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
           </button>
           <button
             type="button"

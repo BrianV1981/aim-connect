@@ -248,9 +248,19 @@ function App() {
   }, []);
   const [pasteFlash, setPasteFlash] = useState(false);
   const [fileSelectMode, setFileSelectMode] = useState(false);
+  const [isWidescreen, setIsWidescreen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth > 900 : true
+  );
   const [splitMode, setSplitMode] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth > 900 : true
   );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onViewportResize = () => setIsWidescreen(window.innerWidth > 900);
+    window.addEventListener('resize', onViewportResize);
+    return () => window.removeEventListener('resize', onViewportResize);
+  }, []);
+  const effectiveSplitMode = splitMode && isWidescreen;
   const [splitWidthPct, setSplitWidthPct] = useState(() => {
     if (typeof window === 'undefined') return 48;
     const saved = Number(localStorage.getItem('aim-split-pane-pct'));
@@ -2216,7 +2226,7 @@ function App() {
         <div className="hdr-cluster">
           <button
             type="button"
-            className={`ghost-btn ${showFleetSidebar ? 'active' : ''}`}
+            className={`ghost-btn desktop-only ${showFleetSidebar ? 'active' : ''}`}
             onClick={toggleFleetSidebar}
             title="Toggle Multi-Session Fleet Sidebar"
             style={{ position: 'relative' }}
@@ -2373,7 +2383,7 @@ function App() {
 
           <button
             type="button"
-            className={`ghost-btn ${showSettings ? 'active' : ''}`}
+            className={`ghost-btn desktop-only ${showSettings ? 'active' : ''}`}
             onClick={() => openSettingsModal('appearance')}
             title="System Settings (Themes, Standalone App, Keyboard, Voice, Vault & 3FA)"
           >
@@ -2389,7 +2399,7 @@ function App() {
 
       <div
         className={`cockpit-body ${isDraggingSplit ? 'is-resizing-split' : ''} ${
-          splitMode && (showFiles || showBrowser) ? 'has-split' : ''
+          effectiveSplitMode && (showFiles || showBrowser) ? 'has-split' : ''
         }`}
         ref={cockpitBodyRef}
         style={{ '--split-pane-width': `${splitWidthPct}%` }}
@@ -2411,7 +2421,7 @@ function App() {
         <div
           ref={terminalColumnRef}
           style={{
-            display: (!showFiles && !showBrowser) || splitMode ? 'flex' : 'none',
+            display: (!showFiles && !showBrowser) || effectiveSplitMode ? 'flex' : 'none',
             flexDirection: 'column',
             flex: 1,
             minHeight: 0,
@@ -3102,7 +3112,7 @@ function App() {
           })()}
         </div>
 
-        {splitMode && (showFiles || showBrowser) && (
+        {effectiveSplitMode && (showFiles || showBrowser) && (
           <div
             className={`split-pane-resizer ${isDraggingSplit ? 'dragging' : ''}`}
             role="separator"
@@ -3119,7 +3129,7 @@ function App() {
         <FileExplorer
           isOpen={showFiles}
           activeSession={activeSession}
-          splitMode={splitMode}
+          splitMode={effectiveSplitMode}
           uiTheme={theme}
           treeSide={filesTreeSide}
           onToggleTreeSide={() => {
@@ -3172,7 +3182,7 @@ function App() {
 
         <BrowserPane
           isOpen={showBrowser}
-          splitMode={splitMode}
+          splitMode={effectiveSplitMode}
           apiToken={apiTokenRef.current}
           activeSession={activeSession}
           preferredTargetId={preferredBrowserTargetId}
@@ -3197,15 +3207,21 @@ function App() {
         />
       </div>
 
-      {/* Frosted Mobile Bottom Dock (<768px 1-Tap Browser, Files, Voice & Settings — #258) */}
+      {/* Frosted Mobile Bottom Dock (<768px 1-Tap Full-View Browser, Files, Voice & Settings — #258, #280) */}
       <nav className="ld-mobile-dock" aria-label="Mobile Navigation Dock">
         <button
           type="button"
           className={`m-dock-tab ${showFleetSidebar ? 'active' : ''}`}
           onClick={toggleFleetSidebar}
+          style={{ position: 'relative' }}
         >
           <Icon name="cpu" size={15} />
           <span>FLEET</span>
+          {unreadSessions.length > 0 && (
+            <span className="fleet-header-unread-dot" title={`${unreadSessions.length} unread completed session(s)`}>
+              {unreadSessions.length}
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -3222,20 +3238,9 @@ function App() {
           type="button"
           className={`m-dock-tab ${showBrowser && !showFleetSidebar ? 'active' : ''}`}
           onClick={() => {
-            const wasFleetOpen = showFleetSidebar;
             setShowFleetSidebar(false);
-            if (showBrowser && !wasFleetOpen) {
-              setSplitMode((prev) => !prev);
-            } else {
-              setShowBrowser(true);
-              setShowFiles(false);
-              setSplitMode(false);
-            }
-            setTimeout(() => {
-              try {
-                fitAddon.current?.fit();
-              } catch {}
-            }, 80);
+            setShowBrowser(true);
+            setShowFiles(false);
           }}
         >
           <Icon name="globe" size={15} />
@@ -3245,20 +3250,9 @@ function App() {
           type="button"
           className={`m-dock-tab ${showFiles && !showFleetSidebar ? 'active' : ''}`}
           onClick={() => {
-            const wasFleetOpen = showFleetSidebar;
             setShowFleetSidebar(false);
-            if (showFiles && !wasFleetOpen) {
-              setSplitMode((prev) => !prev);
-            } else {
-              setShowFiles(true);
-              setShowBrowser(false);
-              setSplitMode(false);
-            }
-            setTimeout(() => {
-              try {
-                fitAddon.current?.fit();
-              } catch {}
-            }, 80);
+            setShowFiles(true);
+            setShowBrowser(false);
           }}
         >
           <Icon name="files" size={15} />
