@@ -1828,6 +1828,31 @@ svg.lucide {
   color: var(--accent);
 }
 
+.fleet-filter-pill.has-thinking:not(.active) {
+  border-color: rgba(var(--accent-rgb), 0.42);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.055);
+}
+
+.fleet-filter-pill.has-new:not(.active) {
+  border-color: rgba(0, 184, 255, 0.48);
+  color: #38bdf8;
+  background: rgba(0, 184, 255, 0.09);
+}
+
+.fleet-filter-pill.has-new.active {
+  border-color: #38bdf8;
+  color: #38bdf8;
+  background: rgba(0, 184, 255, 0.18);
+}
+
+[data-theme="light"] .fleet-filter-pill.has-new:not(.active),
+[data-theme="light"] .fleet-filter-pill.has-new.active {
+  color: #0369a1;
+  border-color: rgba(3, 105, 161, 0.48);
+  background: rgba(3, 105, 161, 0.12);
+}
+
 .fleet-session-list {
   flex: 1;
   overflow-y: auto;

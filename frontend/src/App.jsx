@@ -12,6 +12,7 @@ import MacroLibraryModal from './components/MacroLibraryModal';
 import AuthScreen from './components/AuthScreen';
 import DeleteSessionModal from './components/DeleteSessionModal';
 import FleetSidebar from './components/FleetSidebar';
+import { reconcileUnreadSessions } from './fleetFilterUtils';
 import CommandPalette from './components/CommandPalette';
 import TokenGrabberModal from './components/TokenGrabberModal';
 import FileExplorer from './components/FileExplorer';
@@ -910,9 +911,15 @@ function App() {
           } else if (newlyCompleted.length > 0) {
             playAlertChime('done');
           }
-          if (newlyCompleted.length > 0) {
-            setUnreadSessions((prev) => Array.from(new Set([...prev, ...newlyCompleted])));
-          }
+          setUnreadSessions((prev) =>
+            reconcileUnreadSessions(
+              prev,
+              Array.isArray(data.sessions) ? data.sessions : [],
+              data.fleet,
+              newlyCompleted,
+              activeSession
+            )
+          );
         }
       } catch (err) {
         console.error(err);

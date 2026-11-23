@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react';
 import { getAgentColor } from '../agentColors';
+import {
+  computeFleetFilterCounts,
+  filterFleetItems,
+  isRawTmuxItem,
+} from '../fleetFilterUtils';
 import Icon from './Icons';
 
 function formatTokens(n) {
@@ -100,53 +105,15 @@ export default function FleetSidebar({
     });
   }, [sessions, fleet]);
 
-  const counts = useMemo(() => {
-    let thinking = 0;
-    let waiting = 0;
-    let critical = 0;
-    let warning = 0;
-    let noBrowser = 0;
-    let rawTmux = 0;
-    items.forEach((it) => {
-      const isRaw =
-        it.vessel === 'service' ||
-        (it.vessel === 'shell' && !it.tokens_used && Number(it.compaction_count || 0) === 0);
-      if (isRaw) rawTmux += 1;
-      if (!it.has_browser_lease) noBrowser += 1;
-      if (it.status === 'THINKING') thinking += 1;
-      if (it.status === 'WAITING') waiting += 1;
-      if (!isRaw) {
-        if (it.tier === 'critical' || Number(it.compaction_count || 0) > 0) critical += 1;
-        else if (it.tier === 'warning') warning += 1;
-      }
-    });
-    return { total: items.length, thinking, waiting, critical, warning, noBrowser, rawTmux };
-  }, [items]);
+  const counts = useMemo(
+    () => computeFleetFilterCounts(items, unreadSessions),
+    [items, unreadSessions]
+  );
 
-  const filteredItems = useMemo(() => {
-    const q = filterText.trim().toLowerCase();
-    return items.filter((it) => {
-      const isRaw =
-        it.vessel === 'service' ||
-        (it.vessel === 'shell' && !it.tokens_used && Number(it.compaction_count || 0) === 0);
-      if (statusFilter === 'nobrowser' && it.has_browser_lease) return false;
-      if (statusFilter === 'tmux' && !isRaw) return false;
-      if (statusFilter === 'waiting' && it.status !== 'WAITING') return false;
-      if (
-        statusFilter === 'high_ctx' &&
-        (isRaw || (it.tier === 'normal' && Number(it.compaction_count || 0) === 0))
-      ) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        it.session_name.toLowerCase().includes(q) ||
-        (it.vessel || '').toLowerCase().includes(q) ||
-        (it.branch || '').toLowerCase().includes(q) ||
-        (it.repo_name || '').toLowerCase().includes(q)
-      );
-    });
-  }, [items, filterText, statusFilter]);
+  const filteredItems = useMemo(
+    () => filterFleetItems(items, { statusFilter, filterText, unreadSessions }),
+    [items, filterText, statusFilter, unreadSessions]
+  );
 
   const handleTriggerSkill = async (e, sessionName, command, label) => {
     e.stopPropagation();
@@ -236,6 +203,26 @@ export default function FleetSidebar({
           </button>
           <button
             type="button"
+            className={`fleet-filter-pill ${statusFilter === 'thinking' ? 'active' : ''} ${
+              counts.thinking > 0 ? 'has-thinking' : ''
+            }`}
+            onClick={() => setStatusFilter('thinking')}
+            title="Actively working / thinking AI agent sessions"
+          >
+            THINKING ({counts.thinking})
+          </button>
+          <button
+            type="button"
+            className={`fleet-filter-pill ${statusFilter === 'new' ? 'active' : ''} ${
+              counts.unread > 0 ? 'has-new' : ''
+            }`}
+            onClick={() => setStatusFilter('new')}
+            title="Agents that finished a turn and replied while in the background"
+          >
+            NEW ({counts.unread})
+          </button>
+          <button
+            type="button"
             className={`fleet-filter-pill ${statusFilter === 'nobrowser' ? 'active' : ''}`}
             onClick={() => setStatusFilter('nobrowser')}
             title="CLI-Only Agents & Raw Tmux Servers with No Open Browser Lease"
@@ -263,16 +250,20 @@ export default function FleetSidebar({
 
       <div className="fleet-session-list">
         {filteredItems.length === 0 ? (
-          <div className="fleet-empty-state">No matching sessions</div>
+          <div className="fleet-empty-state">
+            {statusFilter === 'thinking'
+              ? 'No agents currently thinking'
+              : statusFilter === 'new'
+                ? 'No unread agent replies'
+                : 'No matching sessions'}
+          </div>
         ) : (
           filteredItems.map((item) => {
             const isActive = item.session_name === activeSession;
-            const isUnread = unreadSessions.includes(item.session_name);
+            const isUnread = unreadSessions.includes(item.session_name) && item.status !== 'THINKING';
             const compactionCount = Number(item.compaction_count || 0);
             const isCompacted = compactionCount > 0;
-            const isRawTmux =
-              item.vessel === 'service' ||
-              (item.vessel === 'shell' && !item.tokens_used && !isCompacted);
+            const isRawTmux = isRawTmuxItem(item);
             const vesselCode = VESSEL_LABELS[item.vessel] || 'TMUX';
             const rawPct = Math.min(100, Math.max(0, Number(item.context_pct || 0)));
             const barWidth = isCompacted ? Math.max(6, rawPct) : Math.max(4, rawPct);
