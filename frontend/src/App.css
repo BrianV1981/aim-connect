@@ -3840,7 +3840,7 @@ mark.find-hit-mark.active-hit {
   flex-shrink: 0;
 }
 
-/* Persistent 2-Column Files Split Layout (#260, #266) */
+/* Persistent 2-Column Files Split Layout (#260, #266, #267) */
 .files-split-body {
   flex: 1;
   min-height: 0;
@@ -3848,19 +3848,25 @@ mark.find-hit-mark.active-hit {
   overflow: hidden;
 }
 
+.files-split-body.is-resizing-tree {
+  user-select: none;
+  cursor: col-resize;
+}
+
 .files-split-body.tree-right {
   flex-direction: row-reverse;
 }
 
 .files-tree-rail {
-  width: 220px;
-  min-width: 185px;
+  width: var(--files-tree-width, 226px);
+  min-width: 150px;
+  max-width: 520px;
   border-right: 1px solid var(--border-hairline);
-  padding: 8px;
-  overflow-y: auto;
+  padding: 8px 8px 6px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.012);
 }
@@ -3872,6 +3878,73 @@ mark.find-hit-mark.active-hit {
 
 .files-tree-rail.rail-collapsed {
   display: none;
+}
+
+.files-tree-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 5px;
+  border-bottom: 1px solid var(--border-hairline);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.files-tree-folder-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-tree-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid var(--border-hairline);
+  flex-shrink: 0;
+}
+
+.tree-side-flip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px !important;
+  font-weight: 700;
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.38);
+}
+
+.files-tree-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.files-tree-resizer {
+  width: 5px;
+  margin: 0 -2px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 8;
+  transition: background 0.12s ease;
+}
+
+.files-tree-resizer:hover,
+.files-tree-resizer.dragging {
+  background: rgba(var(--accent-rgb), 0.55);
 }
 
 .files-breadcrumb-bar {

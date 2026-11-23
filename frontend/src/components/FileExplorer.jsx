@@ -63,6 +63,7 @@ export default function FileExplorer({
   splitMode,
   uiTheme = 'emerald',
   treeSide = 'left',
+  onToggleTreeSide,
   hideDotfiles = true,
   onToggleHideDotfiles,
   editorFontSize = 13,
@@ -93,7 +94,13 @@ export default function FileExplorer({
   const [treeCollapsed, setTreeCollapsed] = useState(
     () => localStorage.getItem('aim-files-tree-collapsed') === 'true'
   );
+  const [treeWidthPx, setTreeWidthPx] = useState(() => {
+    const saved = parseInt(localStorage.getItem('aim-files-tree-width') || '226', 10);
+    return Number.isFinite(saved) && saved >= 150 && saved <= 520 ? saved : 226;
+  });
+  const [isResizingTree, setIsResizingTree] = useState(false);
   const [showMobileTree, setShowMobileTree] = useState(true);
+  const splitBodyRef = useRef(null);
   const selectSurfaceRef = useRef(null);
   const autoOpenedSessionRef = useRef('');
   const blobUrlsRef = useRef(new Set());
@@ -118,6 +125,50 @@ export default function FileExplorer({
       return next;
     });
   };
+
+  const handleTreeResizerPointerDown = useCallback(
+    (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      const container = splitBodyRef.current;
+      if (!container) return;
+      e.preventDefault();
+      setIsResizingTree(true);
+
+      let latestPx = treeWidthPx;
+      const updateWidth = (clientX) => {
+        const rect = container.getBoundingClientRect();
+        if (rect.width < 320) return;
+        const rawPx = treeSide === 'right' ? rect.right - clientX : clientX - rect.left;
+        const maxPx = Math.min(520, Math.max(200, Math.round(rect.width * 0.65)));
+        const clamped = Math.max(150, Math.min(maxPx, Math.round(rawPx)));
+        latestPx = clamped;
+        setTreeWidthPx(clamped);
+      };
+
+      const onMove = (ev) => updateWidth(ev.clientX);
+      const onEnd = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onEnd);
+        window.removeEventListener('pointercancel', onEnd);
+        setIsResizingTree(false);
+        try {
+          localStorage.setItem('aim-files-tree-width', String(latestPx));
+        } catch {}
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onEnd);
+      window.addEventListener('pointercancel', onEnd);
+    },
+    [treeSide, treeWidthPx]
+  );
+
+  const handleTreeResizerDoubleClick = useCallback(() => {
+    setTreeWidthPx(226);
+    try {
+      localStorage.setItem('aim-files-tree-width', '226');
+    } catch {}
+  }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
@@ -903,131 +954,178 @@ export default function FileExplorer({
         </div>
       )}
 
-      {/* Persistent 2-Column Split Body: Configurable Left or Right Tree Rail + Editor/Preview Stage (#260, #266) */}
-      <div className={`files-split-body ${treeSide === 'right' ? 'tree-right' : 'tree-left'}`}>
+      {/* Persistent 2-Column Split Body: Configurable Left or Right Tree Rail + Draggable Resizer + Editor/Preview Stage (#260, #266, #267) */}
+      <div
+        ref={splitBodyRef}
+        className={`files-split-body ${treeSide === 'right' ? 'tree-right' : 'tree-left'} ${
+          isResizingTree ? 'is-resizing-tree' : ''
+        }`}
+        style={{ '--files-tree-width': `${treeWidthPx}px` }}
+      >
         <aside
           className={`files-tree-rail ${treeCollapsed ? 'rail-collapsed' : ''} ${
             !showMobileTree && activeTab ? 'mobile-rail-hidden' : ''
           }`}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', padding: '2px 4px 6px', borderBottom: '1px solid var(--border-hairline)', marginBottom: '4px' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9.5px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.12em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {/* Row 1: Dedicated Folder / Repository Name Row (#267) */}
+          <div className="files-tree-folder-row" title={rootPath || currentPath}>
+            <span style={{ color: 'var(--accent)', display: 'inline-flex', flexShrink: 0 }}>
+              <Icon name={navMode === 'git' ? 'gitBranch' : 'folder'} size={12} />
+            </span>
+            <span className="files-tree-folder-title">
               {navMode === 'git'
                 ? `CHANGES (${gitStatus.branch || 'HEAD'})`
                 : (rootPath.split('/').filter(Boolean).pop() || 'WORKSPACE').toUpperCase()}
             </span>
-            <div style={{ display: 'flex', gap: '3px', flexShrink: 0 }}>
-              {navMode === 'files' ? (
-                <>
-                  <button
-                    type="button"
-                    className={`fav-chip ${!hideDotfiles ? 'active' : ''}`}
-                    style={{ padding: '0 5px' }}
-                    onClick={() => onToggleHideDotfiles?.()}
-                    title={hideDotfiles ? 'Hidden dotfiles/caches filtered — click to show all' : 'Showing dotfiles — click to hide .git/.pytest_cache'}
-                  >
-                    <Icon name={hideDotfiles ? 'eyeOff' : 'eye'} size={11} />
-                  </button>
-                  <button
-                    type="button"
-                    className="fav-chip"
-                    style={{ padding: '0 5px' }}
-                    onClick={() => loadFiles((rootPath || currentPath).split('/').slice(0, -1).join('/') || '/', true)}
-                    title="Move Root Up One Directory"
-                  >
-                    <Icon name="arrowUp" size={11} />
-                  </button>
-                  <button
-                    type="button"
-                    className="fav-chip"
-                    style={{ padding: '0 5px' }}
-                    onClick={() => createItem(false)}
-                    title="New File"
-                  >
-                    +F
-                  </button>
-                  <button
-                    type="button"
-                    className="fav-chip"
-                    style={{ padding: '0 5px' }}
-                    onClick={() => createItem(true)}
-                    title="New Folder"
-                  >
-                    +D
-                  </button>
-                  <button
-                    type="button"
-                    className="fav-chip"
-                    style={{ padding: '0 5px' }}
-                    onClick={refreshTree}
-                    title="Refresh Explorer Tree"
-                  >
-                    <Icon name="refresh" size={11} />
-                  </button>
-                </>
-              ) : (
+          </div>
+
+          {/* Row 2: Dedicated Action & Left/Right Flip Toolbar Row (#267) */}
+          <div className="files-tree-actions-row">
+            <button
+              type="button"
+              className="fav-chip tree-side-flip-btn"
+              onClick={() => onToggleTreeSide?.()}
+              title={
+                treeSide === 'right'
+                  ? 'Move File Explorer to Left side'
+                  : 'Move File Explorer to Right side'
+              }
+            >
+              <Icon name={treeSide === 'right' ? 'sidebar' : 'panelRight'} size={11} />
+              <span>{treeSide === 'right' ? '← LEFT' : 'RIGHT →'}</span>
+            </button>
+
+            {navMode === 'files' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`fav-chip ${!hideDotfiles ? 'active' : ''}`}
+                  style={{ padding: '0 5px' }}
+                  onClick={() => onToggleHideDotfiles?.()}
+                  title={
+                    hideDotfiles
+                      ? 'Hidden dotfiles/caches filtered — click to show all'
+                      : 'Showing dotfiles — click to hide .git/.pytest_cache'
+                  }
+                >
+                  <Icon name={hideDotfiles ? 'eyeOff' : 'eye'} size={11} />
+                </button>
                 <button
                   type="button"
                   className="fav-chip"
-                  style={{ padding: '0 6px' }}
-                  onClick={() => loadGitStatus()}
-                  title="Refresh Git Status"
+                  style={{ padding: '0 5px' }}
+                  onClick={() =>
+                    loadFiles((rootPath || currentPath).split('/').slice(0, -1).join('/') || '/', true)
+                  }
+                  title="Move Root Up One Directory"
+                >
+                  <Icon name="arrowUp" size={11} />
+                </button>
+                <button
+                  type="button"
+                  className="fav-chip"
+                  style={{ padding: '0 5px' }}
+                  onClick={() => createItem(false)}
+                  title="New File"
+                >
+                  +F
+                </button>
+                <button
+                  type="button"
+                  className="fav-chip"
+                  style={{ padding: '0 5px' }}
+                  onClick={() => createItem(true)}
+                  title="New Folder"
+                >
+                  +D
+                </button>
+                <button
+                  type="button"
+                  className="fav-chip"
+                  style={{ padding: '0 5px' }}
+                  onClick={refreshTree}
+                  title="Refresh Explorer Tree"
                 >
                   <Icon name="refresh" size={11} />
                 </button>
-              )}
-            </div>
-          </div>
-
-          {navMode === 'git' ? (
-            gitStatus.files.length === 0 ? (
-              <div style={{ padding: '12px 6px', fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                Working tree clean.
               </div>
             ) : (
-              gitStatus.files.map((gf, idx) => {
-                const isSelected = activeTab?.path === gf.path;
-                return (
-                  <div
-                    key={`${gf.path}:${idx}`}
-                    className={`tree-file-btn ${isSelected ? 'active' : ''}`}
-                    onClick={() => openDiffTab(gf.path, gf.rel_path)}
-                    title={`${gf.rel_path} (Click for Git Diff)`}
-                  >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {gf.rel_path}
-                    </span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                      <span
-                        style={{
-                          fontSize: '9.5px',
-                          fontWeight: 700,
-                          color: gf.status.includes('M') ? '#fbbf24' : 'var(--accent)',
-                        }}
-                      >
-                        {gf.status}
+              <button
+                type="button"
+                className="fav-chip"
+                style={{ padding: '0 6px' }}
+                onClick={() => loadGitStatus()}
+                title="Refresh Git Status"
+              >
+                <Icon name="refresh" size={11} />
+              </button>
+            )}
+          </div>
+
+          {/* Row 3: Scrollable File Explorer Tree Window (#267) */}
+          <div className="files-tree-scroll">
+            {navMode === 'git' ? (
+              gitStatus.files.length === 0 ? (
+                <div style={{ padding: '12px 6px', fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                  Working tree clean.
+                </div>
+              ) : (
+                gitStatus.files.map((gf, idx) => {
+                  const isSelected = activeTab?.path === gf.path;
+                  return (
+                    <div
+                      key={`${gf.path}:${idx}`}
+                      className={`tree-file-btn ${isSelected ? 'active' : ''}`}
+                      onClick={() => openDiffTab(gf.path, gf.rel_path)}
+                      title={`${gf.rel_path} (Click for Git Diff)`}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {gf.rel_path}
                       </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openFileTab(gf.path, gf.rel_path.split('/').pop());
-                        }}
-                        title="Open file"
-                        style={{ opacity: 0.75, display: 'inline-flex' }}
-                      >
-                        <Icon name="edit" size={11} />
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                        <span
+                          style={{
+                            fontSize: '9.5px',
+                            fontWeight: 700,
+                            color: gf.status.includes('M') ? '#fbbf24' : 'var(--accent)',
+                          }}
+                        >
+                          {gf.status}
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFileTab(gf.path, gf.rel_path.split('/').pop());
+                          }}
+                          title="Open file"
+                          style={{ opacity: 0.75, display: 'inline-flex' }}
+                        >
+                          <Icon name="edit" size={11} />
+                        </span>
                       </span>
-                    </span>
-                  </div>
-                );
-              })
-            )
-          ) : (
-            rootPath && renderTreeNodes(rootPath, 0)
-          )}
+                    </div>
+                  );
+                })
+              )
+            ) : (
+              rootPath && renderTreeNodes(rootPath, 0)
+            )}
+          </div>
         </aside>
+
+        {!treeCollapsed && (
+          <div
+            className={`files-tree-resizer desktop-only ${isResizingTree ? 'dragging' : ''}`}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Drag vertical separator to resize folder explorer"
+            title="Drag to resize folder explorer · Double-click to reset width"
+            onPointerDown={handleTreeResizerPointerDown}
+            onDoubleClick={handleTreeResizerDoubleClick}
+          />
+        )}
 
         <div className="files-editor-column">
           {tabs.length > 0 && (

@@ -2930,6 +2930,13 @@ function App() {
           splitMode={splitMode}
           uiTheme={theme}
           treeSide={filesTreeSide}
+          onToggleTreeSide={() => {
+            setFilesTreeSide((prev) => {
+              const next = prev === 'right' ? 'left' : 'right';
+              localStorage.setItem('aim-files-tree-side', next);
+              return next;
+            });
+          }}
           hideDotfiles={filesHideDotfiles}
           onToggleHideDotfiles={() => {
             setFilesHideDotfiles((prev) => {
