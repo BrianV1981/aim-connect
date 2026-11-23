@@ -734,6 +734,131 @@ async def download_browser_artifact(filename: str):
     return FileResponse(path=target_path, filename=safe_name)
 
 
+_CDP_VK_BY_KEY: dict[str, int] = {
+    "Backspace": 8,
+    "Tab": 9,
+    "Clear": 12,
+    "Enter": 13,
+    "Pause": 19,
+    "Escape": 27,
+    " ": 32,
+    "PageUp": 33,
+    "PageDown": 34,
+    "End": 35,
+    "Home": 36,
+    "ArrowLeft": 37,
+    "ArrowUp": 38,
+    "ArrowRight": 39,
+    "ArrowDown": 40,
+    "Insert": 45,
+    "Delete": 46,
+    "ContextMenu": 93,
+}
+
+_CDP_VK_BY_CODE: dict[str, int] = {
+    "Space": 32,
+    **{f"Digit{d}": 48 + d for d in range(10)},
+    **{f"Key{chr(65 + i)}": 65 + i for i in range(26)},
+    **{f"Numpad{d}": 96 + d for d in range(10)},
+    "NumpadMultiply": 106,
+    "NumpadAdd": 107,
+    "NumpadSubtract": 109,
+    "NumpadDecimal": 110,
+    "NumpadDivide": 111,
+    "NumpadEnter": 13,
+    "NumpadEqual": 187,
+    "Semicolon": 186,
+    "Equal": 187,
+    "Comma": 188,
+    "Minus": 189,
+    "Period": 190,
+    "Slash": 191,
+    "Backquote": 192,
+    "BracketLeft": 219,
+    "Backslash": 220,
+    "BracketRight": 221,
+    "Quote": 222,
+    "IntlBackslash": 226,
+}
+
+_CDP_VK_BY_CHAR: dict[str, int] = {
+    "!": 49,
+    "@": 50,
+    "#": 51,
+    "$": 52,
+    "%": 53,
+    "^": 54,
+    "&": 55,
+    "*": 56,
+    "(": 57,
+    ")": 48,
+    ";": 186,
+    ":": 186,
+    "=": 187,
+    "+": 187,
+    ",": 188,
+    "<": 188,
+    "-": 189,
+    "_": 189,
+    ".": 190,
+    ">": 190,
+    "/": 191,
+    "?": 191,
+    "`": 192,
+    "~": 192,
+    "[": 219,
+    "{": 219,
+    "\\": 220,
+    "|": 220,
+    "]": 221,
+    "}": 221,
+    "'": 222,
+    '"': 222,
+}
+
+
+def _normalize_cdp_key_params(msg: dict[str, Any]) -> dict[str, Any]:
+    """Normalize WebSocket key payloads so punctuation ASCII codes never alias VK_DELETE/VK_HOME (#278)."""
+    key = str(msg.get("key") or "")
+    code = str(msg.get("code") or "")
+    params: dict[str, Any] = {
+        "type": msg.get("eventType", "keyDown"),
+        "key": key,
+        "code": code,
+        "modifiers": int(msg.get("modifiers", 0)),
+    }
+    text = msg.get("text")
+    if text:
+        params["text"] = str(text)
+        params["unmodifiedText"] = str(msg.get("unmodifiedText") or text)
+
+    raw_vk = int(msg.get("windowsVirtualKeyCode") or 0)
+    if key in _CDP_VK_BY_KEY:
+        vk = _CDP_VK_BY_KEY[key]
+    elif len(key) == 1 and not ("0" <= key <= "9" or "A" <= key.upper() <= "Z" or key == " "):
+        if code in _CDP_VK_BY_CODE:
+            vk = _CDP_VK_BY_CODE[code]
+        elif key in _CDP_VK_BY_CHAR:
+            vk = _CDP_VK_BY_CHAR[key]
+        elif raw_vk == ord(key.upper()):
+            vk = 0
+        else:
+            vk = raw_vk
+    elif raw_vk > 0:
+        vk = raw_vk
+    elif code in _CDP_VK_BY_CODE:
+        vk = _CDP_VK_BY_CODE[code]
+    elif len(key) == 1 and ("0" <= key <= "9" or "A" <= key.upper() <= "Z"):
+        vk = ord(key.upper())
+    else:
+        vk = 0
+
+    if vk > 0:
+        params["windowsVirtualKeyCode"] = vk
+        params["nativeVirtualKeyCode"] = vk
+    return params
+
+
 class _CdpPageBridge:
     """Thin async CDP WebSocket session streaming Page.startScreencast & forwarding input."""
 
@@ -1118,18 +1243,7 @@ async def browser_viewport_ws(websocket: WebSocket):
                     },
                 )
             elif mtype == "key":
-                params: dict[str, Any] = {
-                    "type": msg.get("eventType", "keyDown"),
-                    "key": msg.get("key", ""),
-                    "code": msg.get("code", ""),
-                    "modifiers": int(msg.get("modifiers", 0)),
-                }
-                if msg.get("text"):
-                    params["text"] = msg["text"]
-                if msg.get("windowsVirtualKeyCode"):
-                    params["windowsVirtualKeyCode"] = int(msg["windowsVirtualKeyCode"])
-                    params["nativeVirtualKeyCode"] = int(msg["windowsVirtualKeyCode"])
-                await bridge.send_cmd("Input.dispatchKeyEvent", params)
+                await bridge.send_cmd("Input.dispatchKeyEvent", _normalize_cdp_key_params(msg))
             elif mtype == "insert_text":
                 text = str(msg.get("text") or "")
                 if text:

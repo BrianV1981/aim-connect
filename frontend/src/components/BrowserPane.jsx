@@ -1,18 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getAgentColor, resolveTabAgentInfo } from '../agentColors';
+import { resolveBrowserKeyAction } from '../browserKeyUtils';
 import Icon from './Icons';
-
-const KEY_CODE_MAP = {
-  Enter: 13,
-  Backspace: 8,
-  Tab: 9,
-  Escape: 27,
-  ArrowLeft: 37,
-  ArrowUp: 38,
-  ArrowRight: 39,
-  ArrowDown: 40,
-  Delete: 46,
-};
 
 export default function BrowserPane({
   isOpen,
@@ -466,12 +455,45 @@ export default function BrowserPane({
 
   const handleCanvasKeyDown = (e) => {
     if (!controlMode || !daemonRunning) return;
+    const resolved = resolveBrowserKeyAction(e);
+    if (resolved.action === 'allow_paste') {
+      return;
+    }
     e.preventDefault();
-    const modifiers = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
-    const vk = KEY_CODE_MAP[e.key] || (e.key.length === 1 ? e.key.toUpperCase().charCodeAt(0) : 0);
-    const text = e.key === 'Enter' ? '\r' : e.key.length === 1 && !e.ctrlKey && !e.metaKey ? e.key : '';
-    sendWs({ type: 'key', eventType: 'keyDown', key: e.key, code: e.code, text, windowsVirtualKeyCode: vk, modifiers });
-    sendWs({ type: 'key', eventType: 'keyUp', key: e.key, code: e.code, windowsVirtualKeyCode: vk, modifiers });
+    if (resolved.action === 'ignore') {
+      return;
+    }
+    if (resolved.action === 'insert_text') {
+      sendWs({ type: 'insert_text', text: resolved.text });
+      return;
+    }
+    sendWs({
+      type: 'key',
+      eventType: 'keyDown',
+      key: resolved.key,
+      code: resolved.code,
+      text: resolved.text,
+      unmodifiedText: resolved.unmodifiedText,
+      windowsVirtualKeyCode: resolved.windowsVirtualKeyCode,
+      modifiers: resolved.modifiers,
+    });
+    sendWs({
+      type: 'key',
+      eventType: 'keyUp',
+      key: resolved.key,
+      code: resolved.code,
+      windowsVirtualKeyCode: resolved.windowsVirtualKeyCode,
+      modifiers: resolved.modifiers,
+    });
+  };
+
+  const handleCanvasPaste = (e) => {
+    if (!controlMode || !daemonRunning) return;
+    const pasted = e.clipboardData?.getData('text/plain') || '';
+    if (!pasted) return;
+    e.preventDefault();
+    e.stopPropagation();
+    sendWs({ type: 'insert_text', text: pasted });
   };
 
   const handleSendQuickText = (e) => {
@@ -1147,7 +1169,7 @@ export default function BrowserPane({
           <button
             type="button"
             className="fav-chip"
-            onClick={() =>
+            onClick={() => {
               sendWs({
                 type: 'key',
                 eventType: 'keyDown',
@@ -1155,8 +1177,15 @@ export default function BrowserPane({
                 code: 'Enter',
                 text: '\r',
                 windowsVirtualKeyCode: 13,
-              })
-            }
+              });
+              sendWs({
+                type: 'key',
+                eventType: 'keyUp',
+                key: 'Enter',
+                code: 'Enter',
+                windowsVirtualKeyCode: 13,
+              });
+            }}
           >
             ENTER ⏎
           </button>
@@ -1239,6 +1268,7 @@ export default function BrowserPane({
                 touchLastYRef.current = null;
               }}
               onKeyDown={handleCanvasKeyDown}
+              onPaste={handleCanvasPaste}
             />
 
             {hudLeftPct !== null && hudTopPct !== null && (
