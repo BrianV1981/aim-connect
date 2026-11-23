@@ -1092,9 +1092,9 @@ export default function FileExplorer({
 
   return (
     <div className={`file-explorer-pane ${splitMode ? 'split-mode' : 'full-mode'}`}>
-      {/* Emerald Matrix Co-Pilot Top Bar (#260, #266) */}
-      <div className="copilot-top-bar" style={{ height: 'auto', minHeight: '38px', padding: '5px 12px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
+      {/* Emerald Matrix Co-Pilot Top Bar (#260, #266, #279) */}
+      <div className="copilot-top-bar files-top-bar">
+        <div className="copilot-top-left">
           <button
             type="button"
             className={`subbar-util-btn ${navMode === 'files' ? 'active' : ''}`}
@@ -1228,7 +1228,7 @@ export default function FileExplorer({
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+        <div className="copilot-top-right">
           {activeTab?.type === 'file' && (!activeIsMarkdown || mdViewMode === 'code') && (
             <button
               id="save-btn"
@@ -1261,12 +1261,13 @@ export default function FileExplorer({
           )}
           <button
             type="button"
-            className={`pane-full-upgrade-btn desktop-only ${!splitMode ? 'is-full' : ''}`}
+            className={`pane-full-upgrade-btn ${!splitMode ? 'is-full' : ''}`}
             onClick={onToggleSplitMode}
             title={splitMode ? 'Upgrade Files to Full View' : 'Return Files to Split Screen'}
           >
             <Icon name={splitMode ? 'maximize' : 'split'} size={12} />
-            <span>{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
+            <span className="pane-upgrade-label-full">{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
+            <span className="pane-upgrade-label-compact">{splitMode ? 'FULL' : 'SPLIT'}</span>
           </button>
           <button
             type="button"
@@ -1592,7 +1593,7 @@ export default function FileExplorer({
                 })}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
+              <div className="files-breadcrumb-actions">
                 {activeTab?.id === DOCS_READER_TAB_ID && (
                   <button
                     type="button"

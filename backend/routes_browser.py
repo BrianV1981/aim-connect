@@ -874,7 +874,7 @@ class _CdpPageBridge:
         self.target_id = target_id
         self.client_ws = client_ws
         self.viewport_width = _clamp_viewport_dim(viewport_width, 1280)
-        self.viewport_height = _clamp_viewport_dim(viewport_height, 900, low=320, high=2160)
+        self.viewport_height = _clamp_viewport_dim(viewport_height, 900, low=200, high=2160)
         self.cdp_ws: Any = None
         self._msg_id = 0
         self._pending: dict[int, asyncio.Future] = {}
@@ -902,7 +902,7 @@ class _CdpPageBridge:
 
     async def _apply_metrics_and_screencast(self, width: int, height: int) -> None:
         self.viewport_width = _clamp_viewport_dim(width, self.viewport_width)
-        self.viewport_height = _clamp_viewport_dim(height, self.viewport_height, low=320, high=2160)
+        self.viewport_height = _clamp_viewport_dim(height, self.viewport_height, low=200, high=2160)
         await self.send_cmd(
             "Emulation.setDeviceMetricsOverride",
             {
@@ -925,7 +925,7 @@ class _CdpPageBridge:
 
     async def resize_viewport(self, width: int, height: int) -> None:
         w = _clamp_viewport_dim(width, self.viewport_width)
-        h = _clamp_viewport_dim(height, self.viewport_height, low=320, high=2160)
+        h = _clamp_viewport_dim(height, self.viewport_height, low=200, high=2160)
         if w == self.viewport_width and h == self.viewport_height:
             return
         try:
@@ -1092,7 +1092,7 @@ async def browser_viewport_ws(websocket: WebSocket):
 
         requested_target = (auth_msg.get("target_id") or "").strip()
         vp_width = _clamp_viewport_dim(auth_msg.get("width"), 1280)
-        vp_height = _clamp_viewport_dim(auth_msg.get("height"), 900, low=320, high=2160)
+        vp_height = _clamp_viewport_dim(auth_msg.get("height"), 900, low=200, high=2160)
         try:
             tid, ws_url, meta = await _resolve_target_ws(requested_target)
             bridge = _CdpPageBridge(
@@ -1164,7 +1164,7 @@ async def browser_viewport_ws(websocket: WebSocket):
 
             if mtype == "resize_viewport":
                 vp_width = _clamp_viewport_dim(msg.get("width"), vp_width)
-                vp_height = _clamp_viewport_dim(msg.get("height"), vp_height, low=320, high=2160)
+                vp_height = _clamp_viewport_dim(msg.get("height"), vp_height, low=200, high=2160)
                 if bridge and not bridge._closed:
                     await bridge.resize_viewport(vp_width, vp_height)
                 continue
@@ -1175,7 +1175,7 @@ async def browser_viewport_ws(websocket: WebSocket):
             if mtype == "switch_target":
                 next_tid = (msg.get("target_id") or "").strip()
                 vp_width = _clamp_viewport_dim(msg.get("width"), vp_width)
-                vp_height = _clamp_viewport_dim(msg.get("height"), vp_height, low=320, high=2160)
+                vp_height = _clamp_viewport_dim(msg.get("height"), vp_height, low=200, high=2160)
                 if bridge:
                     await bridge.close()
                     bridge = None

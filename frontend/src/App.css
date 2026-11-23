@@ -2351,6 +2351,7 @@ svg.lucide {
 .file-explorer-pane {
   display: flex;
   flex-direction: column;
+  position: relative;
   background-color: var(--bg-panel);
   backdrop-filter: blur(18px);
   border-left: 1px solid var(--border-hairline);
@@ -2436,20 +2437,24 @@ svg.lucide {
 }
 
 @media (max-width: 900px) {
+  .cockpit-body.has-split {
+    flex-direction: column;
+  }
+
   .split-pane-resizer {
     display: none;
   }
 
   .file-explorer-pane.split-mode {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: relative;
+    flex: 0 0 52%;
+    height: 52%;
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    z-index: 55;
+    border-left: none;
+    border-top: 1px solid var(--border-strong);
+    z-index: 25;
   }
 }
 
@@ -3514,11 +3519,15 @@ mark.find-hit-mark.active-hit {
   color: var(--text-primary);
 }
 
-.cp-topright-actions {
+.cp-topright-actions,
+.copilot-top-right {
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .cp-action-icon-btn {
@@ -3699,16 +3708,49 @@ mark.find-hit-mark.active-hit {
   border-color: var(--accent);
 }
 
+.pane-upgrade-label-compact {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .pane-upgrade-label-full {
+    display: none;
+  }
+
+  .pane-upgrade-label-compact {
+    display: inline;
+  }
+
+  .pane-full-upgrade-btn {
+    height: 25px;
+    padding: 0 7px;
+    font-size: 9.5px;
+    gap: 4px;
+  }
+}
+
 .copilot-top-bar {
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 38px;
+  height: auto;
+  padding: 5px 12px;
   border-bottom: 1px solid var(--border-hairline);
   background: var(--bg-header);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   flex-shrink: 0;
+}
+
+.copilot-top-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .copilot-tabs-row {
@@ -3979,7 +4021,18 @@ mark.find-hit-mark.active-hit {
   gap: 4px;
   flex-wrap: wrap;
   min-width: 0;
-  flex: 1;
+  max-width: 100%;
+  flex: 1 1 auto;
+}
+
+.files-breadcrumb-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .breadcrumb-seg-btn {
@@ -4172,16 +4225,24 @@ mark.find-hit-mark.active-hit {
   border: 1px solid rgba(245, 158, 11, 0.38);
 }
 
-/* Project Docs Hub Capsule & Single-Tab Website Reader Controls (#262) */
+/* Project Docs Hub Capsule & Single-Tab Website Reader Controls (#262, #279) */
 .project-docs-hub-bar {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  padding: 2px 6px;
+  padding: 3px 6px;
   border-radius: 8px;
   background: rgba(var(--accent-rgb), 0.055);
   border: 1px solid rgba(var(--accent-rgb), 0.28);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.project-docs-hub-bar .ld-select {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .project-docs-hub-badge {

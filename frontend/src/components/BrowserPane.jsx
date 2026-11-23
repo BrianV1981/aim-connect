@@ -66,7 +66,7 @@ export default function BrowserPane({
     const rect = el.getBoundingClientRect();
     const w = Math.round(rect.width);
     const h = Math.round(rect.height);
-    if (w >= 320 && h >= 320) {
+    if (w >= 320 && h >= 200) {
       stageSizeRef.current = { width: w, height: h };
     }
     return stageSizeRef.current;
@@ -322,7 +322,7 @@ export default function BrowserPane({
       if (!entry) return;
       const w = Math.round(entry.contentRect.width);
       const h = Math.round(entry.contentRect.height);
-      if (w < 320 || h < 320) return;
+      if (w < 320 || h < 200) return;
       const prev = stageSizeRef.current;
       if (Math.abs(w - prev.width) < 4 && Math.abs(h - prev.height) < 4) return;
       stageSizeRef.current = { width: w, height: h };
@@ -700,15 +700,14 @@ export default function BrowserPane({
   return (
     <div
       className={`file-explorer-pane browser-copilot-pane ${splitMode ? 'split-mode' : 'full-mode'}`}
-      style={{ position: 'relative' }}
     >
       <div className="copilot-top-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+        <div className="copilot-top-left">
           <span
             className="pulse-led"
             style={!daemonRunning ? { background: '#6b7280', boxShadow: 'none' } : undefined}
           />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', whiteSpace: 'nowrap' }}>
             CO-PILOT // :9222
           </span>
           {!daemonRunning ? (
@@ -804,12 +803,13 @@ export default function BrowserPane({
 
           <button
             type="button"
-            className={`pane-full-upgrade-btn desktop-only ${!splitMode ? 'is-full' : ''}`}
+            className={`pane-full-upgrade-btn ${!splitMode ? 'is-full' : ''}`}
             onClick={onToggleSplitMode}
             title={splitMode ? 'Upgrade Browser to Full View' : 'Return Browser to Split Screen'}
           >
             <Icon name={splitMode ? 'maximize' : 'split'} size={12} />
-            <span>{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
+            <span className="pane-upgrade-label-full">{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
+            <span className="pane-upgrade-label-compact">{splitMode ? 'FULL' : 'SPLIT'}</span>
           </button>
           <button
             type="button"

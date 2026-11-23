@@ -249,7 +249,7 @@ function App() {
   const [pasteFlash, setPasteFlash] = useState(false);
   const [fileSelectMode, setFileSelectMode] = useState(false);
   const [splitMode, setSplitMode] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+    typeof window !== 'undefined' ? window.innerWidth > 900 : true
   );
   const [splitWidthPct, setSplitWidthPct] = useState(() => {
     if (typeof window === 'undefined') return 48;
@@ -2138,11 +2138,10 @@ function App() {
 
   const handleOpenFileFromChat = useCallback((filePath, line = null, endLine = null) => {
     if (!filePath) return;
+    const desktopSplit = typeof window !== 'undefined' ? window.innerWidth > 900 : true;
     setShowFiles(true);
     setShowBrowser(false);
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      setSplitMode(true);
-    }
+    setSplitMode(desktopSplit);
     setRequestedExplorerFile({
       path: filePath,
       line: line || null,
@@ -2157,17 +2156,18 @@ function App() {
   }, []);
 
   const selectWorkspaceTool = (tool) => {
+    const desktopSplit = typeof window !== 'undefined' ? window.innerWidth > 900 : true;
     if (tool === 'none') {
       setShowBrowser(false);
       setShowFiles(false);
-      setSplitMode(true);
+      setSplitMode(desktopSplit);
     } else if (tool === 'browser') {
       if (showBrowser) {
         setSplitMode((prev) => !prev);
       } else {
         setShowBrowser(true);
         setShowFiles(false);
-        if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSplitMode(true);
+        setSplitMode(desktopSplit);
       }
     } else if (tool === 'files') {
       if (showFiles) {
@@ -2175,7 +2175,7 @@ function App() {
       } else {
         setShowFiles(true);
         setShowBrowser(false);
-        if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSplitMode(true);
+        setSplitMode(desktopSplit);
       }
     }
     setTimeout(() => {
@@ -3222,9 +3222,20 @@ function App() {
           type="button"
           className={`m-dock-tab ${showBrowser && !showFleetSidebar ? 'active' : ''}`}
           onClick={() => {
+            const wasFleetOpen = showFleetSidebar;
             setShowFleetSidebar(false);
-            setShowBrowser(true);
-            setShowFiles(false);
+            if (showBrowser && !wasFleetOpen) {
+              setSplitMode((prev) => !prev);
+            } else {
+              setShowBrowser(true);
+              setShowFiles(false);
+              setSplitMode(false);
+            }
+            setTimeout(() => {
+              try {
+                fitAddon.current?.fit();
+              } catch {}
+            }, 80);
           }}
         >
           <Icon name="globe" size={15} />
@@ -3234,9 +3245,20 @@ function App() {
           type="button"
           className={`m-dock-tab ${showFiles && !showFleetSidebar ? 'active' : ''}`}
           onClick={() => {
+            const wasFleetOpen = showFleetSidebar;
             setShowFleetSidebar(false);
-            setShowFiles(true);
-            setShowBrowser(false);
+            if (showFiles && !wasFleetOpen) {
+              setSplitMode((prev) => !prev);
+            } else {
+              setShowFiles(true);
+              setShowBrowser(false);
+              setSplitMode(false);
+            }
+            setTimeout(() => {
+              try {
+                fitAddon.current?.fit();
+              } catch {}
+            }, 80);
           }}
         >
           <Icon name="files" size={15} />
