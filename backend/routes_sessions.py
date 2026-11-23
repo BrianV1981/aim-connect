@@ -559,28 +559,95 @@ def _resolve_agy_brain_tokens_by_workspace(
     )
 
 
-def _read_browser_leases_by_session() -> dict[str, str]:
-    """Return mapping of tmux session_name -> primary leased CDP targetId (#257)."""
+def _normalize_lease_waiting_human(raw_val: object, fallback_ts: int = 0) -> dict | None:
+    if isinstance(raw_val, dict):
+        reason = str(raw_val.get("reason") or "Human login / 2FA requested").strip()[:240]
+        req_at = int(raw_val.get("requestedAt") or fallback_ts or 0)
+        return {"reason": reason, "requestedAt": req_at}
+    if isinstance(raw_val, str) and raw_val.strip():
+        return {"reason": raw_val.strip()[:240], "requestedAt": int(fallback_ts or 0)}
+    if raw_val is True:
+        return {"reason": "Human login / 2FA requested", "requestedAt": int(fallback_ts or 0)}
+    return None
+
+
+def _match_lease_session_name(candidate: str, allowed_sessions: list[str] | None = None) -> str:
+    raw = str(candidate or "").strip()
+    if not raw or raw.lower() == "operator":
+        return ""
+    if not allowed_sessions:
+        return raw
+    lower = raw.lower()
+    ordered = sorted(allowed_sessions, key=len, reverse=True)
+    for name in ordered:
+        if name.lower() == lower:
+            return name
+    for name in ordered:
+        nl = name.lower()
+        if lower.startswith(f"{nl}-") or lower.startswith(f"{nl}:") or lower.startswith(f"{nl}/"):
+            return name
+    for name in ordered:
+        nl = name.lower()
+        if nl.startswith("aim-") and len(nl) > 5:
+            slug = nl[4:]
+            if lower == slug or lower.startswith(f"{slug}-") or lower.endswith(f"-{slug}"):
+                return name
+    return raw if raw in allowed_sessions else ""
+
+
+def _get_browser_leases_path() -> str:
     custom = (os.environ.get("AIM_BROWSER_STATE_DIR") or "").strip()
     state_dir = os.path.abspath(custom) if custom else os.path.join(HOME_DIR, ".cache", "aim-browser")
-    leases_path = os.path.join(state_dir, "leases.json")
+    return os.path.join(state_dir, "leases.json")
+
+
+def _read_browser_leases_telemetry(
+    allowed_sessions: list[str] | None = None,
+) -> tuple[dict[str, str], dict[str, dict]]:
+    """Return (by_session_target_id, waiting_for_human_by_session) from leases.json (#257, #275)."""
+    leases_path = _get_browser_leases_path()
     if not os.path.isfile(leases_path):
-        return {}
+        return {}, {}
     try:
         with open(leases_path, "r", encoding="utf-8") as fh:
             raw = json.load(fh)
     except Exception:
-        return {}
+        return {}, {}
     if not isinstance(raw, dict):
-        return {}
+        return {}, {}
+
     by_sess: dict[str, str] = {}
+    waiting_by_sess: dict[str, dict] = {}
     for lease_key, meta in raw.items():
         if not isinstance(meta, dict):
             continue
         tid = str(meta.get("targetId") or "").strip()
-        sess = str(meta.get("session") or meta.get("actor") or lease_key or "").strip()
-        if tid and sess and sess not in by_sess:
-            by_sess[sess] = tid
+        matched_sess = ""
+        for cand in (meta.get("session"), meta.get("actor"), lease_key):
+            matched_sess = _match_lease_session_name(str(cand or ""), allowed_sessions)
+            if matched_sess:
+                break
+        if not matched_sess:
+            continue
+        if tid and matched_sess not in by_sess:
+            by_sess[matched_sess] = tid
+        waiting_info = _normalize_lease_waiting_human(
+            meta.get("waitingForHuman"), int(meta.get("updatedAt") or 0)
+        )
+        if waiting_info and matched_sess not in waiting_by_sess:
+            waiting_by_sess[matched_sess] = {
+                "lease": str(lease_key),
+                "targetId": tid,
+                **waiting_info,
+            }
+            if tid:
+                by_sess[matched_sess] = tid
+    return by_sess, waiting_by_sess
+
+
+def _read_browser_leases_by_session() -> dict[str, str]:
+    """Return mapping of tmux session_name -> primary leased CDP targetId (#257)."""
+    by_sess, _ = _read_browser_leases_telemetry()
     return by_sess
 
 
@@ -593,7 +660,12 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
 
     now = time.time()
     is_real_subprocess = getattr(subprocess.run, "__module__", "") == "subprocess"
-    sessions_key = tuple(allowed_sessions)
+    leases_mtime_ns = 0
+    try:
+        leases_mtime_ns = os.stat(_get_browser_leases_path()).st_mtime_ns
+    except OSError:
+        leases_mtime_ns = 0
+    sessions_key = (*allowed_sessions, f"__leases__:{leases_mtime_ns}")
     if (
         is_real_subprocess
         and _FLEET_SNAPSHOT_CACHE["sessions_key"] == sessions_key
@@ -719,16 +791,17 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         panes.append(pane_obj)
         by_session.setdefault(sess_name, []).append(pane_obj)
 
-    browser_leases_by_sess = _read_browser_leases_by_session()
+    browser_leases_by_sess, browser_waiting_by_sess = _read_browser_leases_telemetry(allowed_sessions)
     fleet = []
     for sess_name in allowed_sessions:
         sess_panes = by_session.get(sess_name, [])
         leased_tid = browser_leases_by_sess.get(sess_name, "")
+        browser_human_hold = browser_waiting_by_sess.get(sess_name)
         if not sess_panes:
             fleet.append({
                 "session_name": sess_name,
                 "vessel": "shell",
-                "status": "IDLE",
+                "status": "WAITING" if browser_human_hold else "IDLE",
                 "path": "",
                 "repo_name": "",
                 "branch": "",
@@ -738,11 +811,12 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 "context_pct": 0.0,
                 "compaction_count": 0,
                 "tier": "normal",
-                "preview": "",
+                "preview": browser_human_hold["reason"] if browser_human_hold else "",
                 "spoken_summary": "",
                 "turn_digest": "",
-                "has_browser_lease": bool(leased_tid),
+                "has_browser_lease": bool(leased_tid or browser_human_hold),
                 "browser_tab_id": leased_tid,
+                "browser_waiting_for_human": browser_human_hold,
                 "window_count": 0,
                 "pane_count": 0,
                 "panes": [],
@@ -758,11 +832,14 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
         any_thinking = any(p["status"] == "THINKING" for p in sess_panes)
         any_waiting = any(p["status"] == "WAITING" for p in sess_panes)
         any_error = any(p["status"] == "ERROR" for p in sess_panes)
-        agg_status = (
-            "THINKING"
-            if any_thinking
-            else ("WAITING" if any_waiting else ("ERROR" if any_error else primary["status"]))
-        )
+        if browser_human_hold:
+            agg_status = "WAITING"
+        else:
+            agg_status = (
+                "THINKING"
+                if any_thinking
+                else ("WAITING" if any_waiting else ("ERROR" if any_error else primary["status"]))
+            )
 
         fleet.append({
             "session_name": sess_name,
@@ -778,11 +855,12 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "context_pct": primary["context_pct"],
             "compaction_count": primary.get("compaction_count", 0),
             "tier": primary["tier"],
-            "preview": primary["preview"],
+            "preview": browser_human_hold["reason"] if browser_human_hold else primary["preview"],
             "spoken_summary": primary.get("spoken_summary", ""),
             "turn_digest": primary.get("turn_digest", ""),
-            "has_browser_lease": bool(leased_tid),
+            "has_browser_lease": bool(leased_tid or browser_human_hold),
             "browser_tab_id": leased_tid,
+            "browser_waiting_for_human": browser_human_hold,
             "attached": primary["attached"],
             "window_count": len({p["window_index"] for p in sess_panes}),
             "pane_count": len(sess_panes),

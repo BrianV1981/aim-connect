@@ -259,6 +259,37 @@ def _leases_file_lock(
                     pass
 
 
+def _normalize_waiting_for_human(raw_val: Any, fallback_ts: int = 0) -> dict | None:
+    if isinstance(raw_val, dict):
+        reason = str(raw_val.get("reason") or "Human login / 2FA requested").strip()[:240]
+        req_at = int(raw_val.get("requestedAt") or fallback_ts or 0)
+        return {"reason": reason, "requestedAt": req_at}
+    if isinstance(raw_val, str) and raw_val.strip():
+        return {"reason": raw_val.strip()[:240], "requestedAt": int(fallback_ts or 0)}
+    if raw_val is True:
+        return {"reason": "Human login / 2FA requested", "requestedAt": int(fallback_ts or 0)}
+    return None
+
+
+def _extract_waiting_leases_summary(leases: dict[str, dict]) -> list[dict]:
+    items = []
+    for lease_name, meta in (leases or {}).items():
+        if not isinstance(meta, dict):
+            continue
+        wh = _normalize_waiting_for_human(meta.get("waitingForHuman"), int(meta.get("updatedAt") or 0))
+        if wh:
+            items.append(
+                {
+                    "lease": str(lease_name),
+                    "targetId": str(meta.get("targetId") or ""),
+                    "actor": str(meta.get("actor") or lease_name),
+                    "session": str(meta.get("session") or ""),
+                    **wh,
+                }
+            )
+    return items
+
+
 def _read_leases() -> dict[str, dict]:
     raw = _read_json_file(os.path.join(_get_state_dir(), "leases.json"), {})
     return raw if isinstance(raw, dict) else {}
@@ -481,11 +512,13 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
     for lease_name, meta in leases.items():
         tid = meta.get("targetId")
         if tid:
+            updated_ms = int(meta.get("updatedAt") or 0)
             lease_by_target[tid] = {
                 "lease": lease_name,
                 "actor": meta.get("actor") or lease_name,
                 "session": meta.get("session") or "",
-                "updatedAt": int(meta.get("updatedAt") or 0),
+                "updatedAt": updated_ms,
+                "waitingForHuman": _normalize_waiting_for_human(meta.get("waitingForHuman"), updated_ms),
             }
 
     enriched = []
@@ -502,6 +535,7 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
                 "actor": lmeta.get("actor", ""),
                 "session": lmeta.get("session", ""),
                 "updatedAt": lmeta.get("updatedAt", 0),
+                "waitingForHuman": lmeta.get("waitingForHuman"),
                 "webSocketDebuggerUrl": p.get("webSocketDebuggerUrl", ""),
             }
         )
@@ -516,6 +550,17 @@ async def _collect_browser_status(target_id: str = "") -> dict:
         version_info = await _cdp_http_json("/json/version", timeout=1.5)
         targets = await _cdp_http_json("/json/list", timeout=1.5)
         tabs = _merge_tabs_with_leases(targets if isinstance(targets, list) else [])
+        waiting_leases = [
+            {
+                "lease": t["lease"],
+                "targetId": t["id"],
+                "actor": t["actor"],
+                "session": t["session"],
+                **t["waitingForHuman"],
+            }
+            for t in tabs
+            if t.get("waitingForHuman")
+        ]
         return {
             "running": True,
             "cdp_port": port,
@@ -523,6 +568,7 @@ async def _collect_browser_status(target_id: str = "") -> dict:
             "tabs": tabs,
             "favorites": favorites,
             "hud": hud,
+            "waiting_leases": waiting_leases,
         }
     except Exception:
         return {
@@ -532,6 +578,7 @@ async def _collect_browser_status(target_id: str = "") -> dict:
             "tabs": [],
             "favorites": favorites,
             "hud": hud,
+            "waiting_leases": _extract_waiting_leases_summary(_read_leases()),
         }
 
 
@@ -758,6 +805,40 @@ async def close_browser_tab(target_id: str):
 
     status = await _collect_browser_status()
     return {"closed": target_id, "tabs": status["tabs"]}
+
+
+@router.post(
+    "/api/browser/leases/{lease}/clear-human",
+    dependencies=[Depends(verify_token), Depends(require_admin)],
+)
+async def clear_browser_lease_human_hold(lease: str):
+    """Clear aim-browser waitingForHuman hold on a named lease once Operator completes sign-in/2FA (#275)."""
+    clean_lease = (lease or "").strip()
+    if not LEASE_NAME_RE.match(clean_lease):
+        raise HTTPException(status_code=400, detail="Invalid lease name")
+
+    cleared_flag = False
+
+    def _clear_hold(curr: dict[str, dict]) -> tuple[dict[str, dict], bool]:
+        nonlocal cleared_flag
+        entry = curr.get(clean_lease)
+        if isinstance(entry, dict) and "waitingForHuman" in entry:
+            next_entry = dict(entry)
+            next_entry.pop("waitingForHuman", None)
+            next_entry["updatedAt"] = int(time.time() * 1000)
+            curr[clean_lease] = next_entry
+            cleared_flag = True
+            return curr, True
+        return curr, False
+
+    _mutate_leases(_clear_hold)
+    status = await _collect_browser_status()
+    return {
+        "lease": clean_lease,
+        "cleared": cleared_flag,
+        "tabs": status["tabs"],
+        "waiting_leases": status["waiting_leases"],
+    }
 
 
 MAX_FULL_PAGE_HEIGHT = 12000
@@ -1337,7 +1418,13 @@ async def browser_viewport_ws(websocket: WebSocket):
         async def _hud_watcher() -> None:
             last_seq = -1
             hud_path = os.path.join(_get_state_dir(), "hud.json")
+            leases_path = os.path.join(_get_state_dir(), "leases.json")
             last_mtime = 0.0
+            last_leases_mtime = 0.0
+            try:
+                last_leases_mtime = os.stat(leases_path).st_mtime
+            except OSError:
+                last_leases_mtime = 0.0
             while True:
                 await asyncio.sleep(0.15)
                 if not is_token_valid(token):
@@ -1346,6 +1433,17 @@ async def browser_viewport_ws(websocket: WebSocket):
                     except Exception:
                         pass
                     return
+                try:
+                    lst = os.stat(leases_path)
+                    if lst.st_mtime > last_leases_mtime:
+                        last_leases_mtime = lst.st_mtime
+                        await websocket.send_text(json.dumps({"type": "leases_updated"}))
+                except FileNotFoundError:
+                    if last_leases_mtime > 0.0:
+                        last_leases_mtime = 0.0
+                        await websocket.send_text(json.dumps({"type": "leases_updated"}))
+                except Exception:
+                    pass
                 try:
                     st = os.stat(hud_path)
                     if st.st_mtime <= last_mtime:

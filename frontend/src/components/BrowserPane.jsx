@@ -16,6 +16,7 @@ export default function BrowserPane({
   preferredTargetId = '',
   fleet = [],
   onAttachToComposer,
+  onSendSessionCommand,
   onToggleSplitMode,
   onClose,
 }) {
@@ -30,6 +31,8 @@ export default function BrowserPane({
   const [quickText, setQuickText] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [hudByTarget, setHudByTarget] = useState({});
+  const [sendContinueOnResume, setSendContinueOnResume] = useState(true);
+  const [resumingLease, setResumingLease] = useState(false);
   const [extFlash, setExtFlash] = useState(false);
   const [shotFlash, setShotFlash] = useState(false);
   const [shotFullPage, setShotFullPage] = useState(false);
@@ -174,6 +177,8 @@ export default function BrowserPane({
             refreshStatus();
           } else if (msg.type === 'hud' && msg.hud) {
             showHud(msg.hud);
+          } else if (msg.type === 'leases_updated') {
+            refreshStatus();
           } else if (msg.type === 'error') {
             setStatusMsg(msg.message || 'Browser error');
           } else if (msg.type === 'frame' && msg.data) {
@@ -670,6 +675,58 @@ export default function BrowserPane({
   const visibleDownloads = downloads.filter((d) => !dismissedDownloadIds.includes(d.id));
   const hasStreamingDl = visibleDownloads.some((d) => d.status === 'streaming');
 
+  const handleTakeControlForTab = (tab) => {
+    if (tab?.id && tab.id !== activeTargetId) {
+      handleSelectTab(tab);
+    }
+    setControlMode(true);
+    setShowTextBar(true);
+    setTimeout(() => {
+      canvasRef.current?.focus();
+    }, 60);
+  };
+
+  const handleResumeAgentFromHold = async (tab) => {
+    const leaseKey = tab?.lease || '';
+    if (!leaseKey || resumingLease) return;
+    setResumingLease(true);
+    try {
+      const tok =
+        apiToken ||
+        localStorage.getItem('aim-token') ||
+        localStorage.getItem('aim-api-token') ||
+        '';
+      const res = await fetch(`/api/browser/leases/${encodeURIComponent(leaseKey)}/clear-human`, {
+        method: 'POST',
+        headers: tok ? { 'x-api-token': tok } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.tabs)) {
+          setTabs(data.tabs.filter((t) => !closingIdsRef.current.has(t.id)));
+        }
+      }
+      setControlMode(false);
+      setShowTextBar(false);
+
+      const tabHud = resolveHudForTarget(hudByTarget, null, tab.id);
+      const agentInfo = resolveTabAgentInfo(tab, tabHud, fleet);
+      const owningSess =
+        (tab.session && fleet.some((f) => f?.session_name === tab.session) ? tab.session : '') ||
+        (agentInfo?.agentKey &&
+        fleet.some((f) => f?.session_name?.toLowerCase() === agentInfo.agentKey.toLowerCase())
+          ? fleet.find((f) => f.session_name.toLowerCase() === agentInfo.agentKey.toLowerCase())
+              .session_name
+          : '');
+      if (sendContinueOnResume && owningSess && onSendSessionCommand) {
+        await onSendSessionCommand(owningSess, 'continue').catch(() => {});
+      }
+      await refreshStatus();
+    } finally {
+      setResumingLease(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const hudOverlay = resolveHudForTarget(hudByTarget, null, activeTargetId);
@@ -984,12 +1041,13 @@ export default function BrowserPane({
         </div>
       )}
 
-      {/* Multi-Tab Co-Pilot Strip (Emerald Matrix Lucide Chrome — #260) */}
+      {/* Multi-Tab Co-Pilot Strip (Emerald Matrix Lucide Chrome — #260, #275) */}
       <div className="copilot-tabs-row">
         {tabs.map((t) => {
           const isSelected = t.id === activeTargetId;
           const tabHud = resolveHudForTarget(hudByTarget, null, t.id);
           const tabAgent = resolveTabAgentInfo(t, tabHud, fleet);
+          const isWaitingHuman = Boolean(t.waitingForHuman);
           const chipStyle = tabAgent
             ? { '--agent-color': tabAgent.color.hex, '--agent-rgb': tabAgent.color.rgb }
             : undefined;
@@ -1000,10 +1058,14 @@ export default function BrowserPane({
           return (
             <div
               key={t.id}
-              className={`cp-tab ${isSelected ? 'active' : ''} ${tabAgent ? 'agent-tab' : ''}`}
+              className={`cp-tab ${isSelected ? 'active' : ''} ${tabAgent ? 'agent-tab' : ''} ${
+                isWaitingHuman ? 'waiting-human-tab' : ''
+              }`}
               style={chipStyle}
               onClick={() => handleSelectTab(t)}
               title={`${t.title || ''}\n${t.url || ''}${
+                isWaitingHuman ? `\n✋ WAITING FOR HUMAN: ${t.waitingForHuman.reason}` : ''
+              }${
                 tabAgent
                   ? `\nAgent: ${tabAgent.agentKey} (${tabAgent.color.name})${
                       tabAgent.sublabel ? ` · Lease: ${tabAgent.sublabel}` : ''
@@ -1011,7 +1073,9 @@ export default function BrowserPane({
                   : ''
               }`}
             >
-              {tabAgent ? (
+              {isWaitingHuman ? (
+                <span title="Waiting for Operator sign-in / 2FA">✋</span>
+              ) : tabAgent ? (
                 <span
                   className="project-pill-dot"
                   style={{
@@ -1047,6 +1111,70 @@ export default function BrowserPane({
           <span>TAB</span>
         </button>
       </div>
+
+      {/* 1-Click Human Login / 2FA Takeover & Resume Banner (#275, aim-browser#15) */}
+      {(() => {
+        const waitingTab =
+          (activeTabObj?.waitingForHuman ? activeTabObj : null) ||
+          tabs.find((t) => Boolean(t.waitingForHuman)) ||
+          null;
+        if (!waitingTab?.waitingForHuman) return null;
+        const wHud = resolveHudForTarget(hudByTarget, null, waitingTab.id);
+        const wAgent = resolveTabAgentInfo(waitingTab, wHud, fleet);
+        const ownerName = (wAgent?.agentKey || waitingTab.actor || waitingTab.lease || 'agent').toUpperCase();
+        const hasLinkedFleetSession = Boolean(
+          (waitingTab.session && fleet.some((f) => f?.session_name === waitingTab.session)) ||
+            (wAgent?.agentKey &&
+              fleet.some((f) => f?.session_name?.toLowerCase() === wAgent.agentKey.toLowerCase()))
+        );
+        const isCurrentTab = waitingTab.id === activeTargetId;
+        const takeoverActive = isCurrentTab && controlMode && showTextBar;
+
+        return (
+          <div className="browser-human-gate-banner" role="alert">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: '1 1 auto' }}>
+              <span>✋</span>
+              <span style={{ fontWeight: 700, letterSpacing: '0.05em' }}>
+                {ownerName} NEEDS LOGIN / 2FA:
+              </span>
+              <span style={{ color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                {waitingTab.waitingForHuman.reason}
+              </span>
+            </div>
+            <div className="browser-human-gate-actions">
+              <button
+                type="button"
+                className={`browser-takeover-cta ${takeoverActive ? 'active' : ''}`}
+                onClick={() => handleTakeControlForTab(waitingTab)}
+                title="Focus blocked tab, enable interactive pointer/keyboard Control ON, and open the 2FA injection bar"
+              >
+                <Icon name="gamepad" size={12} />
+                <span>{takeoverActive ? 'IN CONTROL · 2FA READY' : 'TAKE CONTROL & 2FA'}</span>
+              </button>
+              {hasLinkedFleetSession && onSendSessionCommand && (
+                <button
+                  type="button"
+                  className={`fav-chip ${sendContinueOnResume ? 'active' : ''}`}
+                  onClick={() => setSendContinueOnResume((prev) => !prev)}
+                  title='Toggle automatically sending "continue" to the owning tmux session on Resume'
+                >
+                  {sendContinueOnResume ? 'AUTO-CONTINUE: ON' : 'AUTO-CONTINUE: OFF'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="browser-resume-cta"
+                disabled={resumingLease}
+                onClick={() => handleResumeAgentFromHold(waitingTab)}
+                title="Clear waitingForHuman hold, restore Watch-Only mode, and resume the agent"
+              >
+                <Icon name="check" size={12} />
+                <span>{resumingLease ? 'RESUMING...' : 'RESUME AGENT'}</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Address & Navigation Bar */}
       <form className="cp-url-bar" onSubmit={handleNavigateSubmit}>

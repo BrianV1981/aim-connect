@@ -36,6 +36,9 @@ function deriveTaskChip(item, isRawTmux, effectiveTier, isCompacted, histCount) 
       label: wCnt > 1 ? `${wCnt}W · ${pCnt}P DAEMONS` : `${pCnt}P DAEMON`,
     };
   }
+  if (item.browser_waiting_for_human) {
+    return { kind: 'gate', label: 'BROWSER 2FA / LOGIN' };
+  }
   if (item.status === 'WAITING') {
     return { kind: 'gate', label: 'GATE HOLD [y/n]' };
   }

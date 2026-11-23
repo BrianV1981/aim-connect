@@ -2286,7 +2286,18 @@ function App() {
             <button
               type="button"
               className="wait-alert-pill hide-halfscreen"
-              onClick={() => switchToSession(waitingSessions[0])}
+              onClick={() => {
+                const targetSess = waitingSessions[0];
+                switchToSession(targetSess);
+                const wf = fleet.find((f) => f && f.session_name === targetSess);
+                if (wf?.browser_waiting_for_human) {
+                  setShowBrowser(true);
+                  setShowFiles(false);
+                  if (wf.browser_waiting_for_human.targetId) {
+                    setPreferredBrowserTargetId(wf.browser_waiting_for_human.targetId);
+                  }
+                }
+              }}
               title={`Agent waiting for permission or input: ${waitingSessions.join(', ')}`}
             >
               GATE // {waitingSessions.length}
@@ -3195,6 +3206,7 @@ function App() {
           preferredTargetId={preferredBrowserTargetId}
           fleet={fleet}
           onAttachToComposer={attachToActiveComposer}
+          onSendSessionCommand={sendSessionCommand}
           onToggleSplitMode={() => {
             setSplitMode((prev) => !prev);
             setTimeout(() => {
