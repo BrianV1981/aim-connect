@@ -38,6 +38,7 @@ export default function BrowserPane({
   const [hudOverlay, setHudOverlay] = useState(null);
   const [extFlash, setExtFlash] = useState(false);
   const [shotFlash, setShotFlash] = useState(false);
+  const [shotFullPage, setShotFullPage] = useState(false);
   const [showDownloadsPopover, setShowDownloadsPopover] = useState(false);
   const [downloads, setDownloads] = useState([]);
   const [dismissedDownloadIds, setDismissedDownloadIds] = useState([]);
@@ -608,7 +609,8 @@ export default function BrowserPane({
     setTimeout(() => setExtFlash(false), 1400);
   };
 
-  const handleScreenshotToChat = async () => {
+  const handleScreenshotToChat = async (ev) => {
+    const captureFull = Boolean(shotFullPage || ev?.shiftKey);
     try {
       const res = await fetch('/api/browser/screenshot', {
         method: 'POST',
@@ -616,6 +618,7 @@ export default function BrowserPane({
         body: JSON.stringify({
           target_id: activeTargetId || '',
           session: activeSession || '',
+          full_page: captureFull,
         }),
       });
       const data = await res.json();
@@ -629,6 +632,7 @@ export default function BrowserPane({
         path: data.path,
         dims: data.dims,
         url: data.url,
+        fullPage: Boolean(data.full_page),
       });
       setShotFlash(true);
       setTimeout(() => setShotFlash(false), 1500);
@@ -736,10 +740,23 @@ export default function BrowserPane({
             className={`cp-action-icon-btn ${shotFlash ? 'flash-ok' : ''}`}
             disabled={!daemonRunning}
             onClick={handleScreenshotToChat}
-            title={`Add Screenshot to Conversation (${activeSession || 'active node'})`}
+            title={`Add ${shotFullPage ? 'Full-Page' : 'Visible Pane'} Screenshot to Conversation (${
+              activeSession || 'active node'
+            }) · Shift+Click for Full-Page`}
             aria-label="Add Screenshot to Conversation"
           >
             <Icon name={shotFlash ? 'check' : 'cameraPlus'} size={13} />
+          </button>
+
+          <button
+            type="button"
+            className={`fav-chip ${shotFullPage ? 'active' : ''}`}
+            style={{ height: '24px', padding: '0 6px', fontSize: '9px' }}
+            disabled={!daemonRunning}
+            onClick={() => setShotFullPage((prev) => !prev)}
+            title="Toggle Screenshot Scope: Visible Split-Pane Viewport vs Full Scrolling Page"
+          >
+            {shotFullPage ? 'FULL' : 'PANE'}
           </button>
 
           <button

@@ -22,7 +22,9 @@ import SpawnSessionModal from './components/SpawnSessionModal';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
 import LiveTranscriptStage from './components/LiveTranscriptStage';
 import TmuxServerStage from './components/TmuxServerStage';
+import ShotMarkupModal from './components/ShotMarkupModal';
 import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelection';
+import { normalizeWindowsPathsInText } from './shotMarkupUtils';
 import { E2EESocketWrapper } from './e2ee';
 import { getAgentColor } from './agentColors';
 import { useMatrixScramble } from './scramble';
@@ -633,6 +635,7 @@ function App() {
   );
   const [composerText, setComposerText] = useState('');
   const [stagedAttachments, setStagedAttachments] = useState({});
+  const [editingShot, setEditingShot] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
 
@@ -2011,13 +2014,92 @@ function App() {
     }));
   }, []);
 
+  const updateStagedAttachment = useCallback((sessionKey, updatedAtt) => {
+    if (!sessionKey || !updatedAtt?.id) return;
+    setStagedAttachments((prev) => ({
+      ...prev,
+      [sessionKey]: (prev[sessionKey] || []).map((item) =>
+        item.id === updatedAtt.id ? updatedAtt : item
+      ),
+    }));
+  }, []);
+
+  const downloadShotFile = useCallback(async (att) => {
+    if (!att?.path) return;
+    try {
+      const res = await fetch(`/api/file/download?path=${encodeURIComponent(att.path)}`);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const tempUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = tempUrl;
+      a.download = att.filename || att.path.split('/').pop() || 'screenshot.png';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(tempUrl);
+        } catch {}
+      }, 4000);
+    } catch (err) {
+      console.error('Screenshot download failed', err);
+    }
+  }, []);
+
+  const handleComposerPaste = async (ev) => {
+    const items = ev.clipboardData?.items;
+    if (!items) return;
+    const imgItem = Array.from(items).find((it) => it.type && it.type.startsWith('image/'));
+    if (!imgItem) return;
+    const file = imgItem.getAsFile();
+    if (!file) return;
+    ev.preventDefault();
+    try {
+      const bitmapUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width || 800;
+          canvas.height = img.naturalHeight || img.height || 600;
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.drawImage(img, 0, 0);
+          const pngDataUrl = canvas.toDataURL('image/png');
+          const res = await fetch('/api/browser/screenshot/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_base64: pngDataUrl, label: 'clipboard' }),
+          });
+          const data = await res.json();
+          if (res.ok && data?.path) {
+            attachToActiveComposer({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              filename: data.filename,
+              path: data.path,
+              dims: data.dims,
+              url: 'clipboard',
+            });
+          }
+        } finally {
+          URL.revokeObjectURL(bitmapUrl);
+        }
+      };
+      img.onerror = () => URL.revokeObjectURL(bitmapUrl);
+      img.src = bitmapUrl;
+    } catch (err) {
+      console.error('Clipboard image paste failed', err);
+    }
+  };
+
   const handleComposerSubmit = (e) => {
     e.preventDefault();
     const target = activeSessionRef.current || activeSession;
     if (!target) return;
     const attachments = stagedAttachments[target] || [];
     const attRefs = attachments.map((a) => `@${a.path}`).join(' ');
-    const cleanText = composerText.trim();
+    const cleanText = normalizeWindowsPathsInText(composerText.trim());
     const combined = [cleanText, attRefs].filter(Boolean).join(' ');
     if (!combined) return;
     pasteToTerminal(combined);
@@ -2639,6 +2721,7 @@ function App() {
                       optimisticMessages={optimisticChatBySession[activeSession] || []}
                       onReconcileOptimistic={reconcileOptimisticChat}
                       onOpenFileLink={handleOpenFileFromChat}
+                      onDownloadAttachment={downloadShotFile}
                       onSpeakText={(txt) => speakSummaryText(txt)}
                       onSendRawCommand={sendCommand}
                       onSwitchToTerminal={() => {
@@ -2873,8 +2956,38 @@ function App() {
                         <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
                           <Icon name="camera" size={12} />
                         </span>
-                        <span>{att.filename}</span>
+                        <button
+                          type="button"
+                          className="shot-link-btn"
+                          onClick={() => handleOpenFileFromChat(att.path)}
+                          title={`Preview ${att.filename} in Files`}
+                        >
+                          {att.filename}
+                        </button>
+                        {att.annotated && (
+                          <span className="mono-kbd" style={{ fontSize: '8.5px', color: 'var(--accent)' }}>
+                            MARKED
+                          </span>
+                        )}
                         {att.dims && <span style={{ color: 'var(--text-muted)' }}>{att.dims}</span>}
+                        <button
+                          type="button"
+                          className="shot-chip-icon-btn"
+                          onClick={() => setEditingShot({ sessionKey: activeSession, attachment: att })}
+                          title="Open Visual Markup Studio (drop ① ② ③ pins, circles, or arrows)"
+                          aria-label={`Annotate ${att.filename}`}
+                        >
+                          <Icon name="edit" size={11} />
+                        </button>
+                        <button
+                          type="button"
+                          className="shot-chip-icon-btn"
+                          onClick={() => downloadShotFile(att)}
+                          title={`Download ${att.filename}`}
+                          aria-label={`Download ${att.filename}`}
+                        >
+                          <Icon name="downloadSm" size={11} />
+                        </button>
                         <button
                           type="button"
                           className="ghost-btn"
@@ -2905,10 +3018,11 @@ function App() {
                       placeholder={
                         isListening
                           ? `Listening on mic — speak directive for ${activeSession}...`
-                          : `Transmit directive to ${activeSession}...`
+                          : `Transmit directive to ${activeSession}... (Paste screenshot with Ctrl+V)`
                       }
                       value={composerText}
                       onChange={(e) => setComposerText(e.target.value)}
+                      onPaste={handleComposerPaste}
                       autoComplete="off"
                     />
                     <button
@@ -3268,6 +3382,18 @@ function App() {
         isOpen={isSpawnModalOpen}
         onClose={() => setIsSpawnModalOpen(false)}
         onConfirm={confirmCreateSession}
+      />
+
+      <ShotMarkupModal
+        isOpen={Boolean(editingShot?.attachment)}
+        attachment={editingShot?.attachment || null}
+        onSaveAnnotated={(updated) => {
+          if (editingShot?.sessionKey) {
+            updateStagedAttachment(editingShot.sessionKey, updated);
+          }
+        }}
+        onDownload={downloadShotFile}
+        onClose={() => setEditingShot(null)}
       />
 
       <DeleteSessionModal

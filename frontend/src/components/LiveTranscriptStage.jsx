@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from './Icons';
 import MarkdownBody from './MarkdownBody';
+import { extractOperatorTurnAttachments } from '../shotMarkupUtils';
 
 export default function LiveTranscriptStage({
   activeSession = '',
@@ -12,6 +13,7 @@ export default function LiveTranscriptStage({
   optimisticMessages = [],
   onReconcileOptimistic,
   onOpenFileLink,
+  onDownloadAttachment,
   onSpeakText,
   onSendRawCommand,
   onSwitchToTerminal,
@@ -159,7 +161,40 @@ export default function LiveTranscriptStage({
                   className="transmission-body-operator"
                   style={{ fontSize: `${termFontSize}px`, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
                 >
-                  {turn.user}
+                  {(() => {
+                    const parsedOp = extractOperatorTurnAttachments(turn.user);
+                    return (
+                      <>
+                        {parsedOp.cleanText && <div>{parsedOp.cleanText}</div>}
+                        {parsedOp.attachments.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {parsedOp.attachments.map((att) => (
+                              <div key={att.id} className="chat-shot-attachment-card">
+                                <Icon name="camera" size={12} />
+                                <button
+                                  type="button"
+                                  className="shot-link-btn"
+                                  onClick={() => onOpenFileLink?.(att.path)}
+                                  title={`Preview ${att.path} in Files`}
+                                >
+                                  {att.filename}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="shot-chip-icon-btn"
+                                  onClick={() => onDownloadAttachment?.(att)}
+                                  title={`Download ${att.filename}`}
+                                  aria-label={`Download ${att.filename}`}
+                                >
+                                  <Icon name="downloadSm" size={11} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -248,16 +283,33 @@ export default function LiveTranscriptStage({
               style={{ fontSize: `${termFontSize}px`, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
             >
               {msg.text && <div>{msg.text}</div>}
-              {Array.isArray(msg.attachments) &&
-                msg.attachments.map((att) => (
-                  <div key={att.id} className="chat-shot-attachment-card">
-                    <Icon name="camera" size={12} />
-                    <span>
-                      {att.filename}
-                      {att.dims ? ` · ${att.dims}` : ''}
-                    </span>
-                  </div>
-                ))}
+              {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {msg.attachments.map((att) => (
+                    <div key={att.id} className="chat-shot-attachment-card">
+                      <Icon name="camera" size={12} />
+                      <button
+                        type="button"
+                        className="shot-link-btn"
+                        onClick={() => onOpenFileLink?.(att.path)}
+                        title={`Preview ${att.path} in Files`}
+                      >
+                        {att.filename}
+                      </button>
+                      {att.dims && <span style={{ color: 'var(--text-muted)' }}>· {att.dims}</span>}
+                      <button
+                        type="button"
+                        className="shot-chip-icon-btn"
+                        onClick={() => onDownloadAttachment?.(att)}
+                        title={`Download ${att.filename}`}
+                        aria-label={`Download ${att.filename}`}
+                      >
+                        <Icon name="downloadSm" size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}

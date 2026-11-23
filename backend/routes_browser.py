@@ -547,14 +547,44 @@ async def close_browser_tab(target_id: str):
     return {"closed": target_id, "tabs": status["tabs"]}
 
 
+MAX_FULL_PAGE_HEIGHT = 12000
+MAX_SAVED_SHOT_BYTES = 25 * 1024 * 1024
+
+
 class BrowserScreenshotRequest(BaseModel):
     target_id: str = ""
     session: str = ""
+    full_page: bool = False
+
+
+class SaveShotImageRequest(BaseModel):
+    image_base64: str
+    label: str = "annotated"
+
+
+def _write_private_shot_png(png_bytes: bytes, prefix: str, slug_raw: str) -> tuple[str, str, int, int]:
+    width, height = _extract_png_dims(png_bytes)
+    clean_slug = re.sub(r"[^a-zA-Z0-9._-]", "-", slug_raw or "shot").strip("-") or "shot"
+    ts_ms = int(time.time() * 1000)
+    filename = f"{prefix}-{clean_slug[:40]}-{ts_ms}.png"
+    shots_dir = _get_shots_dir()
+    full_path = os.path.join(shots_dir, filename)
+
+    fd = os.open(full_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, png_bytes)
+    finally:
+        os.close(fd)
+    try:
+        os.chmod(full_path, 0o600)
+    except OSError:
+        pass
+    return filename, full_path, width, height
 
 
 @router.post("/api/browser/screenshot", dependencies=[Depends(verify_token), Depends(require_admin)])
 async def capture_browser_screenshot(req: BrowserScreenshotRequest | None = None):
-    """Capture a PNG screenshot of the active/leased CDP tab into 0600 ~/.cache/aim-connect/shots/ (#258)."""
+    """Capture a viewport or full-page PNG screenshot of the active/leased CDP tab into 0600 shots/ (#258, #273)."""
     body = req or BrowserScreenshotRequest()
     if body.target_id and not TARGET_ID_RE.match(body.target_id):
         raise HTTPException(status_code=400, detail="Invalid target_id")
@@ -566,10 +596,29 @@ async def capture_browser_screenshot(req: BrowserScreenshotRequest | None = None
 
     try:
         async with websockets.connect(ws_url, max_size=32 * 1024 * 1024) as cdp_ws:
-            await cdp_ws.send(json.dumps({"id": 1, "method": "Page.captureScreenshot", "params": {"format": "png"}}))
+            shot_params: dict[str, Any] = {"format": "png"}
+            if body.full_page:
+                await cdp_ws.send(json.dumps({"id": 10, "method": "Page.getLayoutMetrics", "params": {}}))
+                metrics_res: dict[str, Any] = {}
+                while True:
+                    raw_m = await asyncio.wait_for(cdp_ws.recv(), timeout=4.0)
+                    parsed_m = json.loads(raw_m)
+                    if parsed_m.get("id") == 10:
+                        metrics_res = parsed_m.get("result") or {}
+                        break
+                content_box = metrics_res.get("cssContentSize") or metrics_res.get("contentSize") or {}
+                cw = _clamp_viewport_dim(content_box.get("width"), 1280, low=320, high=2560)
+                ch = _clamp_viewport_dim(content_box.get("height"), 1600, low=320, high=MAX_FULL_PAGE_HEIGHT)
+                shot_params = {
+                    "format": "png",
+                    "captureBeyondViewport": True,
+                    "clip": {"x": 0, "y": 0, "width": cw, "height": ch, "scale": 1},
+                }
+
+            await cdp_ws.send(json.dumps({"id": 1, "method": "Page.captureScreenshot", "params": shot_params}))
             png_b64 = ""
             while True:
-                raw_msg = await asyncio.wait_for(cdp_ws.recv(), timeout=5.0)
+                raw_msg = await asyncio.wait_for(cdp_ws.recv(), timeout=8.0)
                 parsed = json.loads(raw_msg)
                 if parsed.get("id") == 1:
                     if "error" in parsed:
@@ -583,24 +632,9 @@ async def capture_browser_screenshot(req: BrowserScreenshotRequest | None = None
         raise HTTPException(status_code=502, detail="CDP returned empty screenshot payload")
 
     png_bytes = base64.b64decode(png_b64)
-    width, height = _extract_png_dims(png_bytes)
-
     raw_url = chosen_meta.get("url") or "about:blank"
-    host_slug = re.sub(r"[^a-zA-Z0-9._-]", "-", urllib.parse.urlparse(raw_url).netloc or "page").strip("-") or "page"
-    ts_ms = int(time.time() * 1000)
-    filename = f"screenshot-{host_slug[:40]}-{ts_ms}.png"
-    shots_dir = _get_shots_dir()
-    full_path = os.path.join(shots_dir, filename)
-
-    fd = os.open(full_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, png_bytes)
-    finally:
-        os.close(fd)
-    try:
-        os.chmod(full_path, 0o600)
-    except OSError:
-        pass
+    host_slug = urllib.parse.urlparse(raw_url).netloc or "page"
+    filename, full_path, width, height = _write_private_shot_png(png_bytes, "screenshot", host_slug)
 
     return {
         "filename": filename,
@@ -608,6 +642,40 @@ async def capture_browser_screenshot(req: BrowserScreenshotRequest | None = None
         "url": raw_url,
         "dims": f"{width}x{height}",
         "target_id": chosen_id,
+        "full_page": bool(body.full_page),
+    }
+
+
+@router.post("/api/browser/screenshot/save", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def save_annotated_or_pasted_screenshot(req: SaveShotImageRequest):
+    """Persist a canvas-annotated or clipboard-pasted PNG into 0600 ~/.cache/aim-connect/shots/ (#273)."""
+    raw_b64 = (req.image_base64 or "").strip()
+    if not raw_b64:
+        raise HTTPException(status_code=400, detail="Missing image_base64 payload")
+    if "," in raw_b64 and raw_b64.lower().startswith("data:"):
+        header_part, b64_part = raw_b64.split(",", 1)
+        if "image/png" not in header_part.lower():
+            raise HTTPException(status_code=400, detail="Only image/png data URLs are supported")
+        raw_b64 = b64_part.strip()
+
+    try:
+        png_bytes = base64.b64decode(raw_b64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 image payload")
+
+    if len(png_bytes) > MAX_SAVED_SHOT_BYTES:
+        raise HTTPException(status_code=413, detail="Image exceeds 25 MB limit")
+    if len(png_bytes) < 24 or png_bytes[:8] != b"\x89PNG\r\n\x1a\n":
+        raise HTTPException(status_code=400, detail="Payload is not a valid PNG image")
+
+    filename, full_path, width, height = _write_private_shot_png(
+        png_bytes, "annotated", req.label or "shot"
+    )
+    return {
+        "filename": filename,
+        "path": full_path,
+        "dims": f"{width}x{height}",
+        "bytes": len(png_bytes),
     }
 
 
