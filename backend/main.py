@@ -446,6 +446,7 @@ from ws_handler import router as ws_router
 from routes_api import router as api_router
 from routes_forensics import router as forensics_router
 from routes_browser import router as browser_router
+from routes_joshua_analyst import router as joshua_analyst_router
 
 app.include_router(auth_router)
 app.include_router(sessions_router)
@@ -457,6 +458,7 @@ app.include_router(ws_router)
 app.include_router(api_router)
 app.include_router(forensics_router)
 app.include_router(browser_router)
+app.include_router(joshua_analyst_router)
 
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 
