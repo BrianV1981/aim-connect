@@ -102,8 +102,47 @@ def _get_agy_active_max_step_index(transcript_path: str) -> int | None:
     return None
 
 
+MAX_TRANSCRIPT_TURN_CHARS = 32000
+MAX_TRANSCRIPT_THINKING_CHARS = 8000
+
+
+def _load_full_transcript_lookup(compact_file_path: str) -> tuple[list[dict | None], dict[int, dict]]:
+    """Load sibling transcript_full.jsonl lazily when compact transcript.jsonl has truncated_fields (#271)."""
+    if not compact_file_path or os.path.basename(compact_file_path) != "transcript.jsonl":
+        return [], {}
+    full_path = os.path.join(os.path.dirname(compact_file_path), "transcript_full.jsonl")
+    if not os.path.isfile(full_path):
+        return [], {}
+    try:
+        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+            raw_lines = f.readlines()
+    except OSError:
+        return [], {}
+
+    by_line: list[dict | None] = []
+    by_step: dict[int, dict] = {}
+    for raw in raw_lines:
+        stripped = raw.strip()
+        if not stripped:
+            by_line.append(None)
+            continue
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            by_line.append(None)
+            continue
+        if isinstance(parsed, dict):
+            by_line.append(parsed)
+            s_idx = parsed.get("step_index")
+            if isinstance(s_idx, int) and not isinstance(s_idx, bool):
+                by_step[s_idx] = parsed
+        else:
+            by_line.append(None)
+    return by_line, by_step
+
+
 def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
-    """Parse an AGY/Grok JSONL transcript into structured turns with /rewind rollback (#212, #261)."""
+    """Parse an AGY/Grok JSONL transcript into structured turns with /rewind rollback (#212, #261, #271)."""
     turns: list[dict] = []
     if not os.path.isfile(file_path):
         return turns
@@ -115,7 +154,13 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
         return turns
 
     window_size = max(800, max_turns * 12)
-    for raw_line in lines[-window_size:]:
+    start_offset = max(0, len(lines) - window_size)
+    full_loaded = False
+    full_by_line: list[dict | None] = []
+    full_by_step: dict[int, dict] = {}
+
+    for rel_idx, raw_line in enumerate(lines[start_offset:]):
+        abs_line_idx = start_offset + rel_idx
         raw_line = raw_line.strip()
         if not raw_line:
             continue
@@ -134,6 +179,29 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
                 if not t.get("_has_step_index") or t["step_index"] < raw_step_idx
             ]
 
+        trunc_fields = obj.get("truncated_fields")
+        if isinstance(trunc_fields, list) and ("content" in trunc_fields or "thinking" in trunc_fields):
+            if not full_loaded:
+                full_by_line, full_by_step = _load_full_transcript_lookup(file_path)
+                full_loaded = True
+            full_obj = None
+            if abs_line_idx < len(full_by_line):
+                cand = full_by_line[abs_line_idx]
+                if (
+                    isinstance(cand, dict)
+                    and cand.get("step_index") == raw_step_idx
+                    and (cand.get("type") or cand.get("role")) == (obj.get("type") or obj.get("role"))
+                ):
+                    full_obj = cand
+            if full_obj is None and has_int_step:
+                cand = full_by_step.get(raw_step_idx)
+                if isinstance(cand, dict) and (cand.get("type") or cand.get("role")) == (
+                    obj.get("type") or obj.get("role")
+                ):
+                    full_obj = cand
+            if full_obj is not None:
+                obj = {**obj, **full_obj}
+
         step_type = obj.get("type") or obj.get("role") or ""
         if step_type in ("USER_INPUT", "user"):
             content = obj.get("content") or obj.get("text") or ""
@@ -144,7 +212,7 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
                 "_has_step_index": has_int_step,
                 "role": "user",
                 "created_at": obj.get("created_at", ""),
-                "content": str(content)[:4000],
+                "content": str(content)[:MAX_TRANSCRIPT_TURN_CHARS],
                 "thinking": "",
                 "tool_calls": [],
             })
@@ -176,8 +244,8 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
                     "_has_step_index": has_int_step,
                     "role": "assistant",
                     "created_at": obj.get("created_at", ""),
-                    "content": str(content)[:4000],
-                    "thinking": str(thinking)[:2000],
+                    "content": str(content)[:MAX_TRANSCRIPT_TURN_CHARS],
+                    "thinking": str(thinking)[:MAX_TRANSCRIPT_THINKING_CHARS],
                     "tool_calls": parsed_tools,
                 })
 
