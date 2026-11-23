@@ -68,8 +68,8 @@ def test_waiting_for_human_status_fleet_propagation_passive_ttl_and_clear_human(
             return SimpleNamespace(returncode=0, stdout="aim-connect\naim-other\n", stderr="")
         if cmd[:3] == ["tmux", "list-panes", "-a"]:
             lines = (
-                "aim-connect@@@0@@@main@@@0@@@agy@@@/home/kingb/aim-connect@@@1001@@@1@@@1700000001\n"
-                "aim-other@@@0@@@main@@@0@@@agy@@@/home/kingb/aim-other@@@1002@@@1@@@1700000001\n"
+                "aim-connect@@@0@@@main@@@0@@@agy@@@/tmp/aim-connect@@@1001@@@1@@@1700000001\n"
+                "aim-other@@@0@@@main@@@0@@@agy@@@/tmp/aim-other@@@1002@@@1@@@1700000001\n"
             )
             return SimpleNamespace(returncode=0, stdout=lines, stderr="")
         if cmd[:2] == ["tmux", "capture-pane"]:
