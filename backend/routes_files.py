@@ -6,7 +6,7 @@ import subprocess
 from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from main import verify_token, require_admin, DEFAULT_WORKSPACE, AIM_CONNECT_ROOT, HOME_DIR
 from routes_sessions import _get_git_branch
 
@@ -21,6 +21,7 @@ LANGUAGE_BY_EXT = {
     ".ts": "typescript",
     ".tsx": "typescript",
     ".md": "markdown",
+    ".markdown": "markdown",
     ".json": "json",
     ".css": "css",
     ".html": "html",
@@ -30,6 +31,19 @@ LANGUAGE_BY_EXT = {
     ".toml": "ini",
     ".sql": "sql",
 }
+
+RAW_MEDIA_MIME_BY_EXT = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".bmp": "image/bmp",
+    ".avif": "image/avif",
+}
+MAX_RAW_MEDIA_BYTES = 50 * 1024 * 1024
 
 
 def _infer_language(path: str) -> str:
@@ -312,6 +326,39 @@ def read_file(path: str):
             "mtime": mtime,
             "language": _infer_language(safe_path),
         }
+    except Exception as e:
+        return handle_file_error(e)
+
+
+@router.get("/api/file/raw", dependencies=[Depends(verify_token), Depends(require_admin)])
+def read_raw_media_file(path: str):
+    """Stream allowlisted image/media assets inside secure_path roots for inline FileExplorer preview (#266)."""
+    try:
+        safe_path = secure_path(path, allow_home=True)
+        if not os.path.isfile(safe_path):
+            raise FileNotFoundError(f"File not found: {path}")
+        _, ext = os.path.splitext(safe_path.lower())
+        media_type = RAW_MEDIA_MIME_BY_EXT.get(ext)
+        if not media_type:
+            return JSONResponse(
+                status_code=415,
+                content={"error": f"Unsupported media preview extension: {ext or 'none'}"},
+            )
+        size = os.path.getsize(safe_path)
+        if size > MAX_RAW_MEDIA_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "Media file exceeds 50 MB inline preview cap."},
+            )
+        return FileResponse(
+            safe_path,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+            },
+        )
     except Exception as e:
         return handle_file_error(e)
 

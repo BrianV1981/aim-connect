@@ -15,7 +15,7 @@ import {{ parseMarkdownBlocks, tokenizeInlineMarkdown, parseFileUriTarget }} fro
 const sample = [
   "### Button Name & Live Update (`#263`)",
   "",
-  "1. **What It's Called:** That lightning-emblem button on the left of the composer is the **Bolt Quick-Actions / Control Pad button** (`.ld-bolt-btn` in [App.jsx](file:///home/kingb/aim-connect/frontend/src/App.jsx#L1998-L2018)), which opens the **Bolt Quick-Actions Popover** (`.quick-actions-popover`).",
+  "1. **What It's Called:** That lightning-emblem button on the left of the composer is the **Bolt Quick-Actions / Control Pad button** (`.ld-bolt-btn` in [App.jsx](file:///workspace/aim-connect/frontend/src/App.jsx#L1998-L2018)), which opens the **Bolt Quick-Actions Popover** (`.quick-actions-popover`).",
   "2. ***Nested bold italic*** with ~~strikethrough~~ and [External](https://example.com/docs?q=1) and bare https://api.leaddeeds.com/health.",
   "   - Nested sub-item with **more bold** and `inline_code()`",
   "   - Second nested sub-item",
@@ -39,7 +39,7 @@ for (const b of blocks) {{
 }}
 const elapsedMs = performance.now() - t0;
 
-const fileTarget = parseFileUriTarget("file:///home/kingb/aim-connect/frontend/src/App.jsx#L1998-L2018");
+const fileTarget = parseFileUriTarget("file:///workspace/aim-connect/frontend/src/App.jsx#L1998-L2018");
 console.log(JSON.stringify({{
   blockTypes: blocks.map((b) => b.type),
   listLen: blocks.find((b) => b.type === "list")?.items?.length || 0,
@@ -58,7 +58,7 @@ console.log(JSON.stringify({{
     assert result["blockTypes"] == ["heading", "list", "table", "code"]
     assert result["listLen"] == 2
     assert result["fileTarget"] == {
-        "path": "/home/kingb/aim-connect/frontend/src/App.jsx",
+        "path": "/workspace/aim-connect/frontend/src/App.jsx",
         "line": 1998,
         "endLine": 2018,
     }

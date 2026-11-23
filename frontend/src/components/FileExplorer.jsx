@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor, { DiffEditor } from '@monaco-editor/react';
 import Icon from './Icons';
+import MarkdownBody from './MarkdownBody';
 import {
   copyTextToClipboard,
   getSelectionWithinNode,
@@ -9,11 +10,63 @@ import {
 
 const MAX_TABS = 20;
 
+const IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.ico',
+  '.bmp',
+  '.avif',
+]);
+
+const NOISY_DIR_NAMES = new Set([
+  '.git',
+  '.pytest_cache',
+  '__pycache__',
+  'node_modules',
+  '.venv',
+  '.mypy_cache',
+  '.ruff_cache',
+  '.DS_Store',
+]);
+
+function getExtLower(filePath) {
+  const clean = String(filePath || '');
+  const slashIdx = clean.lastIndexOf('/');
+  const base = slashIdx >= 0 ? clean.slice(slashIdx + 1) : clean;
+  const dotIdx = base.lastIndexOf('.');
+  return dotIdx > 0 ? base.slice(dotIdx).toLowerCase() : '';
+}
+
+function isImagePath(filePath) {
+  return IMAGE_EXTENSIONS.has(getExtLower(filePath));
+}
+
+function isMarkdownPath(filePath) {
+  const ext = getExtLower(filePath);
+  return ext === '.md' || ext === '.markdown';
+}
+
+function shouldHideEntry(item, hideDotfiles) {
+  if (!hideDotfiles || !item?.name) return false;
+  if (NOISY_DIR_NAMES.has(item.name)) return true;
+  if (item.name.startsWith('.')) return true;
+  return false;
+}
+
 export default function FileExplorer({
   isOpen,
   activeSession,
   splitMode,
   uiTheme = 'emerald',
+  treeSide = 'left',
+  hideDotfiles = true,
+  onToggleHideDotfiles,
+  editorFontSize = 13,
+  editorWordWrap = true,
   requestedFile = null,
   selectMode = false,
   onToggleSelectMode,
@@ -22,20 +75,28 @@ export default function FileExplorer({
   editorRef,
 }) {
   const [navMode, setNavMode] = useState('files'); // files | git
+  const [rootPath, setRootPath] = useState('');
   const [currentPath, setCurrentPath] = useState('');
-  const [fileItems, setFileItems] = useState([]);
+  const [dirChildrenMap, setDirChildrenMap] = useState({});
+  const [expandedDirs, setExpandedDirs] = useState({});
   const [workspaceCtx, setWorkspaceCtx] = useState(null);
   const [gitStatus, setGitStatus] = useState({ branch: '', files: [], repo_path: '' });
-  const [tabs, setTabs] = useState([]); // [{ id, type: 'file'|'diff', path, label, content, savedContent, mtime, language, original, conflict }]
+  const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState('');
+  const [mdViewMode, setMdViewMode] = useState('preview'); // preview | code
+  const [imageZoomMode, setImageZoomMode] = useState('fit'); // fit | actual
   const [saveBadge, setSaveBadge] = useState('');
   const [copyBadge, setCopyBadge] = useState('');
   const [copySelectionBadge, setCopySelectionBadge] = useState('');
   const [selectedFileText, setSelectedFileText] = useState('');
   const [localSelectMode, setLocalSelectMode] = useState(false);
+  const [treeCollapsed, setTreeCollapsed] = useState(
+    () => localStorage.getItem('aim-files-tree-collapsed') === 'true'
+  );
   const [showMobileTree, setShowMobileTree] = useState(true);
   const selectSurfaceRef = useRef(null);
   const autoOpenedSessionRef = useRef('');
+  const blobUrlsRef = useRef(new Set());
 
   const isSelectMode = onToggleSelectMode ? selectMode : localSelectMode;
   const toggleSelectMode = () => {
@@ -46,7 +107,31 @@ export default function FileExplorer({
     }
   };
 
+  const toggleTreeRail = () => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setShowMobileTree((prev) => !prev);
+      return;
+    }
+    setTreeCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('aim-files-tree-collapsed', String(next));
+      return next;
+    });
+  };
+
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
+
+  useEffect(() => {
+    const urls = blobUrlsRef.current;
+    return () => {
+      urls.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
+      });
+      urls.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSelectMode) {
@@ -60,6 +145,69 @@ export default function FileExplorer({
     return () => document.removeEventListener('selectionchange', syncSelection);
   }, [isSelectMode, activeTabId]);
 
+  const fetchDirectoryEntries = useCallback(async (dirPath) => {
+    if (!dirPath) return null;
+    try {
+      const res = await fetch(`/api/files?path=${encodeURIComponent(dirPath)}`);
+      const data = await res.json();
+      if (data && Array.isArray(data.items) && data.path) {
+        setDirChildrenMap((prev) => ({
+          ...prev,
+          [data.path]: data.items,
+        }));
+        return data;
+      }
+    } catch (e) {
+      console.error('Failed to load directory entries', e);
+    }
+    return null;
+  }, []);
+
+  const loadFiles = useCallback(
+    async (targetPath, updateRoot = true) => {
+      const data = await fetchDirectoryEntries(targetPath || '');
+      if (data?.path) {
+        setCurrentPath(data.path);
+        if (updateRoot) {
+          setRootPath(data.path);
+        }
+        setExpandedDirs((prev) => ({ ...prev, [data.path]: true }));
+      }
+    },
+    [fetchDirectoryEntries]
+  );
+
+  const expandAncestorsToFile = useCallback(
+    async (filePath, activeRoot) => {
+      const baseRoot = activeRoot || rootPath;
+      if (!filePath || !baseRoot || !filePath.startsWith(`${baseRoot}/`)) return;
+      const rel = filePath.slice(baseRoot.length + 1);
+      const parts = rel.split('/');
+      if (parts.length <= 1) return;
+      let cursor = baseRoot;
+      const toExpand = { [baseRoot]: true };
+      for (let i = 0; i < parts.length - 1; i++) {
+        cursor = `${cursor}/${parts[i]}`;
+        toExpand[cursor] = true;
+        if (!dirChildrenMap[cursor]) {
+          await fetchDirectoryEntries(cursor);
+        }
+      }
+      setExpandedDirs((prev) => ({ ...prev, ...toExpand }));
+      setCurrentPath(cursor);
+    },
+    [dirChildrenMap, fetchDirectoryEntries, rootPath]
+  );
+
+  const handleToggleDirectory = async (dirPath) => {
+    setCurrentPath(dirPath);
+    const willExpand = !expandedDirs[dirPath];
+    setExpandedDirs((prev) => ({ ...prev, [dirPath]: willExpand }));
+    if (willExpand && !dirChildrenMap[dirPath]) {
+      await fetchDirectoryEntries(dirPath);
+    }
+  };
+
   const copySelectedTabText = async () => {
     const current = getSelectionWithinNode(selectSurfaceRef.current) || selectedFileText;
     if (!current) return;
@@ -72,37 +220,48 @@ export default function FileExplorer({
 
   const copyActiveTabContent = async () => {
     if (!activeTab) return;
-    const textToCopy = activeTab.content || '';
+    const textToCopy = activeTab.type === 'image' ? activeTab.path : activeTab.content || '';
     const ok = await copyTextToClipboard(textToCopy);
     if (ok) {
-      setCopyBadge('COPIED ✓');
+      setCopyBadge(activeTab.type === 'image' ? 'COPIED PATH ✓' : 'COPIED ✓');
       setTimeout(() => setCopyBadge(''), 1800);
     }
   };
 
-  const openFileTab = async (path, customLabel = '') => {
+  const openFileTab = async (path, customLabel = '', opts = {}) => {
+    if (!path) return;
     const tabId = `file:${path}`;
     const existing = tabs.find((t) => t.id === tabId);
+    if (opts.forceCode) {
+      setMdViewMode('code');
+    }
     if (existing) {
       setActiveTabId(tabId);
       if (typeof window !== 'undefined' && window.innerWidth <= 768) {
         setShowMobileTree(false);
       }
+      expandAncestorsToFile(existing.path, rootPath);
       return;
     }
-    try {
-      const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
-      const data = await res.json();
-      if (data.content !== undefined) {
+
+    if (isImagePath(path)) {
+      try {
+        const res = await fetch(`/api/file/raw?path=${encodeURIComponent(path)}`);
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        blobUrlsRef.current.add(blobUrl);
         const newTab = {
           id: tabId,
-          type: 'file',
-          path: data.path || path,
+          type: 'image',
+          path,
           label: customLabel || path.split('/').pop(),
-          content: data.content,
-          savedContent: data.content,
-          mtime: data.mtime || null,
-          language: data.language || 'markdown',
+          blobUrl,
+          sizeBytes: blob.size,
+          mimeType: blob.type,
+          dims: '',
+          content: '',
+          savedContent: '',
           conflict: null,
         };
         setTabs((prev) => {
@@ -111,30 +270,53 @@ export default function FileExplorer({
           return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
         });
         setActiveTabId(tabId);
+        setImageZoomMode('fit');
         if (typeof window !== 'undefined' && window.innerWidth <= 768) {
           setShowMobileTree(false);
         }
+        expandAncestorsToFile(path, rootPath);
+      } catch (e) {
+        console.error('Failed to open image preview', e);
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+      const data = await res.json();
+      if (data.content !== undefined) {
+        const resolvedPath = data.path || path;
+        const newTab = {
+          id: `file:${resolvedPath}`,
+          type: 'file',
+          path: resolvedPath,
+          label: customLabel || resolvedPath.split('/').pop(),
+          content: data.content,
+          savedContent: data.content,
+          mtime: data.mtime || null,
+          language: data.language || 'markdown',
+          conflict: null,
+        };
+        setTabs((prev) => {
+          const filtered = prev.filter((t) => t.id !== newTab.id);
+          const next = [...filtered, newTab];
+          return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
+        });
+        setActiveTabId(newTab.id);
+        if (isMarkdownPath(resolvedPath) && !opts.forceCode) {
+          setMdViewMode('preview');
+        }
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+          setShowMobileTree(false);
+        }
+        expandAncestorsToFile(resolvedPath, rootPath);
       }
     } catch (e) {
       console.error('Failed to open file tab', e);
     }
   };
 
-  const loadFiles = async (targetPath) => {
-    try {
-      const q = targetPath ? `?path=${encodeURIComponent(targetPath)}` : '';
-      const res = await fetch(`/api/files${q}`);
-      const data = await res.json();
-      if (data.items) {
-        setFileItems(data.items);
-        setCurrentPath(data.path);
-      }
-    } catch (e) {
-      console.error('Failed to load files', e);
-    }
-  };
-
-  const loadGitStatus = async (sessionName = activeSession, targetPath = currentPath) => {
+  const loadGitStatus = async (sessionName = activeSession, targetPath = rootPath || currentPath) => {
     try {
       const params = new URLSearchParams();
       if (sessionName) params.set('session', sessionName);
@@ -162,15 +344,18 @@ export default function FileExplorer({
       const data = await res.json();
       if (data && !data.error) {
         setWorkspaceCtx(data);
-        if (data.pane_path) {
-          loadFiles(data.pane_path);
-          loadGitStatus(sessionName, data.pane_path);
+        const startRoot = data.repo_root || data.pane_path;
+        if (startRoot) {
+          await loadFiles(startRoot, true);
+          loadGitStatus(sessionName, startRoot);
         }
-        const sigKey = `${sessionName || 'default'}:${data.main_repo_root || data.pane_path || ''}`;
+        const sigKey = `${sessionName || 'default'}:${data.main_repo_root || startRoot || ''}`;
         if (tabs.length === 0 && autoOpenedSessionRef.current !== sigKey) {
           autoOpenedSessionRef.current = sigKey;
           const preferred = (data.brain_files || []).find(
-            (bf) => bf.exists && (bf.label === 'HANDOFF.md' || bf.label === 'AGENTS.md' || bf.label === 'README.md')
+            (bf) =>
+              bf.exists &&
+              (bf.label === 'README.md' || bf.label === 'HANDOFF.md' || bf.label === 'AGENTS.md')
           );
           if (preferred?.path) {
             openFileTab(preferred.path, preferred.label);
@@ -188,19 +373,20 @@ export default function FileExplorer({
     }
   }, [isOpen, activeSession]);
 
-  // Open file:// links clicked inside Chat View / History directly in Monaco and reveal target line (#264)
+  // Open file:// links clicked inside Chat View / History directly in FileExplorer and reveal target line (#264, #266)
   useEffect(() => {
     if (!isOpen || !requestedFile?.path) return;
     let cancelled = false;
     (async () => {
+      const hasLineTarget = Boolean(requestedFile.line && requestedFile.line > 0);
       const parentDir = requestedFile.path.includes('/')
         ? requestedFile.path.slice(0, requestedFile.path.lastIndexOf('/'))
         : '';
-      if (parentDir) {
-        loadFiles(parentDir);
+      if (parentDir && (!rootPath || !requestedFile.path.startsWith(`${rootPath}/`))) {
+        await loadFiles(parentDir, true);
       }
-      await openFileTab(requestedFile.path);
-      if (!cancelled && requestedFile.line && requestedFile.line > 0) {
+      await openFileTab(requestedFile.path, '', { forceCode: hasLineTarget });
+      if (!cancelled && hasLineTarget) {
         setTimeout(() => {
           const ed = editorRef?.current;
           if (ed) {
@@ -209,7 +395,7 @@ export default function FileExplorer({
               ed.setPosition?.({ lineNumber: requestedFile.line, column: 1 });
             } catch {}
           }
-        }, 120);
+        }, 140);
       }
     })();
     return () => {
@@ -253,6 +439,27 @@ export default function FileExplorer({
     if (!activeTab) return;
     if (activeTab.type === 'diff') {
       await openDiffTab(activeTab.path);
+      return;
+    }
+    if (activeTab.type === 'image') {
+      try {
+        const res = await fetch(`/api/file/raw?path=${encodeURIComponent(activeTab.path)}`);
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const nextBlobUrl = URL.createObjectURL(blob);
+        blobUrlsRef.current.add(nextBlobUrl);
+        if (activeTab.blobUrl) {
+          try {
+            URL.revokeObjectURL(activeTab.blobUrl);
+          } catch {}
+          blobUrlsRef.current.delete(activeTab.blobUrl);
+        }
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === activeTab.id ? { ...t, blobUrl: nextBlobUrl, sizeBytes: blob.size } : t
+          )
+        );
+      } catch {}
       return;
     }
     try {
@@ -332,6 +539,13 @@ export default function FileExplorer({
   const closeTab = (e, tabId) => {
     e.stopPropagation();
     setTabs((prev) => {
+      const closing = prev.find((t) => t.id === tabId);
+      if (closing?.blobUrl) {
+        try {
+          URL.revokeObjectURL(closing.blobUrl);
+        } catch {}
+        blobUrlsRef.current.delete(closing.blobUrl);
+      }
       const next = prev.filter((t) => t.id !== tabId);
       if (activeTabId === tabId) {
         setActiveTabId(next.length > 0 ? next[next.length - 1].id : '');
@@ -340,16 +554,29 @@ export default function FileExplorer({
     });
   };
 
+  const refreshTree = async () => {
+    const dirsToRefresh = new Set([rootPath, currentPath].filter(Boolean));
+    Object.entries(expandedDirs).forEach(([dPath, isExp]) => {
+      if (isExp) dirsToRefresh.add(dPath);
+    });
+    for (const d of dirsToRefresh) {
+      await fetchDirectoryEntries(d);
+    }
+    loadGitStatus();
+  };
+
   const createItem = async (isDir) => {
-    const name = window.prompt(`New ${isDir ? 'Folder' : 'File'} Name:`);
-    if (!name || !currentPath) return;
+    const targetDir = currentPath || rootPath;
+    const name = window.prompt(`New ${isDir ? 'Folder' : 'File'} Name in ${targetDir.split('/').pop() || '/'}:`);
+    if (!name || !targetDir) return;
     try {
       await fetch('/api/file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: `${currentPath}/${name}`, is_dir: isDir }),
+        body: JSON.stringify({ path: `${targetDir}/${name}`, is_dir: isDir }),
       });
-      loadFiles(currentPath);
+      setExpandedDirs((prev) => ({ ...prev, [targetDir]: true }));
+      await fetchDirectoryEntries(targetDir);
       loadGitStatus();
     } catch (e) {
       console.error(e);
@@ -361,12 +588,47 @@ export default function FileExplorer({
     if (!window.confirm(`Delete ${path.split('/').pop()}?`)) return;
     try {
       await fetch(`/api/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
-      loadFiles(currentPath);
+      const parentDir = path.slice(0, Math.max(0, path.lastIndexOf('/'))) || rootPath;
+      if (parentDir) await fetchDirectoryEntries(parentDir);
       loadGitStatus();
     } catch (e) {
       console.error(e);
     }
   };
+
+  const breadcrumbSegments = useMemo(() => {
+    const targetPath = activeTab?.path || currentPath || rootPath;
+    if (!targetPath) return [];
+    if (rootPath && (targetPath === rootPath || targetPath.startsWith(`${rootPath}/`))) {
+      const rootLabel = rootPath.split('/').filter(Boolean).pop() || '/';
+      const segs = [{ label: rootLabel, path: rootPath, isDir: true }];
+      const rel = targetPath === rootPath ? '' : targetPath.slice(rootPath.length + 1);
+      if (rel) {
+        const parts = rel.split('/');
+        let acc = rootPath;
+        parts.forEach((p, idx) => {
+          acc = `${acc}/${p}`;
+          const isLast = idx === parts.length - 1;
+          segs.push({
+            label: p,
+            path: acc,
+            isDir: !isLast || !activeTab || activeTab.path !== targetPath,
+          });
+        });
+      }
+      return segs;
+    }
+    const parts = targetPath.split('/').filter(Boolean);
+    let acc = '';
+    return parts.map((p, idx) => {
+      acc = `${acc}/${p}`;
+      return {
+        label: p,
+        path: acc,
+        isDir: idx < parts.length - 1,
+      };
+    });
+  }, [activeTab, currentPath, rootPath]);
 
   if (!isOpen) return null;
 
@@ -383,9 +645,81 @@ export default function FileExplorer({
     if (gf?.path) gitByPath.set(gf.path, gf.status);
   });
 
+  const renderTreeNodes = (dirPath, depth = 0) => {
+    const rawEntries = dirChildrenMap[dirPath] || [];
+    const entries = rawEntries.filter((item) => !shouldHideEntry(item, hideDotfiles));
+    if (entries.length === 0 && depth === 0) {
+      return (
+        <div style={{ padding: '10px 8px', fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--text-muted)' }}>
+          Empty directory.
+        </div>
+      );
+    }
+
+    return entries.map((item) => {
+      const st = gitByPath.get(item.path);
+      const isExpanded = Boolean(expandedDirs[item.path]);
+      const isSelected = activeTab?.path === item.path || (!activeTab && currentPath === item.path);
+      const isImg = !item.is_dir && isImagePath(item.path);
+
+      return (
+        <div key={item.path}>
+          <div
+            className={`tree-file-btn ${isSelected ? 'active' : ''}`}
+            style={{ paddingLeft: `${7 + Math.min(depth, 7) * 13}px` }}
+            onClick={() => (item.is_dir ? handleToggleDirectory(item.path) : openFileTab(item.path))}
+            title={item.path}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', minWidth: 0, flex: 1 }}>
+              {item.is_dir ? (
+                <span style={{ color: 'var(--text-muted)', display: 'inline-flex', width: '12px' }}>
+                  <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={11} />
+                </span>
+              ) : (
+                <span style={{ width: '12px', flexShrink: 0 }} />
+              )}
+              <span
+                style={{
+                  color: item.is_dir ? 'var(--accent)' : isImg ? '#c084fc' : 'var(--text-muted)',
+                  display: 'inline-flex',
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name={item.is_dir ? 'folder' : isImg ? 'image' : 'file'} size={12} />
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.name}
+              </span>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+              {st && (
+                <span style={{ fontSize: '9.5px', fontWeight: 700, color: st.includes('M') ? '#fbbf24' : 'var(--accent)' }}>
+                  {st}
+                </span>
+              )}
+              <span
+                role="button"
+                tabIndex={0}
+                className="tree-del-trigger"
+                onClick={(e) => deleteItem(item.path, e)}
+                title={`Delete ${item.name}`}
+              >
+                <Icon name="trash" size={11} />
+              </span>
+            </span>
+          </div>
+          {item.is_dir && isExpanded && depth < 8 && renderTreeNodes(item.path, depth + 1)}
+        </div>
+      );
+    });
+  };
+
+  const activeIsMarkdown = Boolean(activeTab?.type === 'file' && isMarkdownPath(activeTab.path));
+  const showMarkdownPreview = activeIsMarkdown && mdViewMode === 'preview' && !isSelectMode;
+
   return (
     <div className={`file-explorer-pane ${splitMode ? 'split-mode' : 'full-mode'}`}>
-      {/* Emerald Matrix Single-Row Co-Pilot Top Bar (#260) */}
+      {/* Emerald Matrix Co-Pilot Top Bar (#260, #266) */}
       <div className="copilot-top-bar" style={{ height: 'auto', minHeight: '38px', padding: '5px 12px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
           <button
@@ -393,6 +727,7 @@ export default function FileExplorer({
             className={`subbar-util-btn ${navMode === 'files' ? 'active' : ''}`}
             onClick={() => {
               setNavMode('files');
+              setTreeCollapsed(false);
               setShowMobileTree(true);
             }}
           >
@@ -404,6 +739,7 @@ export default function FileExplorer({
             className={`subbar-util-btn ${navMode === 'git' ? 'active' : ''}`}
             onClick={() => {
               setNavMode('git');
+              setTreeCollapsed(false);
               setShowMobileTree(true);
               loadGitStatus();
             }}
@@ -457,7 +793,7 @@ export default function FileExplorer({
               onChange={(e) => {
                 if (e.target.value) {
                   setNavMode('files');
-                  loadFiles(e.target.value);
+                  loadFiles(e.target.value, true);
                   loadGitStatus(activeSession, e.target.value);
                 }
               }}
@@ -476,7 +812,7 @@ export default function FileExplorer({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-          {activeTab?.type === 'file' && (
+          {activeTab?.type === 'file' && (!activeIsMarkdown || mdViewMode === 'code') && (
             <button
               id="save-btn"
               type="button"
@@ -494,10 +830,10 @@ export default function FileExplorer({
               className="subbar-util-btn"
               onMouseDown={(e) => e.preventDefault()}
               onClick={copyActiveTabContent}
-              title="Copy entire file contents to clipboard"
+              title={activeTab.type === 'image' ? 'Copy image path to clipboard' : 'Copy entire file contents to clipboard'}
             >
               <Icon name="copyText" size={12} />
-              <span>{copyBadge || 'COPY ALL'}</span>
+              <span>{copyBadge || (activeTab.type === 'image' ? 'COPY PATH' : 'COPY ALL')}</span>
             </button>
           )}
           <button
@@ -508,6 +844,15 @@ export default function FileExplorer({
           >
             <Icon name={splitMode ? 'maximize' : 'split'} size={12} />
             <span>{splitMode ? 'FULL VIEW' : 'SPLIT VIEW'}</span>
+          </button>
+          <button
+            type="button"
+            className={`ghost-btn ${!treeCollapsed ? 'active' : ''}`}
+            style={{ height: '26px', padding: '0 7px' }}
+            onClick={toggleTreeRail}
+            title={treeCollapsed ? 'Show File Explorer Sidebar' : 'Collapse File Explorer Sidebar'}
+          >
+            <Icon name="menu" size={14} />
           </button>
           <button
             type="button"
@@ -558,22 +903,37 @@ export default function FileExplorer({
         </div>
       )}
 
-      {/* Persistent 2-Column Split Body: Left Tree Rail + Right Editor/Diff Stage (#260) */}
-      <div className="files-split-body">
-        <aside className={`files-tree-rail ${!showMobileTree && activeTab ? 'mobile-rail-hidden' : ''}`}>
+      {/* Persistent 2-Column Split Body: Configurable Left or Right Tree Rail + Editor/Preview Stage (#260, #266) */}
+      <div className={`files-split-body ${treeSide === 'right' ? 'tree-right' : 'tree-left'}`}>
+        <aside
+          className={`files-tree-rail ${treeCollapsed ? 'rail-collapsed' : ''} ${
+            !showMobileTree && activeTab ? 'mobile-rail-hidden' : ''
+          }`}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', padding: '2px 4px 6px', borderBottom: '1px solid var(--border-hairline)', marginBottom: '4px' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9.5px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.12em' }}>
-              {navMode === 'git' ? `CHANGES (${gitStatus.branch || 'HEAD'})` : 'EXPLORER'}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9.5px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.12em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {navMode === 'git'
+                ? `CHANGES (${gitStatus.branch || 'HEAD'})`
+                : (rootPath.split('/').filter(Boolean).pop() || 'WORKSPACE').toUpperCase()}
             </span>
-            <div style={{ display: 'flex', gap: '3px' }}>
+            <div style={{ display: 'flex', gap: '3px', flexShrink: 0 }}>
               {navMode === 'files' ? (
                 <>
                   <button
                     type="button"
+                    className={`fav-chip ${!hideDotfiles ? 'active' : ''}`}
+                    style={{ padding: '0 5px' }}
+                    onClick={() => onToggleHideDotfiles?.()}
+                    title={hideDotfiles ? 'Hidden dotfiles/caches filtered — click to show all' : 'Showing dotfiles — click to hide .git/.pytest_cache'}
+                  >
+                    <Icon name={hideDotfiles ? 'eyeOff' : 'eye'} size={11} />
+                  </button>
+                  <button
+                    type="button"
                     className="fav-chip"
                     style={{ padding: '0 5px' }}
-                    onClick={() => loadFiles(currentPath.split('/').slice(0, -1).join('/') || '/')}
-                    title="Parent Directory"
+                    onClick={() => loadFiles((rootPath || currentPath).split('/').slice(0, -1).join('/') || '/', true)}
+                    title="Move Root Up One Directory"
                   >
                     <Icon name="arrowUp" size={11} />
                   </button>
@@ -595,6 +955,15 @@ export default function FileExplorer({
                   >
                     +D
                   </button>
+                  <button
+                    type="button"
+                    className="fav-chip"
+                    style={{ padding: '0 5px' }}
+                    onClick={refreshTree}
+                    title="Refresh Explorer Tree"
+                  >
+                    <Icon name="refresh" size={11} />
+                  </button>
                 </>
               ) : (
                 <button
@@ -609,23 +978,6 @@ export default function FileExplorer({
               )}
             </div>
           </div>
-
-          {navMode === 'files' && currentPath && (
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '9.5px',
-                color: 'var(--text-muted)',
-                padding: '0 4px 5px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-              title={currentPath}
-            >
-              {currentPath.replace(/^\/home\/[^/]+/, '~')}
-            </div>
-          )}
 
           {navMode === 'git' ? (
             gitStatus.files.length === 0 ? (
@@ -662,7 +1014,7 @@ export default function FileExplorer({
                           e.stopPropagation();
                           openFileTab(gf.path, gf.rel_path.split('/').pop());
                         }}
-                        title="Edit file in Monaco"
+                        title="Open file"
                         style={{ opacity: 0.75, display: 'inline-flex' }}
                       >
                         <Icon name="edit" size={11} />
@@ -673,43 +1025,7 @@ export default function FileExplorer({
               })
             )
           ) : (
-            fileItems.map((item, idx) => {
-              const st = gitByPath.get(item.path);
-              const isSelected = activeTab?.path === item.path;
-              return (
-                <div
-                  key={`${item.path || item.name}:${idx}`}
-                  className={`tree-file-btn ${isSelected ? 'active' : ''}`}
-                  onClick={() => (item.is_dir ? loadFiles(item.path) : openFileTab(item.path))}
-                  title={item.path}
-                >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                    <span style={{ color: item.is_dir ? 'var(--accent)' : 'var(--text-muted)', display: 'inline-flex' }}>
-                      <Icon name={item.is_dir ? 'folder' : 'file'} size={12} />
-                    </span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.name}
-                    </span>
-                  </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                    {st && (
-                      <span style={{ fontSize: '9.5px', fontWeight: 700, color: st.includes('M') ? '#fbbf24' : 'var(--accent)' }}>
-                        {st}
-                      </span>
-                    )}
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="tree-del-trigger"
-                      onClick={(e) => deleteItem(item.path, e)}
-                      title={`Delete ${item.name}`}
-                    >
-                      <Icon name="trash" size={11} />
-                    </span>
-                  </span>
-                </div>
-              );
-            })
+            rootPath && renderTreeNodes(rootPath, 0)
           )}
         </aside>
 
@@ -721,7 +1037,7 @@ export default function FileExplorer({
                 className="fav-chip mobile-tree-toggle"
                 onClick={() => setShowMobileTree((prev) => !prev)}
               >
-                {showMobileTree ? 'HIDE TREE' : '← TREE'}
+                {showMobileTree ? 'HIDE TREE' : 'TREE'}
               </button>
               {tabs.map((t) => {
                 const isDirty = t.type === 'file' && t.content !== t.savedContent;
@@ -733,7 +1049,8 @@ export default function FileExplorer({
                     onClick={() => setActiveTabId(t.id)}
                     title={t.path}
                   >
-                    <span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      {t.type === 'image' && <Icon name="image" size={11} />}
                       {isDirty ? '● ' : ''}
                       {t.label}
                     </span>
@@ -750,37 +1067,98 @@ export default function FileExplorer({
             </div>
           )}
 
-          {activeTab && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
-                padding: '4px 12px',
-                borderBottom: '1px solid var(--border-hairline)',
-                background: 'var(--bg-subtle)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '10.5px',
-                flexWrap: 'wrap',
-              }}
-            >
-              <span
-                style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: '120px' }}
-                title={activeTab.path}
-              >
-                {activeTab.path}
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className={`fav-chip ${isSelectMode ? 'active' : ''}`}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={toggleSelectMode}
-                  title="Toggle isolated native Scroll/Select text view vs Monaco Editor"
-                >
-                  {isSelectMode ? 'EDITOR MODE' : 'SELECT TEXT'}
-                </button>
+          {/* Clickable Antigravity-Style Breadcrumb & Mode Strip (#266) */}
+          {(activeTab || breadcrumbSegments.length > 0) && (
+            <div className="files-breadcrumb-bar">
+              <div className="files-breadcrumb-trail">
+                {breadcrumbSegments.map((seg, idx) => {
+                  const isLast = idx === breadcrumbSegments.length - 1;
+                  const isImg = isLast && activeTab?.type === 'image';
+                  return (
+                    <span key={seg.path} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
+                      {idx > 0 && (
+                        <span style={{ opacity: 0.4, display: 'inline-flex' }}>
+                          <Icon name="chevronRight" size={11} />
+                        </span>
+                      )}
+                      {seg.isDir ? (
+                        <button
+                          type="button"
+                          className="breadcrumb-seg-btn"
+                          onClick={async () => {
+                            setNavMode('files');
+                            setTreeCollapsed(false);
+                            setShowMobileTree(true);
+                            setCurrentPath(seg.path);
+                            setExpandedDirs((prev) => ({ ...prev, [seg.path]: true }));
+                            if (!dirChildrenMap[seg.path]) {
+                              await fetchDirectoryEntries(seg.path);
+                            }
+                          }}
+                          title={`Reveal ${seg.path} in Explorer`}
+                        >
+                          {seg.label}
+                        </button>
+                      ) : (
+                        <span className="breadcrumb-leaf">
+                          {isImg && (
+                            <span style={{ color: '#c084fc', display: 'inline-flex' }}>
+                              <Icon name="image" size={12} />
+                            </span>
+                          )}
+                          <span>{seg.label}</span>
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
+                {activeIsMarkdown && (
+                  <button
+                    type="button"
+                    className={`fav-chip ${mdViewMode === 'preview' ? 'active' : ''}`}
+                    onClick={() => setMdViewMode((prev) => (prev === 'preview' ? 'code' : 'preview'))}
+                    title="Toggle rendered GitHub Markdown Preview vs Monaco Code Editor"
+                  >
+                    <Icon name={mdViewMode === 'preview' ? 'code' : 'eye'} size={11} />
+                    <span style={{ marginLeft: '4px' }}>
+                      {mdViewMode === 'preview' ? 'EDIT CODE' : 'PREVIEW'}
+                    </span>
+                  </button>
+                )}
+
+                {activeTab?.type === 'image' && (
+                  <>
+                    {activeTab.dims && (
+                      <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
+                        {activeTab.dims}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className={`fav-chip ${imageZoomMode === 'actual' ? 'active' : ''}`}
+                      onClick={() => setImageZoomMode((prev) => (prev === 'fit' ? 'actual' : 'fit'))}
+                      title="Toggle Fit-to-Pane vs 1:1 Actual Pixel Size"
+                    >
+                      {imageZoomMode === 'fit' ? '1:1 ZOOM' : 'FIT PANE'}
+                    </button>
+                  </>
+                )}
+
+                {activeTab && activeTab.type !== 'image' && (
+                  <button
+                    type="button"
+                    className={`fav-chip ${isSelectMode ? 'active' : ''}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={toggleSelectMode}
+                    title="Toggle clean read-only surface for drag-highlighting lines"
+                  >
+                    {isSelectMode ? 'EDITOR MODE' : 'SELECT TEXT'}
+                  </button>
+                )}
+
                 {isSelectMode && (
                   <button
                     type="button"
@@ -793,25 +1171,27 @@ export default function FileExplorer({
                       `Copy Selection${selectedFileText ? ` (${selectedFileText.length})` : ''}`}
                   </button>
                 )}
-                {activeTab.type === 'file' && (
-                  <>
-                    <button
-                      type="button"
-                      className="fav-chip"
-                      onClick={() => openDiffTab(activeTab.path, activeTab.label)}
-                      title="Compare file with Git HEAD in side-by-side DiffEditor"
-                    >
-                      DIFF VS HEAD
-                    </button>
-                    <button
-                      type="button"
-                      className="fav-chip"
-                      onClick={reloadActiveTabFromDisk}
-                      title="Reload latest file content from disk"
-                    >
-                      RELOAD
-                    </button>
-                  </>
+
+                {activeTab?.type === 'file' && (
+                  <button
+                    type="button"
+                    className="fav-chip"
+                    onClick={() => openDiffTab(activeTab.path, activeTab.label)}
+                    title="Compare file with Git HEAD in side-by-side DiffEditor"
+                  >
+                    DIFF VS HEAD
+                  </button>
+                )}
+
+                {activeTab && (
+                  <button
+                    type="button"
+                    className="fav-chip"
+                    onClick={reloadActiveTabFromDisk}
+                    title="Reload latest file content from disk"
+                  >
+                    <Icon name="refresh" size={11} />
+                  </button>
                 )}
               </div>
             </div>
@@ -820,7 +1200,24 @@ export default function FileExplorer({
           <div className="file-content-area" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
             {!activeTab ? (
               <div className="fleet-empty-state" style={{ margin: 'auto' }}>
-                Select a file or changed Git path from the left explorer rail to inspect or edit in Monaco.
+                Select a file, Markdown doc, or image asset from the explorer tree to preview or edit.
+              </div>
+            ) : activeTab.type === 'image' ? (
+              <div className={`files-image-stage ${imageZoomMode === 'actual' ? 'zoom-actual' : 'zoom-fit'}`}>
+                <img
+                  src={activeTab.blobUrl}
+                  alt={activeTab.label}
+                  onLoad={(ev) => {
+                    const nw = ev.currentTarget?.naturalWidth;
+                    const nh = ev.currentTarget?.naturalHeight;
+                    if (nw && nh && !activeTab.dims) {
+                      const dimsStr = `${nw} × ${nh}`;
+                      setTabs((prev) =>
+                        prev.map((t) => (t.id === activeTab.id ? { ...t, dims: dimsStr } : t))
+                      );
+                    }
+                  }}
+                />
               </div>
             ) : isSelectMode ? (
               <div style={{ flex: 1, height: '100%', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
@@ -841,6 +1238,17 @@ export default function FileExplorer({
                   {activeTab.content}
                 </pre>
               </div>
+            ) : showMarkdownPreview ? (
+              <div className="files-md-preview">
+                <MarkdownBody
+                  content={activeTab.content}
+                  fontSize={editorFontSize + 1}
+                  baseFilePath={activeTab.path}
+                  onOpenFileLink={(targetPath, line) => {
+                    openFileTab(targetPath, '', { forceCode: Boolean(line && line > 0) });
+                  }}
+                />
+              </div>
             ) : activeTab.type === 'diff' ? (
               <div style={{ flex: 1, height: '100%', width: '100%', position: 'relative' }}>
                 <DiffEditor
@@ -854,8 +1262,8 @@ export default function FileExplorer({
                     readOnly: true,
                     contextmenu: false,
                     automaticLayout: true,
-                    fontSize: 13,
-                    wordWrap: 'on',
+                    fontSize: editorFontSize,
+                    wordWrap: editorWordWrap ? 'on' : 'off',
                   }}
                 />
               </div>
@@ -879,9 +1287,9 @@ export default function FileExplorer({
                   options={{
                     minimap: { enabled: !splitMode },
                     contextmenu: false,
-                    wordWrap: 'on',
+                    wordWrap: editorWordWrap ? 'on' : 'off',
                     automaticLayout: true,
-                    fontSize: 13,
+                    fontSize: editorFontSize,
                   }}
                 />
               </div>

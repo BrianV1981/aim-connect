@@ -40,6 +40,18 @@ export default function SettingsModal({
   setTermFontSize,
   termTheme,
   setTermTheme,
+  filesTreeSide = 'left',
+  setFilesTreeSide,
+  filesHideDotfiles = true,
+  setFilesHideDotfiles,
+  editorFontSize = 13,
+  setEditorFontSize,
+  editorWordWrap = true,
+  setEditorWordWrap,
+  agentStageMode = 'pty',
+  setAgentStageMode,
+  splitWidthPct = 48,
+  onSetSplitPreset,
   voiceAutoRead,
   setVoiceAutoRead,
   ttsVoice,
@@ -405,6 +417,157 @@ export default function SettingsModal({
                       $ joshua --status ✓
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="settings-group-card">
+                <div className="settings-group-title">WORKSPACE &amp; EDITOR (FILES TREE, STAGE VIEW &amp; SPLIT PRESETS)</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  Keep Left for classic Windows Explorer muscle memory, or flip the File Tree to the Right outer edge so Chat View and Code sit directly side-by-side in Split Screen.
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    paddingTop: '6px',
+                    borderTop: '1px solid var(--border-hairline)',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    FILE EXPLORER TREE SIDE
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${filesTreeSide === 'left' ? 'active' : ''}`}
+                      onClick={() => {
+                        setFilesTreeSide?.('left');
+                        localStorage.setItem('aim-files-tree-side', 'left');
+                      }}
+                    >
+                      <Icon name="sidebar" size={12} />
+                      <span>LEFT (WINDOWS DEFAULT)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${filesTreeSide === 'right' ? 'active' : ''}`}
+                      onClick={() => {
+                        setFilesTreeSide?.('right');
+                        localStorage.setItem('aim-files-tree-side', 'right');
+                      }}
+                    >
+                      <Icon name="panelRight" size={12} />
+                      <span>RIGHT (OUTER EDGE)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    paddingTop: '6px',
+                    borderTop: '1px solid var(--border-hairline)',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    DEFAULT AGENT SESSION STAGE
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${agentStageMode === 'chat' ? 'active' : ''}`}
+                      onClick={() => setAgentStageMode?.('chat')}
+                    >
+                      <Icon name="message" size={12} />
+                      <span>CHAT VIEW (MARKDOWN)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`subbar-util-btn ${agentStageMode === 'pty' ? 'active' : ''}`}
+                      onClick={() => setAgentStageMode?.('pty')}
+                    >
+                      <Icon name="terminal" size={12} />
+                      <span>RAW TERMINAL (XTERM)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                      <span>Editor &amp; Preview Font Size</span>
+                      <span className="mono-kbd">{editorFontSize}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="11"
+                      max="20"
+                      step="1"
+                      value={editorFontSize}
+                      className="ld-range"
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setEditorFontSize?.(v);
+                        localStorage.setItem('aim-editor-fontsize', String(v));
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                      Split-Pane Width Preset ({Math.round(100 - splitWidthPct)}/{Math.round(splitWidthPct)})
+                    </div>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                      {[
+                        [48, '50 / 50'],
+                        [38, '60 / 40 TERM'],
+                        [58, '40 / 60 PANE'],
+                      ].map(([pctVal, lbl]) => (
+                        <button
+                          key={pctVal}
+                          type="button"
+                          className={`subbar-util-btn ${Math.abs(splitWidthPct - pctVal) <= 3 ? 'active' : ''}`}
+                          onClick={() => onSetSplitPreset?.(pctVal)}
+                        >
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                    <span>Hide Dotfiles &amp; Cache (`.git`, `.pytest_cache`)</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(filesHideDotfiles)}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setFilesHideDotfiles?.(next);
+                        localStorage.setItem('aim-files-hide-dotfiles', JSON.stringify(next));
+                      }}
+                    />
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                    <span>Monaco Editor Word Wrap</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(editorWordWrap)}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setEditorWordWrap?.(next);
+                        localStorage.setItem('aim-editor-wordwrap', JSON.stringify(next));
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
             </>

@@ -32,6 +32,40 @@ export function isSafeExternalUrl(rawHref) {
   return /^(https?:\/\/|mailto:)/i.test(trimmed);
 }
 
+export function resolveRelativeFileHref(rawHref, baseFilePath = '') {
+  const trimmed = String(rawHref || '').trim();
+  if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//') || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    return null;
+  }
+  const [pathPart, hashPart = ''] = trimmed.split('#', 2);
+  if (!pathPart) return null;
+  let line = null;
+  let endLine = null;
+  const m = FILE_URI_HASH_RE.exec(hashPart ? `#${hashPart}` : '');
+  if (m) {
+    line = parseInt(m[1], 10);
+    if (m[2]) endLine = parseInt(m[2], 10);
+  }
+  if (pathPart.startsWith('/')) {
+    return { path: pathPart, line, endLine };
+  }
+  if (!baseFilePath || !baseFilePath.startsWith('/')) {
+    return null;
+  }
+  const baseDir = baseFilePath.slice(0, Math.max(0, baseFilePath.lastIndexOf('/')));
+  const combined = `${baseDir}/${pathPart}`;
+  const segments = [];
+  for (const seg of combined.split('/')) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') {
+      segments.pop();
+    } else {
+      segments.push(seg);
+    }
+  }
+  return { path: `/${segments.join('/')}`, line, endLine };
+}
+
 export function tokenizeInlineMarkdown(text, depth = 0) {
   const str = String(text || '').slice(0, 32000);
   if (!str) return [];
@@ -81,6 +115,12 @@ export function tokenizeInlineMarkdown(text, depth = 0) {
             type: 'ext_link',
             href: rawHref,
             children: tokenizeInlineMarkdown(rawLabel, depth + 1),
+          });
+        } else if (!rawHref.startsWith('#') && !rawHref.startsWith('//') && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(rawHref)) {
+          tokens.push({
+            type: 'rel_link',
+            label: cleanLabel,
+            href: rawHref,
           });
         } else {
           tokens.push({ type: 'text', value: cleanLabel });

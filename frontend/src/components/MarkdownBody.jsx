@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
-import { parseMarkdownBlocks, tokenizeInlineMarkdown } from '../markdownParser';
+import {
+  parseMarkdownBlocks,
+  resolveRelativeFileHref,
+  tokenizeInlineMarkdown,
+} from '../markdownParser';
 import { copyTextToClipboard } from '../scrollbackSelection';
 import Icon from './Icons';
 
-function renderInlineTokens(tokens, onOpenFileLink, keyPrefix = 'in') {
+function renderInlineTokens(tokens, onOpenFileLink, baseFilePath = '', keyPrefix = 'in') {
   if (!Array.isArray(tokens) || tokens.length === 0) return null;
   return tokens.map((tok, idx) => {
     const key = `${keyPrefix}-${idx}`;
@@ -38,6 +42,24 @@ function renderInlineTokens(tokens, onOpenFileLink, keyPrefix = 'in') {
         </button>
       );
     }
+    if (tok.type === 'rel_link') {
+      const resolved = resolveRelativeFileHref(tok.href, baseFilePath);
+      if (resolved && onOpenFileLink) {
+        return (
+          <button
+            key={key}
+            type="button"
+            className="md-file-link"
+            onClick={() => onOpenFileLink(resolved.path, resolved.line, resolved.endLine)}
+            title={`Open linked file: ${resolved.path}`}
+          >
+            <Icon name="files" size={11} />
+            <span>{tok.label}</span>
+          </button>
+        );
+      }
+      return tok.label;
+    }
     if (tok.type === 'ext_link') {
       return (
         <a
@@ -47,35 +69,35 @@ function renderInlineTokens(tokens, onOpenFileLink, keyPrefix = 'in') {
           rel="noopener noreferrer"
           className="md-ext-link"
         >
-          {renderInlineTokens(tok.children, onOpenFileLink, `${key}-l`)}
+          {renderInlineTokens(tok.children, onOpenFileLink, baseFilePath, `${key}-l`)}
         </a>
       );
     }
     if (tok.type === 'bold_italic') {
       return (
         <strong key={key}>
-          <em>{renderInlineTokens(tok.children, onOpenFileLink, `${key}-bi`)}</em>
+          <em>{renderInlineTokens(tok.children, onOpenFileLink, baseFilePath, `${key}-bi`)}</em>
         </strong>
       );
     }
     if (tok.type === 'bold') {
       return (
         <strong key={key}>
-          {renderInlineTokens(tok.children, onOpenFileLink, `${key}-b`)}
+          {renderInlineTokens(tok.children, onOpenFileLink, baseFilePath, `${key}-b`)}
         </strong>
       );
     }
     if (tok.type === 'strike') {
       return (
         <del key={key}>
-          {renderInlineTokens(tok.children, onOpenFileLink, `${key}-s`)}
+          {renderInlineTokens(tok.children, onOpenFileLink, baseFilePath, `${key}-s`)}
         </del>
       );
     }
     if (tok.type === 'italic') {
       return (
         <em key={key}>
-          {renderInlineTokens(tok.children, onOpenFileLink, `${key}-i`)}
+          {renderInlineTokens(tok.children, onOpenFileLink, baseFilePath, `${key}-i`)}
         </em>
       );
     }
@@ -83,8 +105,8 @@ function renderInlineTokens(tokens, onOpenFileLink, keyPrefix = 'in') {
   });
 }
 
-function renderInlineText(text, onOpenFileLink, keyPrefix) {
-  return renderInlineTokens(tokenizeInlineMarkdown(text), onOpenFileLink, keyPrefix);
+function renderInlineText(text, onOpenFileLink, baseFilePath, keyPrefix) {
+  return renderInlineTokens(tokenizeInlineMarkdown(text), onOpenFileLink, baseFilePath, keyPrefix);
 }
 
 function CodeBlockCard({ lang, code }) {
@@ -119,7 +141,7 @@ function CodeBlockCard({ lang, code }) {
   );
 }
 
-function renderBlockNodes(blocks, onOpenFileLink, keyPrefix = 'md') {
+function renderBlockNodes(blocks, onOpenFileLink, baseFilePath = '', keyPrefix = 'md') {
   return blocks.map((blk, bIdx) => {
     const key = `${keyPrefix}-${bIdx}`;
     if (blk.type === 'code') {
@@ -132,14 +154,14 @@ function renderBlockNodes(blocks, onOpenFileLink, keyPrefix = 'md') {
       const Tag = `h${Math.min(6, Math.max(1, blk.level))}`;
       return (
         <Tag key={key} className={`md-heading md-h${blk.level}`}>
-          {renderInlineText(blk.text, onOpenFileLink, key)}
+          {renderInlineText(blk.text, onOpenFileLink, baseFilePath, key)}
         </Tag>
       );
     }
     if (blk.type === 'blockquote') {
       return (
         <blockquote key={key} className="md-blockquote">
-          {renderInlineText(blk.text, onOpenFileLink, key)}
+          {renderInlineText(blk.text, onOpenFileLink, baseFilePath, key)}
         </blockquote>
       );
     }
@@ -151,7 +173,7 @@ function renderBlockNodes(blocks, onOpenFileLink, keyPrefix = 'md') {
               <tr>
                 {blk.headers.map((hCell, cIdx) => (
                   <th key={`${key}-th-${cIdx}`}>
-                    {renderInlineText(hCell, onOpenFileLink, `${key}-th-${cIdx}`)}
+                    {renderInlineText(hCell, onOpenFileLink, baseFilePath, `${key}-th-${cIdx}`)}
                   </th>
                 ))}
               </tr>
@@ -161,7 +183,7 @@ function renderBlockNodes(blocks, onOpenFileLink, keyPrefix = 'md') {
                 <tr key={`${key}-tr-${rIdx}`}>
                   {rCells.map((cell, cIdx) => (
                     <td key={`${key}-td-${rIdx}-${cIdx}`}>
-                      {renderInlineText(cell, onOpenFileLink, `${key}-td-${rIdx}-${cIdx}`)}
+                      {renderInlineText(cell, onOpenFileLink, baseFilePath, `${key}-td-${rIdx}-${cIdx}`)}
                     </td>
                   ))}
                 </tr>
@@ -182,11 +204,16 @@ function renderBlockNodes(blocks, onOpenFileLink, keyPrefix = 'md') {
           {blk.items.map((item, iIdx) => (
             <li key={`${key}-li-${iIdx}`} className="md-li">
               <div>
-                {renderInlineText(item.textLines.join(' '), onOpenFileLink, `${key}-li-${iIdx}`)}
+                {renderInlineText(
+                  item.textLines.join(' '),
+                  onOpenFileLink,
+                  baseFilePath,
+                  `${key}-li-${iIdx}`
+                )}
               </div>
               {Array.isArray(item.subBlocks) && item.subBlocks.length > 0 && (
                 <div className="ld-markdown-body">
-                  {renderBlockNodes(item.subBlocks, onOpenFileLink, `${key}-sub-${iIdx}`)}
+                  {renderBlockNodes(item.subBlocks, onOpenFileLink, baseFilePath, `${key}-sub-${iIdx}`)}
                 </div>
               )}
             </li>
@@ -199,7 +226,7 @@ function renderBlockNodes(blocks, onOpenFileLink, keyPrefix = 'md') {
         {blk.lines.map((ln, lIdx) => (
           <span key={`${key}-ln-${lIdx}`}>
             {lIdx > 0 && <br />}
-            {renderInlineText(ln, onOpenFileLink, `${key}-ln-${lIdx}`)}
+            {renderInlineText(ln, onOpenFileLink, baseFilePath, `${key}-ln-${lIdx}`)}
           </span>
         ))}
       </p>
@@ -207,13 +234,13 @@ function renderBlockNodes(blocks, onOpenFileLink, keyPrefix = 'md') {
   });
 }
 
-export default function MarkdownBody({ content, fontSize = 14, onOpenFileLink }) {
+export default function MarkdownBody({ content, fontSize = 14, baseFilePath = '', onOpenFileLink }) {
   const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
   if (blocks.length === 0) return null;
 
   return (
     <div className="ld-markdown-body" style={{ fontSize: `${fontSize}px` }}>
-      {renderBlockNodes(blocks, onOpenFileLink, 'md')}
+      {renderBlockNodes(blocks, onOpenFileLink, baseFilePath, 'md')}
     </div>
   );
 }

@@ -646,6 +646,18 @@ function App() {
     parseInt(localStorage.getItem('aim-term-fontsize') || '14', 10)
   );
   const [termTheme, setTermTheme] = useState(() => localStorage.getItem('aim-term-theme') || 'match');
+  const [filesTreeSide, setFilesTreeSide] = useState(() =>
+    localStorage.getItem('aim-files-tree-side') === 'right' ? 'right' : 'left'
+  );
+  const [filesHideDotfiles, setFilesHideDotfiles] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-files-hide-dotfiles') ?? 'true')
+  );
+  const [editorFontSize, setEditorFontSize] = useState(() =>
+    parseInt(localStorage.getItem('aim-editor-fontsize') || '13', 10)
+  );
+  const [editorWordWrap, setEditorWordWrap] = useState(() =>
+    JSON.parse(localStorage.getItem('aim-editor-wordwrap') ?? 'true')
+  );
   const [keyboardFeedback, setKeyboardFeedback] = useState(
     () => localStorage.getItem('aim-kb-feedback') || 'audio'
   );
@@ -2917,6 +2929,17 @@ function App() {
           activeSession={activeSession}
           splitMode={splitMode}
           uiTheme={theme}
+          treeSide={filesTreeSide}
+          hideDotfiles={filesHideDotfiles}
+          onToggleHideDotfiles={() => {
+            setFilesHideDotfiles((prev) => {
+              const next = !prev;
+              localStorage.setItem('aim-files-hide-dotfiles', JSON.stringify(next));
+              return next;
+            });
+          }}
+          editorFontSize={editorFontSize}
+          editorWordWrap={editorWordWrap}
           requestedFile={requestedExplorerFile}
           selectMode={fileSelectMode}
           onToggleSelectMode={() => setFileSelectMode((prev) => !prev)}
@@ -3152,6 +3175,26 @@ function App() {
           setTermFontSize={setTermFontSize}
           termTheme={termTheme}
           setTermTheme={setTermTheme}
+          filesTreeSide={filesTreeSide}
+          setFilesTreeSide={setFilesTreeSide}
+          filesHideDotfiles={filesHideDotfiles}
+          setFilesHideDotfiles={setFilesHideDotfiles}
+          editorFontSize={editorFontSize}
+          setEditorFontSize={setEditorFontSize}
+          editorWordWrap={editorWordWrap}
+          setEditorWordWrap={setEditorWordWrap}
+          agentStageMode={agentStageMode}
+          setAgentStageMode={setAgentStageMode}
+          splitWidthPct={splitWidthPct}
+          onSetSplitPreset={(pctVal) => {
+            setSplitWidthPct(pctVal);
+            localStorage.setItem('aim-split-pane-pct', String(pctVal));
+            setTimeout(() => {
+              try {
+                fitAddon.current?.fit();
+              } catch {}
+            }, 60);
+          }}
           voiceAutoRead={voiceAutoRead}
           setVoiceAutoRead={setVoiceAutoRead}
           ttsVoice={ttsVoice}

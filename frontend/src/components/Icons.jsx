@@ -412,6 +412,48 @@ export function Icon({ name, size, style }) {
           <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
         </svg>
       );
+    case 'menu':
+      return (
+        <svg className="lucide" style={s || { width: '14px', height: '14px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <line x1="4" y1="6" x2="20" y2="6" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="18" x2="20" y2="18" />
+        </svg>
+      );
+    case 'panelRight':
+      return (
+        <svg className="lucide" style={s || { width: '14px', height: '14px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="15" y1="3" x2="15" y2="21" />
+        </svg>
+      );
+    case 'chevronRight':
+      return (
+        <svg className="lucide" style={s || { width: '12px', height: '12px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      );
+    case 'chevronDown':
+      return (
+        <svg className="lucide" style={s || { width: '12px', height: '12px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      );
+    case 'image':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+          <circle cx="9" cy="9" r="2" />
+          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+        </svg>
+      );
+    case 'code':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="16 18 22 12 16 6" />
+          <polyline points="8 6 2 12 8 18" />
+        </svg>
+      );
     case 'settings':
     default:
       return (
