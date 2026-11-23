@@ -2,11 +2,12 @@ import os
 import glob
 import shutil
 import json
+import mimetypes
 import subprocess
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Header
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Header, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from main import verify_token, require_admin, DEFAULT_WORKSPACE, AIM_CONNECT_ROOT, HOME_DIR
 from routes_sessions import _get_git_branch
 
@@ -33,6 +34,7 @@ LANGUAGE_BY_EXT = {
 }
 
 RAW_MEDIA_MIME_BY_EXT = {
+    # Images (#266)
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -42,8 +44,87 @@ RAW_MEDIA_MIME_BY_EXT = {
     ".ico": "image/x-icon",
     ".bmp": "image/bmp",
     ".avif": "image/avif",
+    # Audio (#270)
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".opus": "audio/opus",
+    # Video (#270)
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".m4v": "video/mp4",
+    ".ogv": "video/ogg",
 }
-MAX_RAW_MEDIA_BYTES = 50 * 1024 * 1024
+MAX_RAW_MEDIA_BYTES = 250 * 1024 * 1024
+RANGE_STREAM_CHUNK_BYTES = 64 * 1024
+BINARY_SNIFF_BYTES = 8192
+
+
+def _parse_byte_range(range_header: str, file_size: int) -> Optional[tuple[int, int]]:
+    """Parse single RFC 9110 Range header ('bytes=start-end', 'bytes=start-', 'bytes=-suffix')."""
+    hdr = (range_header or "").strip()
+    if not hdr.lower().startswith("bytes="):
+        return None
+    spec = hdr[6:].strip()
+    if not spec or "," in spec or "-" not in spec:
+        return None
+    if file_size <= 0:
+        raise ValueError("Unsatisfiable range on empty file")
+    start_s, end_s = spec.split("-", 1)
+    start_s, end_s = start_s.strip(), end_s.strip()
+    if not start_s:
+        if not end_s or not end_s.isdigit():
+            raise ValueError("Invalid suffix byte range")
+        suffix_len = int(end_s)
+        if suffix_len <= 0:
+            raise ValueError("Invalid zero suffix byte range")
+        start = max(0, file_size - suffix_len)
+        end = file_size - 1
+    else:
+        if not start_s.isdigit() or (end_s and not end_s.isdigit()):
+            raise ValueError("Invalid byte range bounds")
+        start = int(start_s)
+        end = min(int(end_s), file_size - 1) if end_s else (file_size - 1)
+    if start < 0 or start >= file_size or start > end:
+        raise ValueError("Byte range out of bounds")
+    return start, end
+
+
+def _iter_file_range(file_path: str, start: int, length: int):
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        remaining = length
+        while remaining > 0:
+            chunk = f.read(min(RANGE_STREAM_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def _binary_file_response(safe_path: str, size_bytes: int, mtime: float) -> JSONResponse:
+    _, ext = os.path.splitext(safe_path.lower())
+    guessed_mime = (
+        RAW_MEDIA_MIME_BY_EXT.get(ext)
+        or mimetypes.guess_type(safe_path)[0]
+        or "application/octet-stream"
+    )
+    return JSONResponse(
+        status_code=415,
+        content={
+            "error": "Binary or non-UTF-8 file cannot be opened as UTF-8 text.",
+            "is_binary": True,
+            "path": safe_path,
+            "size_bytes": size_bytes,
+            "mtime": mtime,
+            "mime_type": guessed_mime,
+        },
+    )
 
 
 def _infer_language(path: str) -> str:
@@ -317,9 +398,21 @@ def list_files(path: str = DEFAULT_WORKSPACE) -> dict:
 def read_file(path: str):
     try:
         safe_path = secure_path(path, allow_home=True)
-        with open(safe_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        if os.path.isdir(safe_path):
+            raise IsADirectoryError(f"Is a directory: {path}")
+        if not os.path.isfile(safe_path):
+            raise FileNotFoundError(f"File not found: {path}")
+        size = os.path.getsize(safe_path)
         mtime = os.path.getmtime(safe_path)
+        with open(safe_path, "rb") as bf:
+            head = bf.read(BINARY_SNIFF_BYTES)
+        if b"\x00" in head:
+            return _binary_file_response(safe_path, size, mtime)
+        try:
+            with open(safe_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            return _binary_file_response(safe_path, size, mtime)
         return {
             "content": content,
             "path": safe_path,
@@ -331,8 +424,8 @@ def read_file(path: str):
 
 
 @router.get("/api/file/raw", dependencies=[Depends(verify_token), Depends(require_admin)])
-def read_raw_media_file(path: str):
-    """Stream allowlisted image/media assets inside secure_path roots for inline FileExplorer preview (#266)."""
+def read_raw_media_file(path: str, request: Request):
+    """Stream allowlisted image/audio/video assets inside secure_path roots with RFC 9110 Range seeking (#266, #270)."""
     try:
         safe_path = secure_path(path, allow_home=True)
         if not os.path.isfile(safe_path):
@@ -348,15 +441,71 @@ def read_raw_media_file(path: str):
         if size > MAX_RAW_MEDIA_BYTES:
             return JSONResponse(
                 status_code=413,
-                content={"error": "Media file exceeds 50 MB inline preview cap."},
+                content={"error": "Media file exceeds 250 MB inline preview cap."},
             )
+        common_headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+        }
+        range_header = request.headers.get("range")
+        if range_header:
+            try:
+                parsed_range = _parse_byte_range(range_header, size)
+            except ValueError:
+                return Response(
+                    status_code=416,
+                    headers={
+                        **common_headers,
+                        "Content-Range": f"bytes */{size}",
+                    },
+                )
+            if parsed_range is not None:
+                start, end = parsed_range
+                chunk_len = end - start + 1
+                return StreamingResponse(
+                    _iter_file_range(safe_path, start, chunk_len),
+                    status_code=206,
+                    media_type=media_type,
+                    headers={
+                        **common_headers,
+                        "Content-Range": f"bytes {start}-{end}/{size}",
+                        "Content-Length": str(chunk_len),
+                    },
+                )
         return FileResponse(
             safe_path,
             media_type=media_type,
+            headers=common_headers,
+        )
+    except Exception as e:
+        return handle_file_error(e)
+
+
+@router.get("/api/file/download", dependencies=[Depends(verify_token), Depends(require_admin)])
+def download_binary_file(path: str):
+    """Stream any file inside secure_path roots as an attachment for FileExplorer binary fallback (#270)."""
+    try:
+        safe_path = secure_path(path, allow_home=True)
+        if os.path.isdir(safe_path):
+            raise IsADirectoryError(f"Is a directory: {path}")
+        if not os.path.isfile(safe_path):
+            raise FileNotFoundError(f"File not found: {path}")
+        size = os.path.getsize(safe_path)
+        if size > MAX_RAW_MEDIA_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "File exceeds 250 MB browser download cap."},
+            )
+        return FileResponse(
+            safe_path,
+            media_type="application/octet-stream",
+            filename=os.path.basename(safe_path),
             headers={
                 "Cache-Control": "no-store",
                 "X-Content-Type-Options": "nosniff",
-                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+                "Content-Security-Policy": "default-src 'none'",
             },
         )
     except Exception as e:

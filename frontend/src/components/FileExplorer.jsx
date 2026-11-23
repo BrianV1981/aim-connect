@@ -22,6 +22,27 @@ const IMAGE_EXTENSIONS = new Set([
   '.avif',
 ]);
 
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.oga',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.opus',
+]);
+
+const VIDEO_EXTENSIONS = new Set([
+  '.mp4',
+  '.webm',
+  '.mov',
+  '.m4v',
+  '.ogv',
+]);
+
+const PLAYBACK_RATES = [1, 1.25, 1.5, 2];
+
 const NOISY_DIR_NAMES = new Set([
   '.git',
   '.pytest_cache',
@@ -43,6 +64,46 @@ function getExtLower(filePath) {
 
 function isImagePath(filePath) {
   return IMAGE_EXTENSIONS.has(getExtLower(filePath));
+}
+
+function isAudioPath(filePath) {
+  return AUDIO_EXTENSIONS.has(getExtLower(filePath));
+}
+
+function isVideoPath(filePath) {
+  return VIDEO_EXTENSIONS.has(getExtLower(filePath));
+}
+
+function isMediaOrBinaryTab(tab) {
+  return Boolean(
+    tab && (tab.type === 'image' || tab.type === 'audio' || tab.type === 'video' || tab.type === 'binary')
+  );
+}
+
+function formatBytes(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatDuration(sec) {
+  if (typeof sec !== 'number' || !Number.isFinite(sec) || sec <= 0) return '';
+  const total = Math.round(sec);
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
+}
+
+function getTabIconMeta(type) {
+  if (type === 'image') return { icon: 'image', color: '#c084fc' };
+  if (type === 'audio') return { icon: 'audio', color: '#38bdf8' };
+  if (type === 'video') return { icon: 'video', color: '#f472b6' };
+  if (type === 'binary') return { icon: 'fileBinary', color: '#fbbf24' };
+  return null;
 }
 
 function isMarkdownPath(filePath) {
@@ -88,6 +149,7 @@ export default function FileExplorer({
   const [imageZoomMode, setImageZoomMode] = useState('fit'); // fit | actual
   const [saveBadge, setSaveBadge] = useState('');
   const [copyBadge, setCopyBadge] = useState('');
+  const [downloadBadge, setDownloadBadge] = useState('');
   const [copySelectionBadge, setCopySelectionBadge] = useState('');
   const [selectedFileText, setSelectedFileText] = useState('');
   const [localSelectMode, setLocalSelectMode] = useState(false);
@@ -102,8 +164,14 @@ export default function FileExplorer({
   const [showMobileTree, setShowMobileTree] = useState(true);
   const splitBodyRef = useRef(null);
   const selectSurfaceRef = useRef(null);
+  const mediaPlayerRef = useRef(null);
   const autoOpenedSessionRef = useRef('');
+  const tabsCountRef = useRef(0);
+  const requestedFileRef = useRef(requestedFile);
   const blobUrlsRef = useRef(new Set());
+
+  requestedFileRef.current = requestedFile;
+  tabsCountRef.current = tabs.length;
 
   const isSelectMode = onToggleSelectMode ? selectMode : localSelectMode;
   const toggleSelectMode = () => {
@@ -271,12 +339,89 @@ export default function FileExplorer({
 
   const copyActiveTabContent = async () => {
     if (!activeTab) return;
-    const textToCopy = activeTab.type === 'image' ? activeTab.path : activeTab.content || '';
+    const copiesPath = isMediaOrBinaryTab(activeTab);
+    const textToCopy = copiesPath ? activeTab.path : activeTab.content || '';
     const ok = await copyTextToClipboard(textToCopy);
     if (ok) {
-      setCopyBadge(activeTab.type === 'image' ? 'COPIED PATH ✓' : 'COPIED ✓');
+      setCopyBadge(copiesPath ? 'COPIED PATH ✓' : 'COPIED ✓');
       setTimeout(() => setCopyBadge(''), 1800);
     }
+  };
+
+  const triggerAnchorDownload = (href, filename) => {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename || 'download';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const downloadTabFile = async (tab = activeTab) => {
+    if (!tab?.path) return;
+    const filename = tab.label || tab.path.split('/').pop() || 'download';
+    if (tab.blobUrl) {
+      triggerAnchorDownload(tab.blobUrl, filename);
+      setDownloadBadge('SAVED ✓');
+      setTimeout(() => setDownloadBadge(''), 1800);
+      return;
+    }
+    try {
+      setDownloadBadge('SAVING...');
+      const res = await fetch(`/api/file/download?path=${encodeURIComponent(tab.path)}`);
+      if (!res.ok) {
+        setDownloadBadge('FAILED');
+        setTimeout(() => setDownloadBadge(''), 2000);
+        return;
+      }
+      const blob = await res.blob();
+      const tempUrl = URL.createObjectURL(blob);
+      triggerAnchorDownload(tempUrl, filename);
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(tempUrl);
+        } catch {}
+      }, 5000);
+      setDownloadBadge('SAVED ✓');
+      setTimeout(() => setDownloadBadge(''), 1800);
+    } catch (e) {
+      console.error('Failed to download binary file', e);
+      setDownloadBadge('FAILED');
+      setTimeout(() => setDownloadBadge(''), 2000);
+    }
+  };
+
+  const applyPlaybackRate = (rate) => {
+    if (!activeTab) return;
+    if (mediaPlayerRef.current) {
+      try {
+        mediaPlayerRef.current.playbackRate = rate;
+      } catch {}
+    }
+    setTabs((prev) =>
+      prev.map((t) => (t.id === activeTab.id ? { ...t, playbackRate: rate } : t))
+    );
+  };
+
+  const pushOrFocusTab = (newTab, targetPath) => {
+    setTabs((prev) => {
+      const prevMatch = prev.find((t) => t.id === newTab.id);
+      if (prevMatch?.blobUrl && prevMatch.blobUrl !== newTab.blobUrl) {
+        try {
+          URL.revokeObjectURL(prevMatch.blobUrl);
+        } catch {}
+        blobUrlsRef.current.delete(prevMatch.blobUrl);
+      }
+      const filtered = prev.filter((t) => t.id !== newTab.id);
+      const next = [...filtered, newTab];
+      return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
+    });
+    setActiveTabId(newTab.id);
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setShowMobileTree(false);
+    }
+    expandAncestorsToFile(targetPath, rootPath);
   };
 
   const openFileTab = async (path, customLabel = '', opts = {}) => {
@@ -295,39 +440,64 @@ export default function FileExplorer({
       return;
     }
 
-    if (isImagePath(path)) {
+    const mediaType = isImagePath(path)
+      ? 'image'
+      : isAudioPath(path)
+        ? 'audio'
+        : isVideoPath(path)
+          ? 'video'
+          : null;
+
+    if (mediaType) {
       try {
         const res = await fetch(`/api/file/raw?path=${encodeURIComponent(path)}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          let errMsg = `Inline media preview unavailable (HTTP ${res.status}).`;
+          try {
+            const errJson = await res.json();
+            if (errJson?.error) errMsg = errJson.error;
+          } catch {}
+          pushOrFocusTab(
+            {
+              id: tabId,
+              type: 'binary',
+              path,
+              label: customLabel || path.split('/').pop(),
+              sizeBytes: null,
+              mimeType: '',
+              errorReason: errMsg,
+              content: '',
+              savedContent: '',
+              conflict: null,
+            },
+            path
+          );
+          return;
+        }
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
         blobUrlsRef.current.add(blobUrl);
         const newTab = {
           id: tabId,
-          type: 'image',
+          type: mediaType,
           path,
           label: customLabel || path.split('/').pop(),
           blobUrl,
           sizeBytes: blob.size,
-          mimeType: blob.type,
+          mimeType: blob.type || '',
           dims: '',
+          durationSec: null,
+          playbackRate: 1,
           content: '',
           savedContent: '',
           conflict: null,
         };
-        setTabs((prev) => {
-          const filtered = prev.filter((t) => t.id !== tabId);
-          const next = [...filtered, newTab];
-          return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
-        });
-        setActiveTabId(tabId);
-        setImageZoomMode('fit');
-        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-          setShowMobileTree(false);
+        if (mediaType === 'image') {
+          setImageZoomMode('fit');
         }
-        expandAncestorsToFile(path, rootPath);
+        pushOrFocusTab(newTab, path);
       } catch (e) {
-        console.error('Failed to open image preview', e);
+        console.error(`Failed to open ${mediaType} preview`, e);
       }
       return;
     }
@@ -335,6 +505,26 @@ export default function FileExplorer({
     try {
       const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
       const data = await res.json();
+      if (res.status === 415 || data?.is_binary) {
+        const resolvedPath = data?.path || path;
+        pushOrFocusTab(
+          {
+            id: `file:${resolvedPath}`,
+            type: 'binary',
+            path: resolvedPath,
+            label: customLabel || resolvedPath.split('/').pop(),
+            sizeBytes: typeof data?.size_bytes === 'number' ? data.size_bytes : null,
+            mtime: data?.mtime || null,
+            mimeType: data?.mime_type || 'application/octet-stream',
+            errorReason: '',
+            content: '',
+            savedContent: '',
+            conflict: null,
+          },
+          resolvedPath
+        );
+        return;
+      }
       if (data.content !== undefined) {
         const resolvedPath = data.path || path;
         const newTab = {
@@ -348,19 +538,10 @@ export default function FileExplorer({
           language: data.language || 'markdown',
           conflict: null,
         };
-        setTabs((prev) => {
-          const filtered = prev.filter((t) => t.id !== newTab.id);
-          const next = [...filtered, newTab];
-          return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
-        });
-        setActiveTabId(newTab.id);
         if (isMarkdownPath(resolvedPath) && !opts.forceCode) {
           setMdViewMode('preview');
         }
-        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-          setShowMobileTree(false);
-        }
-        expandAncestorsToFile(resolvedPath, rootPath);
+        pushOrFocusTab(newTab, resolvedPath);
       }
     } catch (e) {
       console.error('Failed to open file tab', e);
@@ -401,7 +582,11 @@ export default function FileExplorer({
           loadGitStatus(sessionName, startRoot);
         }
         const sigKey = `${sessionName || 'default'}:${data.main_repo_root || startRoot || ''}`;
-        if (tabs.length === 0 && autoOpenedSessionRef.current !== sigKey) {
+        if (
+          tabsCountRef.current === 0 &&
+          !requestedFileRef.current?.path &&
+          autoOpenedSessionRef.current !== sigKey
+        ) {
           autoOpenedSessionRef.current = sigKey;
           const preferred = (data.brain_files || []).find(
             (bf) =>
@@ -492,7 +677,7 @@ export default function FileExplorer({
       await openDiffTab(activeTab.path);
       return;
     }
-    if (activeTab.type === 'image') {
+    if (activeTab.type === 'image' || activeTab.type === 'audio' || activeTab.type === 'video') {
       try {
         const res = await fetch(`/api/file/raw?path=${encodeURIComponent(activeTab.path)}`);
         if (!res.ok) return;
@@ -507,7 +692,9 @@ export default function FileExplorer({
         }
         setTabs((prev) =>
           prev.map((t) =>
-            t.id === activeTab.id ? { ...t, blobUrl: nextBlobUrl, sizeBytes: blob.size } : t
+            t.id === activeTab.id
+              ? { ...t, blobUrl: nextBlobUrl, sizeBytes: blob.size, mimeType: blob.type || t.mimeType }
+              : t
           )
         );
       } catch {}
@@ -516,12 +703,29 @@ export default function FileExplorer({
     try {
       const res = await fetch(`/api/file?path=${encodeURIComponent(activeTab.path)}`);
       const data = await res.json();
+      if (res.status === 415 || data?.is_binary) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === activeTab.id
+              ? {
+                  ...t,
+                  type: 'binary',
+                  sizeBytes: typeof data?.size_bytes === 'number' ? data.size_bytes : t.sizeBytes,
+                  mtime: data?.mtime || t.mtime,
+                  mimeType: data?.mime_type || t.mimeType,
+                }
+              : t
+          )
+        );
+        return;
+      }
       if (data.content !== undefined) {
         setTabs((prev) =>
           prev.map((t) =>
             t.id === activeTab.id
               ? {
                   ...t,
+                  type: 'file',
                   content: data.content,
                   savedContent: data.content,
                   mtime: data.mtime || null,
@@ -712,6 +916,26 @@ export default function FileExplorer({
       const isExpanded = Boolean(expandedDirs[item.path]);
       const isSelected = activeTab?.path === item.path || (!activeTab && currentPath === item.path);
       const isImg = !item.is_dir && isImagePath(item.path);
+      const isAud = !item.is_dir && isAudioPath(item.path);
+      const isVid = !item.is_dir && isVideoPath(item.path);
+      const entryIcon = item.is_dir
+        ? 'folder'
+        : isImg
+          ? 'image'
+          : isAud
+            ? 'audio'
+            : isVid
+              ? 'video'
+              : 'file';
+      const entryIconColor = item.is_dir
+        ? 'var(--accent)'
+        : isImg
+          ? '#c084fc'
+          : isAud
+            ? '#38bdf8'
+            : isVid
+              ? '#f472b6'
+              : 'var(--text-muted)';
 
       return (
         <div key={item.path}>
@@ -731,12 +955,12 @@ export default function FileExplorer({
               )}
               <span
                 style={{
-                  color: item.is_dir ? 'var(--accent)' : isImg ? '#c084fc' : 'var(--text-muted)',
+                  color: entryIconColor,
                   display: 'inline-flex',
                   flexShrink: 0,
                 }}
               >
-                <Icon name={item.is_dir ? 'folder' : isImg ? 'image' : 'file'} size={12} />
+                <Icon name={entryIcon} size={12} />
               </span>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.name}
@@ -881,10 +1105,16 @@ export default function FileExplorer({
               className="subbar-util-btn"
               onMouseDown={(e) => e.preventDefault()}
               onClick={copyActiveTabContent}
-              title={activeTab.type === 'image' ? 'Copy image path to clipboard' : 'Copy entire file contents to clipboard'}
+              title={
+                isMediaOrBinaryTab(activeTab)
+                  ? 'Copy file path to clipboard'
+                  : 'Copy entire file contents to clipboard'
+              }
             >
               <Icon name="copyText" size={12} />
-              <span>{copyBadge || (activeTab.type === 'image' ? 'COPY PATH' : 'COPY ALL')}</span>
+              <span>
+                {copyBadge || (isMediaOrBinaryTab(activeTab) ? 'COPY PATH' : 'COPY ALL')}
+              </span>
             </button>
           )}
           <button
@@ -1140,6 +1370,7 @@ export default function FileExplorer({
               {tabs.map((t) => {
                 const isDirty = t.type === 'file' && t.content !== t.savedContent;
                 const isSelected = t.id === activeTabId;
+                const tabMeta = getTabIconMeta(t.type);
                 return (
                   <div
                     key={t.id}
@@ -1148,7 +1379,11 @@ export default function FileExplorer({
                     title={t.path}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      {t.type === 'image' && <Icon name="image" size={11} />}
+                      {tabMeta && (
+                        <span style={{ color: tabMeta.color, display: 'inline-flex' }}>
+                          <Icon name={tabMeta.icon} size={11} />
+                        </span>
+                      )}
                       {isDirty ? '● ' : ''}
                       {t.label}
                     </span>
@@ -1165,13 +1400,13 @@ export default function FileExplorer({
             </div>
           )}
 
-          {/* Clickable Antigravity-Style Breadcrumb & Mode Strip (#266) */}
+          {/* Clickable Antigravity-Style Breadcrumb & Mode Strip (#266, #270) */}
           {(activeTab || breadcrumbSegments.length > 0) && (
             <div className="files-breadcrumb-bar">
               <div className="files-breadcrumb-trail">
                 {breadcrumbSegments.map((seg, idx) => {
                   const isLast = idx === breadcrumbSegments.length - 1;
-                  const isImg = isLast && activeTab?.type === 'image';
+                  const leafMeta = isLast && activeTab ? getTabIconMeta(activeTab.type) : null;
                   return (
                     <span key={seg.path} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
                       {idx > 0 && (
@@ -1199,9 +1434,9 @@ export default function FileExplorer({
                         </button>
                       ) : (
                         <span className="breadcrumb-leaf">
-                          {isImg && (
-                            <span style={{ color: '#c084fc', display: 'inline-flex' }}>
-                              <Icon name="image" size={12} />
+                          {leafMeta && (
+                            <span style={{ color: leafMeta.color, display: 'inline-flex' }}>
+                              <Icon name={leafMeta.icon} size={12} />
                             </span>
                           )}
                           <span>{seg.label}</span>
@@ -1227,25 +1462,50 @@ export default function FileExplorer({
                   </button>
                 )}
 
-                {activeTab?.type === 'image' && (
+                {activeTab && isMediaOrBinaryTab(activeTab) && (
                   <>
                     {activeTab.dims && (
                       <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
                         {activeTab.dims}
                       </span>
                     )}
-                    <button
-                      type="button"
-                      className={`fav-chip ${imageZoomMode === 'actual' ? 'active' : ''}`}
-                      onClick={() => setImageZoomMode((prev) => (prev === 'fit' ? 'actual' : 'fit'))}
-                      title="Toggle Fit-to-Pane vs 1:1 Actual Pixel Size"
-                    >
-                      {imageZoomMode === 'fit' ? '1:1 ZOOM' : 'FIT PANE'}
-                    </button>
+                    {activeTab.durationSec ? (
+                      <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
+                        {formatDuration(activeTab.durationSec)}
+                      </span>
+                    ) : null}
+                    {typeof activeTab.sizeBytes === 'number' && (
+                      <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
+                        {formatBytes(activeTab.sizeBytes)}
+                      </span>
+                    )}
                   </>
                 )}
 
-                {activeTab && activeTab.type !== 'image' && (
+                {activeTab?.type === 'image' && (
+                  <button
+                    type="button"
+                    className={`fav-chip ${imageZoomMode === 'actual' ? 'active' : ''}`}
+                    onClick={() => setImageZoomMode((prev) => (prev === 'fit' ? 'actual' : 'fit'))}
+                    title="Toggle Fit-to-Pane vs 1:1 Actual Pixel Size"
+                  >
+                    {imageZoomMode === 'fit' ? '1:1 ZOOM' : 'FIT PANE'}
+                  </button>
+                )}
+
+                {activeTab && isMediaOrBinaryTab(activeTab) && (
+                  <button
+                    type="button"
+                    className="fav-chip"
+                    onClick={() => downloadTabFile(activeTab)}
+                    title="Save file to your device"
+                  >
+                    <Icon name="downloadSm" size={11} />
+                    <span style={{ marginLeft: '4px' }}>{downloadBadge || 'DOWNLOAD'}</span>
+                  </button>
+                )}
+
+                {activeTab && !isMediaOrBinaryTab(activeTab) && (
                   <button
                     type="button"
                     className={`fav-chip ${isSelectMode ? 'active' : ''}`}
@@ -1257,7 +1517,7 @@ export default function FileExplorer({
                   </button>
                 )}
 
-                {isSelectMode && (
+                {isSelectMode && !isMediaOrBinaryTab(activeTab) && (
                   <button
                     type="button"
                     className={`fav-chip ${selectedFileText ? 'active' : ''}`}
@@ -1298,7 +1558,7 @@ export default function FileExplorer({
           <div className="file-content-area" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
             {!activeTab ? (
               <div className="fleet-empty-state" style={{ margin: 'auto' }}>
-                Select a file, Markdown doc, or image asset from the explorer tree to preview or edit.
+                Select a file, Markdown doc, or media asset from the explorer tree to preview or edit.
               </div>
             ) : activeTab.type === 'image' ? (
               <div className={`files-image-stage ${imageZoomMode === 'actual' ? 'zoom-actual' : 'zoom-fit'}`}>
@@ -1316,6 +1576,195 @@ export default function FileExplorer({
                     }
                   }}
                 />
+              </div>
+            ) : activeTab.type === 'audio' ? (
+              <div className="files-media-stage audio-stage">
+                <div className="files-media-card">
+                  <div className="files-media-card-header">
+                    <span className="files-media-icon-box" style={{ color: '#38bdf8' }}>
+                      <Icon name="audio" size={20} />
+                    </span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="files-media-title">{activeTab.label}</div>
+                      <div className="files-media-subpath">{activeTab.path}</div>
+                    </div>
+                    <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
+                      {(activeTab.mimeType || getExtLower(activeTab.path).replace('.', '') || 'AUDIO').toUpperCase()}
+                    </span>
+                  </div>
+
+                  <audio
+                    key={activeTab.blobUrl}
+                    ref={mediaPlayerRef}
+                    className="files-audio-player"
+                    controls
+                    preload="metadata"
+                    src={activeTab.blobUrl}
+                    onLoadedMetadata={(ev) => {
+                      const dur = ev.currentTarget?.duration;
+                      if (activeTab.playbackRate && activeTab.playbackRate !== 1) {
+                        ev.currentTarget.playbackRate = activeTab.playbackRate;
+                      }
+                      if (Number.isFinite(dur) && dur > 0 && !activeTab.durationSec) {
+                        setTabs((prev) =>
+                          prev.map((t) => (t.id === activeTab.id ? { ...t, durationSec: dur } : t))
+                        );
+                      }
+                    }}
+                  />
+
+                  <div className="files-media-meta-row">
+                    <div className="files-speed-pills">
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', marginRight: '3px' }}>
+                        SPEED
+                      </span>
+                      {PLAYBACK_RATES.map((rate) => (
+                        <button
+                          key={rate}
+                          type="button"
+                          className={`fav-chip ${(activeTab.playbackRate || 1) === rate ? 'active' : ''}`}
+                          onClick={() => applyPlaybackRate(rate)}
+                        >
+                          {rate}x
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <button
+                        type="button"
+                        className="fav-chip"
+                        onClick={() => downloadTabFile(activeTab)}
+                      >
+                        <Icon name="downloadSm" size={11} />
+                        <span style={{ marginLeft: '4px' }}>{downloadBadge || 'SAVE AUDIO'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : activeTab.type === 'video' ? (
+              <div className="files-media-stage video-stage">
+                <div className="files-video-frame">
+                  <video
+                    key={activeTab.blobUrl}
+                    ref={mediaPlayerRef}
+                    className="files-video-player"
+                    controls
+                    playsInline
+                    preload="metadata"
+                    src={activeTab.blobUrl}
+                    onLoadedMetadata={(ev) => {
+                      const el = ev.currentTarget;
+                      const dur = el?.duration;
+                      const vw = el?.videoWidth;
+                      const vh = el?.videoHeight;
+                      if (activeTab.playbackRate && activeTab.playbackRate !== 1) {
+                        el.playbackRate = activeTab.playbackRate;
+                      }
+                      setTabs((prev) =>
+                        prev.map((t) =>
+                          t.id === activeTab.id
+                            ? {
+                                ...t,
+                                durationSec: Number.isFinite(dur) && dur > 0 ? dur : t.durationSec,
+                                dims: vw && vh ? `${vw} × ${vh}` : t.dims,
+                              }
+                            : t
+                        )
+                      );
+                    }}
+                  />
+                  <div className="files-video-bar">
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+                      <span style={{ color: '#f472b6', display: 'inline-flex' }}>
+                        <Icon name="video" size={13} />
+                      </span>
+                      <span className="files-media-title" style={{ fontSize: '11.5px' }}>
+                        {activeTab.label}
+                      </span>
+                      {activeTab.dims && (
+                        <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
+                          {activeTab.dims}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <div className="files-speed-pills">
+                        {PLAYBACK_RATES.map((rate) => (
+                          <button
+                            key={rate}
+                            type="button"
+                            className={`fav-chip ${(activeTab.playbackRate || 1) === rate ? 'active' : ''}`}
+                            onClick={() => applyPlaybackRate(rate)}
+                          >
+                            {rate}x
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="fav-chip"
+                        onClick={() => downloadTabFile(activeTab)}
+                      >
+                        <Icon name="downloadSm" size={11} />
+                        <span style={{ marginLeft: '4px' }}>{downloadBadge || 'SAVE VIDEO'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : activeTab.type === 'binary' ? (
+              <div className="files-media-stage binary-stage">
+                <div className="files-media-card">
+                  <div className="files-media-card-header">
+                    <span className="files-media-icon-box" style={{ color: '#fbbf24', background: 'rgba(245, 158, 11, 0.1)' }}>
+                      <Icon name="fileBinary" size={20} />
+                    </span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                        <span className="files-binary-badge">BINARY / NON-UTF-8</span>
+                        {activeTab.mimeType && (
+                          <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
+                            {activeTab.mimeType}
+                          </span>
+                        )}
+                        {typeof activeTab.sizeBytes === 'number' && (
+                          <span className="mono-kbd" style={{ fontSize: '9.5px' }}>
+                            {formatBytes(activeTab.sizeBytes)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="files-media-title">{activeTab.label}</div>
+                      <div className="files-media-subpath">{activeTab.path}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                    {activeTab.errorReason ||
+                      'This file contains binary or non-UTF-8 bytes and cannot be edited as plain text in Monaco. You can download it directly or copy its path.'}
+                  </div>
+
+                  <div className="files-media-meta-row">
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="subbar-util-btn active"
+                        onClick={() => downloadTabFile(activeTab)}
+                      >
+                        <Icon name="downloadSm" size={12} />
+                        <span>{downloadBadge || 'DOWNLOAD FILE'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="fav-chip"
+                        onClick={copyActiveTabContent}
+                      >
+                        <Icon name="copyText" size={11} />
+                        <span style={{ marginLeft: '4px' }}>{copyBadge || 'COPY PATH'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : isSelectMode ? (
               <div style={{ flex: 1, height: '100%', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>

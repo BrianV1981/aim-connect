@@ -461,6 +461,31 @@ export function Icon({ name, size, style }) {
           <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
         </svg>
       );
+    case 'audio':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+      );
+    case 'video':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <polygon points="23 7 16 12 23 17 23 7" />
+          <rect width="15" height="14" x="1" y="5" rx="2" ry="2" />
+        </svg>
+      );
+    case 'fileBinary':
+      return (
+        <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+          <polyline points="14 2 14 8 20 8" />
+          <rect x="8" y="12" width="3" height="5" rx="1" />
+          <path d="M15 12v5" />
+          <path d="M13.5 13h1.5" />
+        </svg>
+      );
     case 'code':
       return (
         <svg className="lucide" style={s || { width: '13px', height: '13px' }} viewBox="0 0 24 24" aria-hidden="true">
