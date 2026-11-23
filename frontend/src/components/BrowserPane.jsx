@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getAgentColor, resolveTabAgentInfo } from '../agentColors';
+import {
+  ingestHudPayload,
+  pruneExpiredHudMap,
+  resolveHudForTarget,
+} from '../browserHudUtils';
 import { resolveBrowserKeyAction } from '../browserKeyUtils';
 import Icon from './Icons';
 
@@ -24,7 +29,7 @@ export default function BrowserPane({
   const [showTextBar, setShowTextBar] = useState(false);
   const [quickText, setQuickText] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
-  const [hudOverlay, setHudOverlay] = useState(null);
+  const [hudByTarget, setHudByTarget] = useState({});
   const [extFlash, setExtFlash] = useState(false);
   const [shotFlash, setShotFlash] = useState(false);
   const [shotFullPage, setShotFullPage] = useState(false);
@@ -40,7 +45,6 @@ export default function BrowserPane({
   const activeTargetRef = useRef('');
   const closingIdsRef = useRef(new Set());
   const hudTimerRef = useRef(null);
-  const lastHudSeqRef = useRef(-1);
   const lastMoveSentRef = useRef(0);
   const touchLastYRef = useRef(null);
   const lastAutoSyncedSessionRef = useRef('');
@@ -78,22 +82,20 @@ export default function BrowserPane({
 
   const showHud = useCallback((hud) => {
     if (!hud || typeof hud !== 'object') return;
-    if (hud.ts && Date.now() - Number(hud.ts) > 6000) return;
-    if (hud.seq !== undefined && hud.seq !== null) {
-      const seqNum = Number(hud.seq);
-      if (Number.isFinite(seqNum)) {
-        if (seqNum === lastHudSeqRef.current) return;
-        lastHudSeqRef.current = seqNum;
-      }
-    }
-    setHudOverlay(hud);
+    setHudByTarget((prev) => ingestHudPayload(prev, hud, Date.now()));
     if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
-    hudTimerRef.current = setTimeout(() => setHudOverlay(null), 4500);
+    hudTimerRef.current = setTimeout(() => {
+      setHudByTarget((prev) => pruneExpiredHudMap(prev, Date.now(), 4500));
+    }, 4600);
   }, []);
 
   const refreshStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/browser/status');
+      const curTarget = activeTargetRef.current;
+      const statusUrl = curTarget
+        ? `/api/browser/status?target_id=${encodeURIComponent(curTarget)}`
+        : '/api/browser/status';
+      const res = await fetch(statusUrl);
       if (!res.ok) return null;
       const data = await res.json();
       setDaemonRunning(Boolean(data.running));
@@ -246,7 +248,8 @@ export default function BrowserPane({
     const byOwner =
       byId ||
       tabs.find((t) => {
-        const info = resolveTabAgentInfo(t, hudOverlay, fleet);
+        const tHud = resolveHudForTarget(hudByTarget, null, t.id);
+        const info = resolveTabAgentInfo(t, tHud, fleet);
         return info?.agentKey && info.agentKey.toLowerCase() === activeSession.toLowerCase();
       });
 
@@ -254,7 +257,7 @@ export default function BrowserPane({
     if (byOwner && byOwner.id !== activeTargetRef.current) {
       handleSelectTab(byOwner);
     }
-  }, [isOpen, tabs, activeSession, preferredTargetId, hudOverlay, fleet, handleSelectTab]);
+  }, [isOpen, tabs, activeSession, preferredTargetId, hudByTarget, fleet, handleSelectTab]);
 
   // Zero CPU / bandwidth when pane is closed; keep /ws/browser open across session switches (#261)
   useEffect(() => {
@@ -279,7 +282,8 @@ export default function BrowserPane({
         const ownerTab =
           curSess && Array.isArray(st.tabs)
             ? st.tabs.find((t) => {
-                const info = resolveTabAgentInfo(t, st.hud || null, curFleet);
+                const tHud = resolveHudForTarget({}, st.hud || null, t.id);
+                const info = resolveTabAgentInfo(t, tHud, curFleet);
                 return info?.agentKey && info.agentKey.toLowerCase() === curSess.toLowerCase();
               })
             : null;
@@ -668,6 +672,7 @@ export default function BrowserPane({
 
   if (!isOpen) return null;
 
+  const hudOverlay = resolveHudForTarget(hudByTarget, null, activeTargetId);
   const hudVisibleOnCurrentTab =
     hudOverlay &&
     (!hudOverlay.targetId || !activeTargetId || hudOverlay.targetId === activeTargetId);
@@ -691,7 +696,8 @@ export default function BrowserPane({
     activeFleetEntry?.has_browser_lease ||
       (activeSession &&
         tabs.some((t) => {
-          const info = resolveTabAgentInfo(t, hudOverlay, fleet);
+          const tHud = resolveHudForTarget(hudByTarget, null, t.id);
+          const info = resolveTabAgentInfo(t, tHud, fleet);
           return info?.agentKey && info.agentKey.toLowerCase() === activeSession.toLowerCase();
         }))
   );
@@ -982,7 +988,8 @@ export default function BrowserPane({
       <div className="copilot-tabs-row">
         {tabs.map((t) => {
           const isSelected = t.id === activeTargetId;
-          const tabAgent = resolveTabAgentInfo(t, hudOverlay, fleet);
+          const tabHud = resolveHudForTarget(hudByTarget, null, t.id);
+          const tabAgent = resolveTabAgentInfo(t, tabHud, fleet);
           const chipStyle = tabAgent
             ? { '--agent-color': tabAgent.color.hex, '--agent-rgb': tabAgent.color.rgb }
             : undefined;

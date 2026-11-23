@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import contextlib
+import errno
 import hashlib
 import json
 import logging
@@ -8,11 +10,12 @@ import re
 import shutil
 import struct
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 import websockets
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -138,32 +141,211 @@ def _write_json_atomic(path: str, payload: Any) -> None:
     os.replace(tmp_path, path)
 
 
+LEASES_LOCK_TIMEOUT_S = 2.0
+LEASES_LOCK_STALE_TTL_S = 10.0
+_LEASES_LOCK_LOCAL = threading.local()
+
+
+def _is_pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError as exc:
+        if exc.errno == errno.ESRCH:
+            return False
+        return True
+
+
+def _is_stale_leases_lock(lock_path: str, stale_ttl_s: float = LEASES_LOCK_STALE_TTL_S) -> bool:
+    now_s = time.time()
+    try:
+        st = os.stat(lock_path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+
+    raw = ""
+    try:
+        with open(lock_path, "r", encoding="utf-8", errors="ignore") as fh:
+            raw = fh.read().strip()
+    except OSError:
+        pass
+
+    pid = 0
+    lock_ts_s = st.st_mtime
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                pid = int(parsed.get("pid") or 0)
+                if parsed.get("ts"):
+                    lock_ts_s = float(parsed["ts"]) / 1000.0
+            elif isinstance(parsed, int):
+                pid = parsed
+        except Exception:
+            token = raw.split()[0]
+            if token.isdigit():
+                pid = int(token)
+
+    if pid > 0 and not _is_pid_alive(pid):
+        return True
+    if (now_s - lock_ts_s) > stale_ttl_s:
+        return True
+    return False
+
+
+@contextlib.contextmanager
+def _leases_file_lock(
+    timeout_s: float = LEASES_LOCK_TIMEOUT_S,
+    stale_ttl_s: float = LEASES_LOCK_STALE_TTL_S,
+):
+    """Acquire stale-PID-safe .leases.lock around leases.json mutations (#274, aim-browser#14)."""
+    depth = getattr(_LEASES_LOCK_LOCAL, "depth", 0)
+    if depth > 0:
+        _LEASES_LOCK_LOCAL.depth = depth + 1
+        try:
+            yield
+        finally:
+            _LEASES_LOCK_LOCAL.depth = depth
+        return
+
+    lock_path = os.path.join(_get_state_dir(), ".leases.lock")
+    deadline = time.monotonic() + max(0.05, timeout_s)
+    acquired = False
+    my_token = f"{os.getpid()}:{time.time_ns()}"
+
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            try:
+                payload = json.dumps(
+                    {"pid": os.getpid(), "ts": int(time.time() * 1000), "token": my_token}
+                ).encode("utf-8")
+                os.write(fd, payload)
+            finally:
+                os.close(fd)
+            acquired = True
+            break
+        except FileExistsError:
+            if _is_stale_leases_lock(lock_path, stale_ttl_s=stale_ttl_s):
+                try:
+                    os.unlink(lock_path)
+                    continue
+                except OSError:
+                    pass
+            if time.monotonic() >= deadline:
+                logger.warning("Timed out waiting for .leases.lock; proceeding with atomic replace")
+                break
+            time.sleep(0.015)
+
+    _LEASES_LOCK_LOCAL.depth = 1
+    try:
+        yield
+    finally:
+        _LEASES_LOCK_LOCAL.depth = 0
+        if acquired:
+            try:
+                with open(lock_path, "r", encoding="utf-8", errors="ignore") as fh:
+                    cur = json.loads(fh.read() or "{}")
+                if isinstance(cur, dict) and cur.get("token") == my_token:
+                    os.unlink(lock_path)
+            except Exception:
+                try:
+                    os.unlink(lock_path)
+                except OSError:
+                    pass
+
+
 def _read_leases() -> dict[str, dict]:
     raw = _read_json_file(os.path.join(_get_state_dir(), "leases.json"), {})
     return raw if isinstance(raw, dict) else {}
 
 
 def _write_leases(leases: dict[str, dict]) -> None:
-    _write_json_atomic(os.path.join(_get_state_dir(), "leases.json"), leases)
+    with _leases_file_lock():
+        _write_json_atomic(os.path.join(_get_state_dir(), "leases.json"), leases)
 
 
-def _read_hud(max_age_s: float = HUD_STALE_TTL_S) -> dict | None:
+def _mutate_leases(
+    mutator: Callable[[dict[str, dict]], tuple[dict[str, dict], bool]],
+) -> dict[str, dict]:
+    """Perform a lock-serialized read-modify-write cycle on leases.json (#274)."""
+    with _leases_file_lock():
+        current = _read_leases()
+        updated, changed = mutator(dict(current))
+        if changed:
+            _write_json_atomic(os.path.join(_get_state_dir(), "leases.json"), updated)
+        return updated
+
+
+def _is_fresh_hud_entry(entry: Any, now_s: float, fallback_mtime_s: float, max_age_s: float) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    ts_val = entry.get("ts")
+    if isinstance(ts_val, (int, float)) and ts_val > 0:
+        return (now_s * 1000.0 - float(ts_val)) <= max_age_s * 1000.0
+    return (now_s - fallback_mtime_s) <= max_age_s
+
+
+def _resolve_hud_for_target(hud: dict | None, target_id: str = "") -> dict | None:
+    """Resolve hud.byTarget[target_id] with clean fallback to top-level HUD (#274)."""
+    if not isinstance(hud, dict):
+        return None
+    by_target = hud.get("byTarget") if isinstance(hud.get("byTarget"), dict) else {}
+    tid = (target_id or "").strip()
+    if tid and isinstance(by_target.get(tid), dict):
+        chosen = dict(by_target[tid])
+        chosen["byTarget"] = by_target
+        return chosen
+    top_tid = str(hud.get("targetId") or "").strip()
+    if not tid or not top_tid or top_tid == tid:
+        return hud
+    # Different active target with no matching top-level entry: preserve byTarget envelope without wrong cursor coords
+    if by_target:
+        return {"seq": hud.get("seq", 0), "ts": hud.get("ts", 0), "targetId": "", "byTarget": by_target}
+    return None
+
+
+def _read_hud(max_age_s: float = HUD_STALE_TTL_S, target_id: str = "") -> dict | None:
     hud_path = os.path.join(_get_state_dir(), "hud.json")
     raw = _read_json_file(hud_path, None)
     if not isinstance(raw, dict):
         return None
     now_s = time.time()
-    ts_val = raw.get("ts")
-    if isinstance(ts_val, (int, float)) and ts_val > 0:
-        if (now_s * 1000.0 - float(ts_val)) > max_age_s * 1000.0:
-            return None
+    try:
+        mtime_s = os.stat(hud_path).st_mtime
+    except OSError:
+        mtime_s = 0.0
+
+    raw_by_target = raw.get("byTarget")
+    clean_by_target: dict[str, dict] = {}
+    if isinstance(raw_by_target, dict):
+        for k, entry in raw_by_target.items():
+            if k and _is_fresh_hud_entry(entry, now_s, mtime_s, max_age_s):
+                clean_by_target[str(k)] = dict(entry)
+
+    top_fresh = _is_fresh_hud_entry(raw, now_s, mtime_s, max_age_s)
+    if not top_fresh and not clean_by_target:
+        return None
+
+    if top_fresh:
+        base = dict(raw)
+        top_tid = str(raw.get("targetId") or "").strip()
+        if top_tid and top_tid not in clean_by_target:
+            top_copy = {k: v for k, v in raw.items() if k != "byTarget"}
+            clean_by_target[top_tid] = top_copy
     else:
-        try:
-            if (now_s - os.stat(hud_path).st_mtime) > max_age_s:
-                return None
-        except OSError:
-            return None
-    return raw
+        newest = max(
+            clean_by_target.values(),
+            key=lambda item: float(item.get("seq") or item.get("ts") or 0),
+        )
+        base = dict(newest)
+
+    base["byTarget"] = clean_by_target
+    return _resolve_hud_for_target(base, target_id) if target_id else base
 
 
 def _favorite_id_for_url(url: str) -> str:
@@ -262,13 +444,38 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
             _KNOWN_TAB_ORDER.append(tid)
     ordered_pages = [live_by_id[tid] for tid in _KNOWN_TAB_ORDER if tid in live_by_id]
 
-    leases = _read_leases()
+    now_ms = int(time.time() * 1000)
+    initial_leases = _read_leases()
+    needs_prune = any(
+        not isinstance(v, dict)
+        or (
+            v.get("targetId") not in live_ids
+            and (
+                v.get("targetId") in closed_ids
+                or (now_ms - int(v.get("updatedAt") or 0)) > 2500
+            )
+        )
+        for v in initial_leases.values()
+    )
+    if needs_prune:
+        def _prune_stale(curr: dict[str, dict]) -> tuple[dict[str, dict], bool]:
+            pruned_map = {
+                k: v
+                for k, v in curr.items()
+                if isinstance(v, dict)
+                and (
+                    v.get("targetId") in live_ids
+                    or (
+                        v.get("targetId") not in closed_ids
+                        and (now_ms - int(v.get("updatedAt") or 0)) <= 2500
+                    )
+                )
+            }
+            return pruned_map, len(pruned_map) != len(curr)
 
-    # Prune stale leases whose tabs were closed
-    pruned = {k: v for k, v in leases.items() if isinstance(v, dict) and v.get("targetId") in live_ids}
-    if len(pruned) != len(leases):
-        _write_leases(pruned)
-        leases = pruned
+        leases = _mutate_leases(_prune_stale)
+    else:
+        leases = initial_leases
 
     lease_by_target: dict[str, dict] = {}
     for lease_name, meta in leases.items():
@@ -301,9 +508,9 @@ def _merge_tabs_with_leases(raw_targets: list[dict]) -> list[dict]:
     return enriched
 
 
-async def _collect_browser_status() -> dict:
+async def _collect_browser_status(target_id: str = "") -> dict:
     port = _get_cdp_port()
-    hud = _read_hud()
+    hud = _read_hud(target_id=target_id)
     favorites = _read_favorites()
     try:
         version_info = await _cdp_http_json("/json/version", timeout=1.5)
@@ -408,9 +615,10 @@ async def delete_browser_favorite(fav_id: str):
 
 
 @router.get("/api/browser/status", dependencies=[Depends(verify_token), Depends(require_admin)])
-async def get_browser_status():
-    """Return loopback CDP daemon status, leased tabs, and latest agent HUD state (#240)."""
-    return await _collect_browser_status()
+async def get_browser_status(target_id: str = ""):
+    """Return loopback CDP daemon status, leased tabs, and per-target agent HUD state (#240, #274)."""
+    clean_tid = (target_id or "").strip() if TARGET_ID_RE.match((target_id or "").strip()) else ""
+    return await _collect_browser_status(target_id=clean_tid)
 
 
 @router.post("/api/browser/start", dependencies=[Depends(verify_token), Depends(require_admin)])
@@ -499,8 +707,7 @@ async def open_browser_tab(req: OpenTabRequest):
 
     tid = created.get("id", "")
     if lease and tid:
-        leases = _read_leases()
-        leases[lease] = {
+        entry = {
             "lease": lease,
             "targetId": tid,
             "actor": (req.actor or lease).strip()[:64],
@@ -509,7 +716,12 @@ async def open_browser_tab(req: OpenTabRequest):
             "title": created.get("title") or "",
             "updatedAt": int(time.time() * 1000),
         }
-        _write_leases(leases)
+
+        def _upsert_lease(curr: dict[str, dict]) -> tuple[dict[str, dict], bool]:
+            curr[lease] = entry
+            return curr, True
+
+        _mutate_leases(_upsert_lease)
 
     status = await _collect_browser_status()
     return {"tab": created, "tabs": status["tabs"]}
@@ -538,10 +750,11 @@ async def close_browser_tab(target_id: str):
     if target_id in _KNOWN_TAB_ORDER:
         _KNOWN_TAB_ORDER.remove(target_id)
 
-    leases = _read_leases()
-    filtered = {k: v for k, v in leases.items() if v.get("targetId") != target_id}
-    if len(filtered) != len(leases):
-        _write_leases(filtered)
+    def _remove_closed_lease(curr: dict[str, dict]) -> tuple[dict[str, dict], bool]:
+        filtered_map = {k: v for k, v in curr.items() if isinstance(v, dict) and v.get("targetId") != target_id}
+        return filtered_map, len(filtered_map) != len(curr)
+
+    _mutate_leases(_remove_closed_lease)
 
     status = await _collect_browser_status()
     return {"closed": target_id, "tabs": status["tabs"]}
@@ -1138,10 +1351,17 @@ async def browser_viewport_ws(websocket: WebSocket):
                     if st.st_mtime <= last_mtime:
                         continue
                     last_mtime = st.st_mtime
-                    hud = _read_hud()
-                    if hud and int(hud.get("seq", 0)) != last_seq:
-                        last_seq = int(hud.get("seq", 0))
-                        await websocket.send_text(json.dumps({"type": "hud", "hud": hud}))
+                    active_tid = bridge.target_id if bridge and not bridge._closed else ""
+                    hud = _read_hud(target_id=active_tid)
+                    if hud:
+                        by_target = hud.get("byTarget") if isinstance(hud.get("byTarget"), dict) else {}
+                        max_seq = max(
+                            [int(hud.get("seq", 0))]
+                            + [int(v.get("seq", 0)) for v in by_target.values() if isinstance(v, dict)]
+                        )
+                        if max_seq != last_seq:
+                            last_seq = max_seq
+                            await websocket.send_text(json.dumps({"type": "hud", "hud": hud}))
                 except FileNotFoundError:
                     continue
                 except Exception:
