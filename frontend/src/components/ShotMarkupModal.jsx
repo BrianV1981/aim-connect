@@ -263,6 +263,9 @@ export default function ShotMarkupModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
             {MARKUP_COLORS.map((c) => {
               const selected = color === c.hex;
+              const isBlack = c.id === 'black';
+              const isWhite = c.id === 'white';
+              const activeAccent = isBlack || isWhite ? 'var(--text-primary)' : c.hex;
               return (
                 <button
                   key={c.id}
@@ -272,11 +275,11 @@ export default function ShotMarkupModal({
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '5px',
-                    borderColor: selected ? c.hex : undefined,
-                    color: selected ? c.hex : undefined,
+                    borderColor: selected ? activeAccent : undefined,
+                    color: selected ? activeAccent : undefined,
                   }}
                   onClick={() => setColor(c.hex)}
-                  title={`${c.short}: ${c.label}`}
+                  title={c.neutral ? c.label : `${c.short}: ${c.label}`}
                 >
                   <span
                     style={{
@@ -284,7 +287,12 @@ export default function ShotMarkupModal({
                       height: '9px',
                       borderRadius: '50%',
                       background: c.hex,
-                      boxShadow: selected ? `0 0 8px ${c.hex}` : 'none',
+                      border: isBlack
+                        ? '1px solid rgba(255, 255, 255, 0.5)'
+                        : isWhite
+                          ? '1px solid rgba(0, 0, 0, 0.35)'
+                          : 'none',
+                      boxShadow: selected && !isBlack ? `0 0 8px ${c.hex}` : 'none',
                     }}
                   />
                   <span>{c.short}</span>
@@ -358,7 +366,7 @@ export default function ShotMarkupModal({
           <span>
             Tip: Drop <strong>① ② ③</strong> pins (drag before releasing to add a pointer arrow), then just type or speak <em>&quot;#1 fix padding, #2 remove border&quot;</em>.
           </span>
-          <span>Red = Fix · Emerald = Keep · Cyan = Info · Amber = Move</span>
+          <span>Red = Fix · Emerald = Keep · Cyan = Info · Amber = Move · White / Black = Neutral</span>
         </div>
       </div>
     </div>

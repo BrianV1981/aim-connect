@@ -193,7 +193,7 @@ console.log(JSON.stringify({{
     )
     assert proc.returncode == 0, proc.stderr
     data = json.loads(proc.stdout.strip())
-    assert data["colorIds"] == ["red", "emerald", "cyan", "amber"]
+    assert data["colorIds"][:4] == ["red", "emerald", "cyan", "amber"]
     assert data["n1"] == 1
     assert data["n2"] == 3
     assert "/mnt/c/Users/demo/OneDrive/Pictures/Screenshots/Screenshot 2026-11-22.png" in data["wslConverted"]

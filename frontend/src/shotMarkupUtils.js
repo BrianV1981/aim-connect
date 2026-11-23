@@ -1,11 +1,23 @@
 // Sovereign Visual Marking System — 4-Color Convention, Callout Pins, & WSL2 Path Helpers (#273)
 
 export const MARKUP_COLORS = [
-  { id: 'red', hex: '#FF3B5C', short: 'FIX', label: 'Fix / Bug / Delete' },
-  { id: 'emerald', hex: '#00FFA3', short: 'KEEP', label: 'Keep / Match Style' },
-  { id: 'cyan', hex: '#00B8FF', short: 'INFO', label: 'Question / Inspect' },
-  { id: 'amber', hex: '#FBBF24', short: 'MOVE', label: 'Move / Resize / Layout' },
+  { id: 'red', hex: '#FF3B5C', short: 'FIX', label: 'Fix / Bug / Delete', neutral: false },
+  { id: 'emerald', hex: '#00FFA3', short: 'KEEP', label: 'Keep / Match Style', neutral: false },
+  { id: 'cyan', hex: '#00B8FF', short: 'INFO', label: 'Question / Inspect', neutral: false },
+  { id: 'amber', hex: '#FBBF24', short: 'MOVE', label: 'Move / Resize / Layout', neutral: false },
+  { id: 'white', hex: '#FFFFFF', short: 'WHITE', label: 'Neutral White Ink', neutral: true },
+  { id: 'black', hex: '#111827', short: 'BLACK', label: 'Neutral Black Ink', neutral: true },
 ];
+
+export function isDarkInkColor(hex) {
+  const clean = String(hex || '').trim().replace(/^#/, '');
+  if (clean.length !== 6) return false;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  if ([r, g, b].some((v) => Number.isNaN(v))) return false;
+  return 0.299 * r + 0.587 * g + 0.114 * b < 64;
+}
 
 export const MARKUP_TOOLS = [
   { id: 'pin', label: '① PIN', hint: 'Tap to drop numbered callout (or drag to point arrow)' },
@@ -107,7 +119,10 @@ function drawArrowSegment(ctx, x1, y1, x2, y2, color, lineWidth) {
     ctx.restore();
   };
 
-  drawPass('rgba(0, 0, 0, 0.72)', 3, 'rgba(0, 0, 0, 0.72)');
+  const haloColor = isDarkInkColor(color)
+    ? 'rgba(255, 255, 255, 0.88)'
+    : 'rgba(0, 0, 0, 0.72)';
+  drawPass(haloColor, 3, haloColor);
   drawPass(color, 0, color);
 }
 
@@ -116,6 +131,8 @@ export function drawAnnotationOnContext(ctx, ann, baseWidth = 1280) {
   const scale = Math.max(0.85, Math.min(2.2, baseWidth / 1100));
   const strokeW = Math.round(3.6 * scale * 10) / 10;
   const color = ann.color || '#FF3B5C';
+  const darkInk = isDarkInkColor(color);
+  const haloStroke = darkInk ? 'rgba(255, 255, 255, 0.88)' : 'rgba(0, 0, 0, 0.68)';
 
   if (ann.type === 'pin') {
     const r = Math.round(15 * scale);
@@ -129,11 +146,11 @@ export function drawAnnotationOnContext(ctx, ann, baseWidth = 1280) {
     }
 
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowColor = darkInk ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.55)';
     ctx.shadowBlur = 8 * scale;
     ctx.beginPath();
     ctx.arc(ann.x, ann.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#07090c';
+    ctx.fillStyle = darkInk ? '#F8FAFC' : '#07090c';
     ctx.fill();
     ctx.lineWidth = Math.max(2.6, 2.8 * scale);
     ctx.strokeStyle = color;
@@ -161,7 +178,7 @@ export function drawAnnotationOnContext(ctx, ann, baseWidth = 1280) {
     const rx = Math.max(4, Math.abs(ann.x2 - ann.x1) / 2);
     const ry = Math.max(4, Math.abs(ann.y2 - ann.y1) / 2);
     for (const [col, extra] of [
-      ['rgba(0, 0, 0, 0.68)', 3],
+      [haloStroke, 3],
       [color, 0],
     ]) {
       ctx.save();
@@ -181,7 +198,7 @@ export function drawAnnotationOnContext(ctx, ann, baseWidth = 1280) {
     const w = Math.max(4, Math.abs(ann.x2 - ann.x1));
     const h = Math.max(4, Math.abs(ann.y2 - ann.y1));
     for (const [col, extra] of [
-      ['rgba(0, 0, 0, 0.68)', 3],
+      [haloStroke, 3],
       [color, 0],
     ]) {
       ctx.save();
@@ -196,7 +213,7 @@ export function drawAnnotationOnContext(ctx, ann, baseWidth = 1280) {
 
   if (ann.type === 'pen' && Array.isArray(ann.points) && ann.points.length > 0) {
     for (const [col, extra] of [
-      ['rgba(0, 0, 0, 0.68)', 2.8],
+      [haloStroke, 2.8],
       [color, 0],
     ]) {
       ctx.save();
