@@ -1,7 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  MATRIX_SCRAMBLE_STEP,
+  MATRIX_SCRAMBLE_TICK_MS,
+  SCRAMBLE_CHARS,
+  attachGlobalStandaloneButtonScrambles,
+  computeScrambleFrame,
+  isStandaloneScrambleCandidate,
+} from './scrambleUtils';
 
-export const SCRAMBLE_CHARS = '01ABCDEF/>_#$%&*+=?AIM';
+export {
+  SCRAMBLE_CHARS,
+  MATRIX_SCRAMBLE_TICK_MS,
+  MATRIX_SCRAMBLE_STEP,
+  computeScrambleFrame,
+  isStandaloneScrambleCandidate,
+};
 
+/**
+ * React hook driving explicit Matrix Character Scramble hover state on a text label.
+ */
 export function useMatrixScramble(text) {
   const [display, setDisplay] = useState(text);
   const timerRef = useRef(null);
@@ -17,7 +34,7 @@ export function useMatrixScramble(text) {
     if (timerRef.current) clearInterval(timerRef.current);
     let step = 0;
     timerRef.current = setInterval(() => {
-      step += 0.9;
+      step += MATRIX_SCRAMBLE_STEP;
       const done = Math.floor(step);
       if (done >= text.length) {
         setDisplay(text);
@@ -25,18 +42,8 @@ export function useMatrixScramble(text) {
         timerRef.current = null;
         return;
       }
-      const next = text
-        .split('')
-        .map((ch, idx) =>
-          ch === ' '
-            ? ' '
-            : idx < done
-            ? ch
-            : SCRAMBLE_CHARS[(idx * 11 + done * 5) % SCRAMBLE_CHARS.length]
-        )
-        .join('');
-      setDisplay(next);
-    }, 20);
+      setDisplay(computeScrambleFrame(text, done));
+    }, MATRIX_SCRAMBLE_TICK_MS);
   }, [text]);
 
   const resetScramble = useCallback(() => {
@@ -48,4 +55,14 @@ export function useMatrixScramble(text) {
   }, [text]);
 
   return { display, triggerScramble, resetScramble };
+}
+
+/**
+ * React hook mounting delegated Matrix Scramble listeners for standalone UI buttons across the cockpit.
+ */
+export function useStandaloneButtonScrambles(enabled = true) {
+  useEffect(() => {
+    if (!enabled || typeof document === 'undefined') return undefined;
+    return attachGlobalStandaloneButtonScrambles(document);
+  }, [enabled]);
 }

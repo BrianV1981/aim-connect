@@ -28,7 +28,7 @@ import { sanitizeAnsiScrollback, stripAnsiAndTrimLines } from './scrollbackSelec
 import { normalizeWindowsPathsInText } from './shotMarkupUtils';
 import { E2EESocketWrapper } from './e2ee';
 import { getAgentColor } from './agentColors';
-import { useMatrixScramble } from './scramble';
+import { useMatrixScramble, useStandaloneButtonScrambles } from './scramble';
 
 const THEME_META_COLORS = {
   emerald: '#050505',
@@ -138,7 +138,9 @@ function App() {
   const browserTabScramble = useMatrixScramble('BROWSER');
   const filesTabScramble = useMatrixScramble('FILES');
   const historyTabScramble = useMatrixScramble('HISTORY');
+  const kbTabScramble = useMatrixScramble(showKeyboard ? 'KB ON' : 'KB OFF');
   const homeSloganScramble = useMatrixScramble("Don't rent a seat.");
+  useStandaloneButtonScrambles(true);
 
   const [sessions, setSessions] = useState([]);
   const [fleet, setFleet] = useState([]);
@@ -2248,6 +2250,7 @@ function App() {
 
           <div
             className="ld-brand"
+            data-scramble-manual="1"
             onClick={() => switchToSession('')}
             onMouseEnter={() => {
               brandAimScramble.triggerScramble();
@@ -2333,6 +2336,7 @@ function App() {
             <button
               type="button"
               className={`seg-item ${!showBrowser && !showFiles ? 'active' : ''}`}
+              data-scramble-manual="1"
               onClick={() => selectWorkspaceTool('none')}
               onMouseEnter={termTabScramble.triggerScramble}
               onMouseLeave={termTabScramble.resetScramble}
@@ -2344,6 +2348,7 @@ function App() {
             <button
               type="button"
               className={`seg-item ${showBrowser ? 'active' : ''}`}
+              data-scramble-manual="1"
               onClick={() => selectWorkspaceTool('browser')}
               onMouseEnter={browserTabScramble.triggerScramble}
               onMouseLeave={browserTabScramble.resetScramble}
@@ -2360,6 +2365,7 @@ function App() {
             <button
               type="button"
               className={`seg-item ${showFiles ? 'active' : ''}`}
+              data-scramble-manual="1"
               onClick={() => selectWorkspaceTool('files')}
               onMouseEnter={filesTabScramble.triggerScramble}
               onMouseLeave={filesTabScramble.resetScramble}
@@ -2380,6 +2386,7 @@ function App() {
           <button
             type="button"
             className={`ghost-btn desktop-only ${showHistory ? 'active' : ''}`}
+            data-scramble-manual="1"
             onClick={() => setShowHistory((prev) => !prev)}
             onMouseEnter={historyTabScramble.triggerScramble}
             onMouseLeave={historyTabScramble.resetScramble}
@@ -2392,11 +2399,14 @@ function App() {
           <button
             type="button"
             className={`ghost-btn ${showKeyboard ? 'active' : ''}`}
+            data-scramble-manual="1"
             onClick={() => setShowKeyboard((prev) => !prev)}
+            onMouseEnter={kbTabScramble.triggerScramble}
+            onMouseLeave={kbTabScramble.resetScramble}
             title={`Toggle On-Screen Sovereign Keyboard (${showKeyboard ? 'ON' : 'OFF'})`}
           >
             <Icon name="keyboard" />
-            <span className="hide-halfscreen">{showKeyboard ? 'KB ON' : 'KB OFF'}</span>
+            <span className="hide-halfscreen">{kbTabScramble.display}</span>
           </button>
 
           <button
@@ -2620,6 +2630,7 @@ function App() {
                     <br />
                     <span
                       className="home-slogan-grad"
+                      data-scramble-manual="1"
                       onMouseEnter={homeSloganScramble.triggerScramble}
                       onMouseLeave={homeSloganScramble.resetScramble}
                     >
