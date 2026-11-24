@@ -3339,7 +3339,7 @@ mark.find-hit-mark.active-hit {
 
 .ld-composer-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   width: 100%;
   max-width: 100%;
@@ -3459,8 +3459,8 @@ mark.find-hit-mark.active-hit {
 }
 
 .ld-bolt-btn {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 9px;
   border: 1px solid var(--border-hairline);
   background: var(--bg-input);
@@ -3481,25 +3481,82 @@ mark.find-hit-mark.active-hit {
 }
 
 .ld-input-box {
+  position: relative;
   flex: 1;
   min-width: 0;
-  height: 34px;
+  min-height: 38px;
+  height: auto;
   border-radius: 9px;
   border: 1px solid var(--border-hairline);
   background: var(--bg-input);
   display: flex;
-  align-items: center;
-  padding: 0 4px 0 11px;
-  gap: 4px;
+  align-items: flex-end;
+  padding: 4px 16px 4px 11px;
+  gap: 6px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ld-input-box:focus-within {
   border-color: rgba(var(--accent-rgb), 0.55);
 }
 
+.ld-input-box.is-resizing {
+  border-color: rgba(var(--accent-rgb), 0.72);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.22);
+}
+
 .ld-input-box.is-listening {
   border-color: rgba(239, 68, 68, 0.55);
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22);
+}
+
+.composer-resize-handle {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 13px;
+  height: 13px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 3;
+  border-radius: 4px;
+  opacity: 0.72;
+  transition: opacity 0.15s ease;
+}
+
+.composer-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--text-secondary);
+  border-right: 1.5px solid var(--text-secondary);
+  border-top-right-radius: 2px;
+}
+
+.composer-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 4px;
+  height: 4px;
+  border-top: 1.5px solid var(--text-muted);
+  border-right: 1.5px solid var(--text-muted);
+}
+
+.composer-resize-handle:hover,
+.ld-input-box.is-resizing .composer-resize-handle {
+  opacity: 1;
+}
+
+.composer-resize-handle:hover::before,
+.composer-resize-handle:hover::after,
+.ld-input-box.is-resizing .composer-resize-handle::before,
+.ld-input-box.is-resizing .composer-resize-handle::after {
+  border-color: var(--accent);
 }
 
 .ld-prompt-field {
@@ -3508,44 +3565,66 @@ mark.find-hit-mark.active-hit {
   background: transparent;
   border: none;
   outline: none;
+  resize: none;
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 12px;
+  line-height: 1.45;
+  padding: 5px 0;
+  min-height: 28px;
+  margin: 0;
+  box-sizing: border-box;
+  overflow-y: hidden;
+}
+
+.composer-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  align-self: flex-end;
+  padding-bottom: 1px;
 }
 
 .composer-icon-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
+  width: 30px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .composer-icon-btn:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(var(--accent-rgb), 0.52);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .composer-icon-btn.mic-on {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.65);
+  background: rgba(239, 68, 68, 0.16);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.22);
 }
 
 .composer-icon-btn.speak-on {
   color: var(--accent-secondary);
-  background: rgba(0, 184, 255, 0.12);
+  border-color: rgba(0, 184, 255, 0.55);
+  background: rgba(0, 184, 255, 0.14);
+  box-shadow: 0 0 10px rgba(0, 184, 255, 0.18);
 }
 
 .ld-send-btn {
-  width: 28px;
-  height: 26px;
+  width: 32px;
+  height: 28px;
   border-radius: 7px;
-  border: none;
+  border: 1px solid rgba(var(--accent-rgb), 0.7);
   background: var(--accent);
   color: var(--accent-fg);
   display: inline-flex;

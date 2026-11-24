@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { AnsiUp } from 'ansi_up';
 import { FitAddon } from '@xterm/addon-fit';
@@ -48,6 +48,13 @@ import {
   filterSlashCommands,
   isSessionResetSlashCommand,
 } from './slashCommandUtils';
+import {
+  classifyComposerKeyAction,
+  computeResizedComposerHeight,
+  loadComposerCustomHeight,
+  resolveComposerTextareaLayout,
+  saveComposerCustomHeight,
+} from './composerUtils';
 
 const THEME_META_COLORS = {
   emerald: '#050505',
@@ -714,6 +721,11 @@ function App() {
   composerTextRef.current = composerText;
   const submitComposerPromptRef = useRef(null);
   const composerInputRef = useRef(null);
+  const [composerCustomHeight, setComposerCustomHeight] = useState(() =>
+    loadComposerCustomHeight(typeof window !== 'undefined' ? window.localStorage : null)
+  );
+  const [isResizingComposer, setIsResizingComposer] = useState(false);
+  const composerDragCleanupRef = useRef(null);
   const [slashCommands, setSlashCommands] = useState([]);
   const slashCommandsCacheRef = useRef({});
   const [slashActiveIdx, setSlashActiveIdx] = useState(0);
@@ -2009,23 +2021,98 @@ function App() {
   }, []);
 
   const handleComposerKeyDown = (e) => {
-    if (slashDropdownItems.length === 0) return;
-    if (e.key === 'ArrowDown') {
+    const action = classifyComposerKeyAction(e, {
+      slashMenuOpen: slashDropdownItems.length > 0,
+    });
+    if (action === 'slash_next') {
       e.preventDefault();
       setSlashActiveIdx((prev) => (prev + 1) % slashDropdownItems.length);
-    } else if (e.key === 'ArrowUp') {
+    } else if (action === 'slash_prev') {
       e.preventDefault();
       setSlashActiveIdx(
         (prev) => (prev - 1 + slashDropdownItems.length) % slashDropdownItems.length
       );
-    } else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey)) {
+    } else if (action === 'slash_select') {
       e.preventDefault();
       const chosen = slashDropdownItems[slashActiveIdx] || slashDropdownItems[0];
       if (chosen) applySlashCommandChoice(chosen);
-    } else if (e.key === 'Escape') {
+    } else if (action === 'slash_dismiss') {
       e.preventDefault();
       setSlashDismissed(true);
+    } else if (action === 'submit') {
+      e.preventDefault();
+      submitComposerPrompt();
     }
+  };
+
+  useLayoutEffect(() => {
+    const el = composerInputRef.current;
+    if (!el) return;
+    if (composerCustomHeight !== null) {
+      const layout = resolveComposerTextareaLayout({
+        scrollHeight: el.scrollHeight,
+        customHeight: composerCustomHeight,
+      });
+      el.style.height = `${layout.heightPx}px`;
+      el.style.overflowY = layout.overflowY;
+      return;
+    }
+    el.style.height = '0px';
+    const measured = el.scrollHeight;
+    const layout = resolveComposerTextareaLayout({
+      scrollHeight: measured,
+      customHeight: null,
+    });
+    el.style.height = `${layout.heightPx}px`;
+    el.style.overflowY = layout.overflowY;
+  }, [composerText, voiceInterimText, composerCustomHeight, isListening, agentStageMode]);
+
+  useEffect(() => {
+    return () => {
+      composerDragCleanupRef.current?.();
+      composerDragCleanupRef.current = null;
+    };
+  }, []);
+
+  const handleComposerResizePointerDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    const el = composerInputRef.current;
+    if (!el) return;
+    composerDragCleanupRef.current?.();
+
+    const startHeight = el.getBoundingClientRect().height || el.offsetHeight || 28;
+    const startY = e.clientY;
+    let latestHeight = startHeight;
+    setIsResizingComposer(true);
+
+    const handleMove = (moveEvent) => {
+      latestHeight = computeResizedComposerHeight(startHeight, startY, moveEvent.clientY);
+      setComposerCustomHeight(latestHeight);
+    };
+
+    const finishDrag = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', finishDrag);
+      window.removeEventListener('pointercancel', finishDrag);
+      composerDragCleanupRef.current = null;
+      setIsResizingComposer(false);
+      saveComposerCustomHeight(
+        typeof window !== 'undefined' ? window.localStorage : null,
+        latestHeight
+      );
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', finishDrag);
+    window.addEventListener('pointercancel', finishDrag);
+    composerDragCleanupRef.current = finishDrag;
+  };
+
+  const handleComposerResizeReset = (e) => {
+    e.preventDefault();
+    setComposerCustomHeight(null);
+    saveComposerCustomHeight(typeof window !== 'undefined' ? window.localStorage : null, null);
   };
 
   const shouldBeListeningRef = useRef(false);
@@ -3356,15 +3443,28 @@ function App() {
                   >
                     <Icon name="zap" size={15} />
                   </button>
-                  <div className={`ld-input-box ${isListening ? 'is-listening' : ''}`}>
-                    <input
+                  <div
+                    className={`ld-input-box ${isListening ? 'is-listening' : ''} ${
+                      isResizingComposer ? 'is-resizing' : ''
+                    }`}
+                  >
+                    <div
+                      className="composer-resize-handle"
+                      role="separator"
+                      aria-orientation="horizontal"
+                      aria-label="Drag top-right corner to resize prompt box"
+                      title="Drag up/down to resize · Double-click to reset"
+                      onPointerDown={handleComposerResizePointerDown}
+                      onDoubleClick={handleComposerResizeReset}
+                    />
+                    <textarea
                       ref={composerInputRef}
-                      type="text"
+                      rows={1}
                       className="ld-prompt-field"
                       placeholder={
                         isListening
                           ? `Listening on mic — speak directive for ${activeSession}...`
-                          : `Transmit directive to ${activeSession}... (Type / for commands or Ctrl+V screenshot)`
+                          : `Transmit directive to ${activeSession}... (Enter send · Shift+Enter newline · / commands · Ctrl+V image)`
                       }
                       value={
                         isListening && agentStageMode === 'chat'
@@ -3381,25 +3481,27 @@ function App() {
                       onPaste={handleComposerPaste}
                       autoComplete="off"
                     />
-                    <button
-                      type="button"
-                      className={`composer-icon-btn ${isListening ? 'mic-on' : ''}`}
-                      onClick={startDictation}
-                      title={isListening ? 'Stop Voice Dictation' : 'Start Voice Dictation'}
-                    >
-                      <Icon name={isListening ? 'mic' : 'micOff'} size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className={`composer-icon-btn ${isSpeaking || voiceAutoRead ? 'speak-on' : ''}`}
-                      onClick={handleSpeakSummary}
-                      title="Speak latest 🔊 agent summary"
-                    >
-                      <Icon name={isSpeaking ? 'volumeOff' : 'volume'} size={14} />
-                    </button>
-                    <button type="submit" className="ld-send-btn" title="Send Directive">
-                      <Icon name="send" size={14} />
-                    </button>
+                    <div className="composer-actions-group">
+                      <button
+                        type="button"
+                        className={`composer-icon-btn composer-mic-btn ${isListening ? 'mic-on' : ''}`}
+                        onClick={startDictation}
+                        title={isListening ? 'Stop Voice Dictation' : 'Start Voice Dictation'}
+                      >
+                        <Icon name={isListening ? 'mic' : 'micOff'} size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`composer-icon-btn composer-speak-btn ${isSpeaking || voiceAutoRead ? 'speak-on' : ''}`}
+                        onClick={handleSpeakSummary}
+                        title="Speak latest 🔊 agent summary"
+                      >
+                        <Icon name={isSpeaking ? 'volumeOff' : 'volume'} size={14} />
+                      </button>
+                      <button type="submit" className="ld-send-btn" title="Send Directive (Enter)">
+                        <Icon name="send" size={14} />
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>
