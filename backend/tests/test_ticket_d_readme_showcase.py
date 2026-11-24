@@ -107,6 +107,24 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     assert "RESUME AGENT" in app_js
     assert "BROWSER 2FA / LOGIN" in app_js
 
+    # Non-agent Google & YouTube globe user tabs, dropped localhost calendar/youtube tabs, real WebP captures, & standalone button Matrix Scramble
+    assert "tab-user-google" in app_js and "tab-user-youtube" in app_js
+    assert "'tab-calendar'" not in app_js and "'tab-youtube'" not in app_js
+    for screen_name in (
+        "google.webp",
+        "youtube.webp",
+        "leaddeeds.webp",
+        "tbsoftwash.webp",
+        "github-joshua.webp",
+        "academy.webp",
+        "github-connect.webp",
+    ):
+        assert (DEMO_DIR / "screens" / screen_name).is_file(), f"Missing docs/demo/screens/{screen_name}"
+        assert f"./screens/{screen_name}" in app_js, f"Missing screen asset reference {screen_name}"
+    assert "MATRIX_SCRAMBLE_TICK_MS" in app_js
+    assert "bindStandaloneButtonScrambles" in app_js
+    assert 'id="scramble-kb"' in app_js
+
     # Settings parity (#266, #222): Workspace & Editor card + Alan UK J.O.S.H.U.A. / JARVIS Piper voice
     assert "piper:en_GB-alan-medium" in app_js
     assert "WORKSPACE &amp; EDITOR" in app_js or "WORKSPACE & EDITOR" in app_js

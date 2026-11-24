@@ -1510,6 +1510,13 @@ svg.lucide {
   gap: 6px;
   padding: 5px 12px;
   border-bottom: 1px solid var(--border-hairline);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.cp-fav-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .fav-chip {
@@ -1521,6 +1528,8 @@ svg.lucide {
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
 }
 
@@ -2518,6 +2527,59 @@ svg.lucide {
   flex-direction: column;
   font-family: var(--font-sans);
   position: relative;
+}
+
+.real-shot-canvas {
+  background: #050708;
+  position: relative;
+  overflow: auto;
+}
+
+.real-shot-stage {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+  background: #0b0e14;
+}
+
+.real-browser-shot {
+  width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.browser-agent-hud-cursor {
+  position: absolute;
+  transform: translate(-6px, -6px);
+  pointer-events: none;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: left 0.25s ease-out, top 0.25s ease-out;
+}
+
+.browser-agent-hud-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--agent-color, #38bdf8);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 10px rgba(var(--agent-rgb, 56, 189, 248), 0.95);
+}
+
+.browser-agent-hud-pill {
+  background: rgba(5, 5, 5, 0.92);
+  border: 1px solid var(--agent-color, #38bdf8);
+  color: #f8fafc;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 .map-anchor-tag {

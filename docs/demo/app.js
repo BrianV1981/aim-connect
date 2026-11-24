@@ -259,7 +259,7 @@ const INITIAL_SESSIONS = [
     limit: '1M',
     tier: 'normal',
     compacted: 0,
-    browserTabId: 'tab-calendar',
+    browserTabId: null,
     color: { hex: '#14b8a6', rgb: '20, 184, 166', label: 'Teal' },
     preview: 'Matched repeat caller (727) 555-0194 -> $300 + 20 MMS',
     priorTurns: [
@@ -417,7 +417,7 @@ const INITIAL_SESSIONS = [
     limit: '200k',
     tier: 'normal',
     compacted: 0,
-    browserTabId: 'tab-youtube',
+    browserTabId: null,
     color: { hex: '#f97316', rgb: '249, 115, 22', label: 'Orange' },
     preview: '492 indexed videos · 1,444 LanceDB chunks · 38 spokes',
     priorTurns: [
@@ -737,15 +737,41 @@ const INITIAL_SESSIONS = [
 
 const INITIAL_BROWSER_TABS = [
   {
+    id: 'tab-user-google',
+    title: 'Google',
+    url: 'https://www.google.com/',
+    agentKey: '',
+    sublabel: '',
+    color: null,
+    isWorking: false,
+    waitingForHuman: null,
+    kind: 'screenshot',
+    screenSrc: './screens/google.webp',
+  },
+  {
+    id: 'tab-user-youtube',
+    title: 'YouTube',
+    url: 'https://www.youtube.com/results?search_query=ai+coding+agents',
+    agentKey: '',
+    sublabel: '',
+    color: null,
+    isWorking: false,
+    waitingForHuman: null,
+    kind: 'screenshot',
+    screenSrc: './screens/youtube.webp',
+  },
+  {
     id: 'tab-ld',
     title: 'LeadDeeds // Day-Zero Commercial Intelligence',
     url: 'https://www.leaddeeds.com',
     agentKey: 'aim-ld',
     sublabel: 'map-record',
     hudBadge: 'MAPPING · 3.2ms ZERO-VLM',
+    hudCursor: { x: '44%', y: '56%', label: 'mapping figCutaway · 3.2ms' },
     color: { hex: '#00FFA3', rgb: '0, 255, 163' },
     isWorking: true,
-    kind: 'leaddeeds',
+    kind: 'screenshot',
+    screenSrc: './screens/leaddeeds.webp',
   },
   {
     id: 'tab-tb',
@@ -760,18 +786,8 @@ const INITIAL_BROWSER_TABS = [
       reason: 'Complete Cloudflare Access 2FA code before promoting fix/issue-231',
       requestedAt: Date.now() - 45000,
     },
-    kind: 'tbsoftwash',
-  },
-  {
-    id: 'tab-calendar',
-    title: 'aim-calendar // Caller & MMS Dossier Recall',
-    url: 'http://127.0.0.1:8040/dossier/727-555-0194',
-    agentKey: 'aim-calendar',
-    sublabel: 'caller-lookup',
-    hudBadge: 'VERIFIED · 2 CALLS + 20 MMS',
-    color: { hex: '#14b8a6', rgb: '20, 184, 166' },
-    isWorking: false,
-    kind: 'calendar',
+    kind: 'screenshot',
+    screenSrc: './screens/tbsoftwash.webp',
   },
   {
     id: 'tab-joshua',
@@ -779,32 +795,25 @@ const INITIAL_BROWSER_TABS = [
     url: 'https://github.com/BrianV1981/aim-joshua',
     agentKey: 'aim-joshua',
     sublabel: 'shared-brain',
-    hudBadge: 'TYPING · LANCEDB RECALL (3.6ms)',
+    hudBadge: 'READING · LANCEDB RECALL (3.6ms)',
+    hudCursor: { x: '34%', y: '44%', label: 'inspecting AGENTS.md + tests' },
     color: { hex: '#00B8FF', rgb: '0, 184, 255' },
     isWorking: true,
-    kind: 'joshua',
-  },
-  {
-    id: 'tab-youtube',
-    title: 'aim-youtube // 492-Video Spoke Knowledge Hub',
-    url: 'http://127.0.0.1:8055/library/spokes',
-    agentKey: 'aim-youtube',
-    sublabel: 'spoke-sync',
-    hudBadge: 'INDEXING · 1,444 LANCEDB CHUNKS',
-    color: { hex: '#f97316', rgb: '249, 115, 22' },
-    isWorking: true,
-    kind: 'youtube',
+    kind: 'screenshot',
+    screenSrc: './screens/github-joshua.webp',
   },
   {
     id: 'tab-academy',
-    title: 'Tampa Bay Soft Wash Academy // Rig BOM & SOPs',
-    url: 'https://academy.tbsoftwash.com/course',
+    title: 'Tampa Bay Soft Wash Academy // Operator SOPs',
+    url: 'https://academy.tbsoftwash.com',
     agentKey: 'tbsoftwash-academy',
     sublabel: 'downloading',
     hudBadge: 'DOWNLOADING · PDF STREAM',
+    hudCursor: { x: '51%', y: '43%', label: 'downloading Printables BOM PDF' },
     color: { hex: '#3b82f6', rgb: '59, 130, 246' },
     isWorking: true,
-    kind: 'academy',
+    kind: 'screenshot',
+    screenSrc: './screens/academy.webp',
   },
   {
     id: 'tab-connect',
@@ -816,7 +825,8 @@ const INITIAL_BROWSER_TABS = [
     color: { hex: '#eab308', rgb: '234, 179, 8' },
     isWorking: false,
     waitingForHuman: null,
-    kind: 'github-connect',
+    kind: 'screenshot',
+    screenSrc: './screens/github-connect.webp',
   },
 ];
 
@@ -1081,7 +1091,11 @@ const PORTAL_TYPE_PHRASES = [
   'search_lancedb("cross-harness Grok + AGY")',
 ];
 
-const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#/_:[]';
+const SCRAMBLE_CHARS = '01ABCDEF/>_#$%&*+=?AIM';
+const MATRIX_SCRAMBLE_TICK_MS = 26;
+const MATRIX_SCRAMBLE_STEP = 0.55;
+const ACTIVE_SCRAMBLE_TIMERS = new Set();
+const MARKUP_IMAGE_CACHE = new Map();
 
 // Realistic Multi-Generation Project Reincarnations (10 on aim-connect, 6 on aim-ld, 5 on aim-tbsoftwash, 4 on aim-joshua, 3 on aim-youtube, 2 on academy, 1 on aim-calendar, 1 on aim-auditor = 40 Total!)
 const SESSION_HISTORY_REINCARNATIONS = [
@@ -1867,12 +1881,13 @@ const state = {
   browserTabs: [...INITIAL_BROWSER_TABS],
   activeBrowserTab: 'tab-ld',
   browserFavorites: [
-    { id: 'fav-1', title: 'LeadDeeds.com', url: 'https://www.leaddeeds.com', tabId: 'tab-ld' },
-    { id: 'fav-2', title: 'TBSoftWash.com', url: 'https://tbsoftwash.com', tabId: 'tab-tb' },
-    { id: 'fav-3', title: 'Caller Dossier', url: 'http://127.0.0.1:8040/dossier/727-555-0194', tabId: 'tab-calendar' },
-    { id: 'fav-4', title: 'aim-joshua OS', url: 'https://github.com/BrianV1981/aim-joshua', tabId: 'tab-joshua' },
-    { id: 'fav-5', title: 'aim-youtube Hub', url: 'http://127.0.0.1:8055/library/spokes', tabId: 'tab-youtube' },
-    { id: 'fav-6', title: 'SoftWash Academy', url: 'https://academy.tbsoftwash.com/course', tabId: 'tab-academy' },
+    { id: 'fav-1', title: 'Google', url: 'https://www.google.com/', tabId: 'tab-user-google' },
+    { id: 'fav-2', title: 'YouTube', url: 'https://www.youtube.com/results?search_query=ai+coding+agents', tabId: 'tab-user-youtube' },
+    { id: 'fav-3', title: 'LeadDeeds', url: 'https://www.leaddeeds.com', tabId: 'tab-ld' },
+    { id: 'fav-4', title: 'TBSoftWash', url: 'https://tbsoftwash.com', tabId: 'tab-tb' },
+    { id: 'fav-5', title: 'aim-joshua', url: 'https://github.com/BrianV1981/aim-joshua', tabId: 'tab-joshua' },
+    { id: 'fav-6', title: 'SoftWash Academy', url: 'https://academy.tbsoftwash.com', tabId: 'tab-academy' },
+    { id: 'fav-7', title: 'aim-connect', url: 'https://github.com/BrianV1981/aim-connect', tabId: 'tab-connect' },
   ],
   ldSeatCount: 6,
   roofSliderPct: 52,
@@ -1988,7 +2003,8 @@ const state = {
         id: 'shot-seed-1',
         filename: 'screenshot-leaddeeds-v4.png',
         path: 'docs/screenshots/emerald-matrix-arch.svg',
-        dims: '1440×900 PNG',
+        screenSrc: './screens/leaddeeds.webp',
+        dims: '1280×713 WEBP',
         url: 'https://www.leaddeeds.com',
         annotated: false,
         annotations: [],
@@ -2193,17 +2209,29 @@ function highlightScrollback(rawText) {
   return { html, count: total, activeIdx };
 }
 
+function clearActiveScrambles() {
+  ACTIVE_SCRAMBLE_TIMERS.forEach((id) => clearInterval(id));
+  ACTIVE_SCRAMBLE_TIMERS.clear();
+}
+
 function attachScramble(el, originalText, triggerEl = el) {
+  if (!el || !triggerEl || !originalText || triggerEl.dataset.scrambleBound === '1') return;
+  triggerEl.dataset.scrambleBound = '1';
   let timer = null;
   triggerEl.addEventListener('mouseenter', () => {
-    if (timer) clearInterval(timer);
+    if (timer) {
+      clearInterval(timer);
+      ACTIVE_SCRAMBLE_TIMERS.delete(timer);
+    }
     let step = 0;
     timer = setInterval(() => {
-      step += 0.9;
+      step += MATRIX_SCRAMBLE_STEP;
       const done = Math.floor(step);
       if (done >= originalText.length) {
         el.textContent = originalText;
         clearInterval(timer);
+        ACTIVE_SCRAMBLE_TIMERS.delete(timer);
+        timer = null;
         return;
       }
       el.textContent = originalText
@@ -2216,12 +2244,66 @@ function attachScramble(el, originalText, triggerEl = el) {
             : SCRAMBLE_CHARS[(idx * 11 + done * 5) % SCRAMBLE_CHARS.length]
         )
         .join('');
-    }, 20);
+    }, MATRIX_SCRAMBLE_TICK_MS);
+    ACTIVE_SCRAMBLE_TIMERS.add(timer);
   });
   triggerEl.addEventListener('mouseleave', () => {
-    if (timer) clearInterval(timer);
+    if (timer) {
+      clearInterval(timer);
+      ACTIVE_SCRAMBLE_TIMERS.delete(timer);
+      timer = null;
+    }
     el.textContent = originalText;
   });
+}
+
+function pickScrambleTargetSpan(btn) {
+  const skipSpanClasses = ['seg-expand-badge', 'cp-dl-badge', 'fleet-header-unread-dot', 'mono-kbd'];
+  const spans = [...btn.querySelectorAll('span')].filter(
+    (sp) =>
+      !skipSpanClasses.some((cls) => sp.classList.contains(cls)) &&
+      sp.children.length === 0 &&
+      /[A-Za-z0-9]{2}/.test((sp.textContent || '').trim())
+  );
+  if (spans.length) return spans[spans.length - 1];
+  const directTextNodes = [...btn.childNodes].filter(
+    (n) => n.nodeType === Node.TEXT_NODE && /[A-Za-z0-9]{2}/.test((n.nodeValue || '').trim())
+  );
+  if (directTextNodes.length === 1) {
+    const tn = directTextNodes[0];
+    const span = document.createElement('span');
+    span.textContent = tn.nodeValue;
+    btn.replaceChild(span, tn);
+    return span;
+  }
+  return null;
+}
+
+function bindStandaloneButtonScrambles() {
+  const excludedSelectors = [
+    '.fleet-rail',
+    '.totp-keypad',
+    '.kb-grid',
+    '.ctrl-key-grid',
+    '.pop-item',
+    '.cp-tab',
+    '.tree-file-btn',
+    '.md-file-link',
+    '.shot-link-btn',
+    '[data-open-fav]',
+  ];
+  document
+    .querySelectorAll('button, .lab-pill, .wait-alert-pill, .new-reply-pill, a.coffee-cta-btn, a.subbar-util-btn')
+    .forEach((btn) => {
+      if (btn.dataset.scrambleBound === '1' || btn.disabled) return;
+      if (excludedSelectors.some((sel) => btn.closest(sel))) return;
+      const target = pickScrambleTargetSpan(btn);
+      if (!target) return;
+      const rawText = target.textContent || '';
+      const trimmed = rawText.trim();
+      if (trimmed.length < 2 || trimmed.length > 28) return;
+      attachScramble(target, rawText, btn);
+    });
 }
 
 function renderLockScreen() {
@@ -2283,335 +2365,43 @@ function calcGraduatedTotal(seats) {
   return { total, avg: Math.round(total / seats), marginal: ladder[seats - 1] || 30 };
 }
 
+function resolveScreenForUrl(url) {
+  const u = String(url || '').toLowerCase();
+  if (u.includes('youtube.com')) return './screens/youtube.webp';
+  if (u.includes('google.com')) return './screens/google.webp';
+  if (u.includes('academy.tbsoftwash')) return './screens/academy.webp';
+  if (u.includes('tbsoftwash.com')) return './screens/tbsoftwash.webp';
+  if (u.includes('aim-joshua')) return './screens/github-joshua.webp';
+  if (u.includes('aim-connect')) return './screens/github-connect.webp';
+  return './screens/leaddeeds.webp';
+}
+
 function renderMockWebpage(tab) {
-  if (tab.kind === 'leaddeeds') {
-    const pricing = calcGraduatedTotal(state.ldSeatCount);
-    return `
-      <div class="web-canvas" style="background:radial-gradient(90% 180px at 50% 0%,rgba(0,255,163,0.14),rgba(34,184,255,0.05) 55%,transparent),#050505;color:#f3f4f6;">
-        <!-- Authentic LeadDeeds v2 Navbar -->
-        <div style="height:44px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;background:rgba(5,5,5,0.86);position:sticky;top:0;z-index:5;">
-          <div style="display:flex;align-items:center;gap:16px;">
-            <span style="font-family:var(--font-mono);font-weight:800;font-size:13px;letter-spacing:-0.02em;"><span style="color:#00ffa3;">&gt;_</span> LEAD<span style="color:#00ffa3;">DEEDS</span></span>
-            <div style="display:flex;gap:12px;font-size:11.5px;color:#9ca3af;">
-              <span style="color:#ffffff;font-weight:600;">Pipeline</span>
-              <span>6 Industries</span>
-              <span>Pricing</span>
-              <span>Docs</span>
-            </div>
-          </div>
-          <span style="padding:5px 11px;border-radius:7px;background:#00ffa3;color:#030705;font-family:var(--font-mono);font-size:10.5px;font-weight:800;">START INTERCEPT -&gt;</span>
+  const screenSrc = tab.screenSrc || resolveScreenForUrl(tab.url);
+  const mb = ((24 * state.dlProgress) / 100).toFixed(1);
+  const hudCursorHtml =
+    tab.color && tab.isWorking && tab.hudCursor
+      ? `
+        <div class="browser-agent-hud-cursor" style="left:${tab.hudCursor.x};top:${tab.hudCursor.y};--agent-color:${tab.color.hex};--agent-rgb:${tab.color.rgb};">
+          <span class="browser-agent-hud-dot"></span>
+          <span class="browser-agent-hud-pill">${escapeHtml(tab.agentKey)} // ${escapeHtml(tab.hudCursor.label)}</span>
         </div>
+      `
+      : '';
 
-        <div style="padding:18px 20px;display:flex;flex-direction:column;gap:15px;">
-          <!-- Hero -->
-          <div>
-            <div style="display:inline-flex;align-items:center;gap:8px;padding:3px 10px;border-radius:999px;background:rgba(0,255,163,0.1);border:1px solid rgba(0,255,163,0.35);font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.12em;color:#00ffa3;">
-              FLORIDA DAY-ZERO COMMERCIAL FILINGS · LIVE
-            </div>
-            <div style="font-size:24px;font-weight:800;line-height:1.12;letter-spacing:-0.03em;margin-top:8px;">
-              The Paint Isn't Even Dry Yet.<br/>
-              <span style="background:linear-gradient(90deg,#00FFA3,#22B8FF 65%,#FF8A1E);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">We Already Have Their Phone Number.</span>
-            </div>
-          </div>
-
-          <!-- FIG 1.0 Zero-Bleed Responsive 3-Stage Pipeline Grid -->
-          <div data-map-box="0" class="ld-map-target ${state.mapScanIdx === 0 ? 'scan-locked' : ''}" style="padding:12px;border-radius:12px;background:rgba(255,255,255,0.025);border:1px solid rgba(0,255,163,0.35);position:relative;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-              <span style="font-family:var(--font-mono);font-size:10px;color:#9ca3af;">FIG 1.0 // THREE-STAGE PUBLIC RECORD INTERCEPT PIPELINE</span>
-              <span class="map-anchor-tag">[MAP #0] figCutaway · 2.8ms</span>
-            </div>
-            <div class="ld-fig-grid">
-              <div class="ld-fig-stage-card" style="background:rgba(0,255,163,0.08);border:1px solid #00FFA3;">
-                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#00FFA3;">01 // DAY-ZERO SIGNALS</div>
-                <div style="font-size:11.5px;font-weight:700;color:#ffffff;line-height:1.25;">Public Commercial Filings</div>
-                <div style="font-family:var(--font-mono);font-size:9.5px;color:#9ca3af;">Statewide Daily Intercept</div>
-              </div>
-              <div class="ld-fig-stage-card" style="background:rgba(34,184,255,0.08);border:1px solid #22B8FF;">
-                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#22B8FF;">02 // ENTITY GRAPH</div>
-                <div style="font-size:11.5px;font-weight:700;color:#ffffff;line-height:1.25;">Owner &amp; Officer Match</div>
-                <div style="font-family:var(--font-mono);font-size:9.5px;color:#9ca3af;">4,852 Verified Contacts</div>
-              </div>
-              <div class="ld-fig-stage-card" style="background:rgba(255,138,30,0.08);border:1px solid #FF8A1E;">
-                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#FF8A1E;">03 // BYOA DELIVERY</div>
-                <div style="font-size:11.5px;font-weight:700;color:#ffffff;line-height:1.25;">MCP SSE &amp; Dossiers</div>
-                <div style="font-family:var(--font-mono);font-size:9.5px;color:#FF8A1E;overflow:hidden;text-overflow:ellipsis;">mcp.leaddeeds.com/sse</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Interactive Graduated Seat Calculator ($150 -> $30, 120fps Zero-Re-Render) -->
-          <div data-map-box="1" class="ld-map-target ${state.mapScanIdx === 1 ? 'scan-locked' : ''}" style="padding:13px 14px;border-radius:12px;background:#0a0e0d;border:1px solid rgba(34,184,255,0.35);display:flex;flex-direction:column;gap:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-              <div>
-                <span style="font-family:var(--font-mono);font-size:10px;color:#22b8ff;font-weight:700;">GRADUATED TEAM SEAT CALCULATOR ($150 -&gt; $30 FLOOR)</span>
-                <div id="ld-seat-summary" style="font-size:12px;color:#d1d5db;margin-top:2px;">Team Size: <strong>${state.ldSeatCount} Seats</strong> · Next Seat: <strong style="color:#00ffa3;">$${pricing.marginal}/mo</strong></div>
-              </div>
-              <div style="text-align:right;">
-                <span class="map-anchor-tag">[MAP #1] seatSlider · 3.2ms</span>
-                <div id="ld-seat-price" style="font-family:var(--font-mono);font-size:17px;font-weight:800;color:#ffffff;margin-top:3px;">$${pricing.total}<span style="font-size:10.5px;color:#9ca3af;">/mo ($${pricing.avg}/seat avg)</span></div>
-              </div>
-            </div>
-            <input type="range" min="1" max="15" value="${state.ldSeatCount}" id="ld-seat-slider" style="width:100%;accent-color:#00ffa3;cursor:pointer;" />
-          </div>
-
-          <!-- Live Florida Dossier Intercept Rows -->
-          <div data-map-box="2" class="ld-map-target ${state.mapScanIdx === 2 ? 'scan-locked' : ''}" style="border-radius:10px;border:1px solid rgba(255,255,255,0.09);overflow:hidden;font-family:var(--font-mono);font-size:10.5px;">
-            <div style="padding:7px 12px;background:rgba(255,255,255,0.04);display:flex;justify-content:space-between;color:#9ca3af;">
-              <span>RECENT FLORIDA COMMERCIAL INTERCEPTS</span>
-              <span class="map-anchor-tag">[MAP #2] feedRows</span>
-            </div>
-            ${[
-              ['DUVAL / ST. JOHNS', 'Jacksonville Commercial Tenant Buildout · Slot 13', 'LIVE DOSSIER', '#00ffa3'],
-              ['PINELLAS · 33756', 'Clearwater Retail Plaza Roof & Exterior Expansion', 'VERIFIED', '#22b8ff'],
-              ['HILLSBOROUGH · 33602', 'Tampa Logistics & Distribution Hub Phase II', 'VERIFIED', '#ff8a1e'],
-            ]
-              .map(
-                ([cnty, desc, badge, col]) => `
-              <div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                <div style="min-width:0;">
-                  <span style="color:${col};font-weight:700;">${cnty}</span>
-                  <span style="color:#d1d5db;margin-left:8px;">${desc}</span>
-                </div>
-                <span style="padding:2px 7px;border-radius:999px;background:rgba(255,255,255,0.05);color:${col};font-size:9.5px;white-space:nowrap;">${badge}</span>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-
-          <!-- 6 Commercial Verticals + BYOA MCP Stream Terminal -->
-          <div data-map-box="3" class="ld-map-target ${state.mapScanIdx === 3 ? 'scan-locked' : ''}" style="padding:12px 14px;border-radius:11px;background:#090d0c;border:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;gap:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-family:var(--font-mono);font-size:10px;color:#ff8a1e;font-weight:700;">BRING YOUR OWN AGENT // MCP SSE STREAM</span>
-              <span class="map-anchor-tag">[MAP #3] mcpEndpoint</span>
-            </div>
-            <div style="font-family:var(--font-mono);font-size:11px;color:#d1d5db;">
-              <span style="color:#00ffa3;">$</span> claude mcp add --transport sse leaddeeds https://mcp.leaddeeds.com/sse
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:4px;">
-              ${['Commercial Roofing', 'Exterior & Paving', 'HVAC & Mechanical', 'Tenant Buildout', 'Solar & Electrical', 'Facility Maintenance']
-                .map((v) => `<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:10.5px;color:#9ca3af;">${v}</span>`)
-                .join('')}
-            </div>
-          </div>
-        </div>
+  const stageHtml = `
+    <div class="web-canvas real-shot-canvas">
+      <div class="real-shot-stage">
+        <img src="${escapeHtml(screenSrc)}" alt="${escapeHtml(tab.title)}" class="real-browser-shot" draggable="false" />
+        ${hudCursorHtml}
       </div>
-    `;
-  }
+    </div>
+  `;
 
-  if (tab.kind === 'tbsoftwash') {
+  if (tab.id === 'tab-academy') {
     return `
-      <div class="web-canvas" style="background:#0c0f14;color:#f8fafc;">
-        <!-- Top Gold Utility Strip -->
-        <div style="padding:5px 16px;background:#151921;border-bottom:1px solid rgba(193,155,108,0.32);display:flex;justify-content:space-between;font-size:10.5px;color:#e5c391;font-weight:600;">
-          <span>Clearwater · St. Petersburg · Safety Harbor · Tampa (40 Cities)</span>
-          <span>★★★★★ 4.9/5 Google · $1M Insured · (727) 641-1296</span>
-        </div>
-
-        <!-- Sticky Brand Header -->
-        <div style="height:46px;padding:0 16px;background:rgba(12,15,20,0.96);border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:6;">
-          <div style="display:flex;align-items:center;gap:9px;">
-            <span style="width:27px;height:27px;border-radius:6px;background:linear-gradient(135deg,#C19B6C,#8e6c42);color:#0b0d10;font-weight:900;font-size:12px;display:inline-flex;align-items:center;justify-content:center;">TB</span>
-            <div>
-              <div style="font-weight:800;font-size:12.5px;letter-spacing:0.02em;">TAMPA BAY SOFT WASH</div>
-              <div style="font-size:9.5px;color:#94a3b8;">Owner-Operated · ARMA &amp; Trident Certified</div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:12px;font-size:11px;color:#cbd5e1;">
-            <span>Roof Cleaning</span>
-            <span>Paver Sealing</span>
-            <span>Reviews</span>
-            <span style="padding:6px 12px;border-radius:7px;background:#C19B6C;color:#0b0d10;font-weight:800;">Get a Free Quote ↓</span>
-          </div>
-        </div>
-
-        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
-          <!-- Stationary Human Gate Notice -->
-          <div style="padding:8px 12px;border-radius:9px;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.55);display:flex;justify-content:space-between;align-items:center;gap:8px;font-family:var(--font-mono);font-size:10.5px;color:#fde68a;">
-            <span>✋ PAUSED AT DEPLOY GATE // Inspect Quote Builder &amp; Sliders, then reply [y/n]</span>
-            <span style="color:#fca5a5;font-weight:700;">HOLDING STEADY</span>
-          </div>
-
-          <!-- Hero Copy -->
-          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;">
-            <div style="max-width:440px;">
-              <div style="font-size:22px;font-weight:800;line-height:1.14;">Premium Exterior Cleaning for Tampa Bay.</div>
-              <div style="font-size:12px;color:#94a3b8;margin-top:4px;line-height:1.5;">
-                Non-destructive soft wash roof restoration, ASTM C-144 joint sanding, and Trident CAT-5 urethane paver sealing across Pinellas &amp; Hillsborough counties.
-              </div>
-            </div>
-            <div style="display:flex;gap:6px;">
-              <span style="padding:4px 9px;border-radius:6px;background:rgba(193,155,108,0.14);border:1px solid rgba(193,155,108,0.4);font-size:10px;color:#e5c391;font-weight:700;">36-Mo Roof Warranty</span>
-              <span style="padding:4px 9px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);font-size:10px;color:#cbd5e1;">TIA Certified</span>
-            </div>
-          </div>
-
-          <!-- REAL Pinellas County Barrel-Tile Roof Before/After Photo Slider (120fps GPU clip-path, Zero Re-Render!) -->
-          <div style="border-radius:12px;border:1px solid rgba(193,155,108,0.48);overflow:hidden;background:#141820;">
-            <div style="padding:7px 12px;display:flex;justify-content:space-between;align-items:center;font-size:10.5px;border-bottom:1px solid rgba(255,255,255,0.08);">
-              <strong style="color:#e5c391;">REAL RESULTS // PINELLAS COUNTY BARREL-TILE ROOF (DRAG LEFT / RIGHT)</strong>
-              <span id="tb-split-lbl" style="font-family:var(--font-mono);color:#cbd5e1;">${state.roofSliderPct}% SPLIT</span>
-            </div>
-            <div class="tb-ba-stage">
-              <img src="https://tbsoftwash.com/wp-content/uploads/tb_sliders/roof-cleaning-after-pinellas-county.jpg" decoding="async" alt="Clean barrel tile roof after soft wash in Pinellas County" />
-              <img
-                id="tb-before-img"
-                src="https://tbsoftwash.com/wp-content/uploads/tb_sliders/roof-cleaning-before-pinellas-county.jpg"
-                decoding="async"
-                alt="Dirty barrel tile roof before soft wash"
-                style="will-change:clip-path;clip-path:polygon(0 0, ${state.roofSliderPct}% 0, ${state.roofSliderPct}% 100%, 0 100%);"
-              />
-              <div id="tb-ba-div" class="tb-ba-divider" style="left:${state.roofSliderPct}%;"></div>
-              <div id="tb-ba-knob" class="tb-ba-knob" style="left:${state.roofSliderPct}%;">&lt;&gt;</div>
-              <span style="position:absolute;top:10px;left:10px;z-index:6;padding:3px 8px;border-radius:5px;background:rgba(0,0,0,0.76);font-family:var(--font-mono);font-size:9.5px;font-weight:700;">BEFORE</span>
-              <span style="position:absolute;top:10px;right:10px;z-index:6;padding:3px 8px;border-radius:5px;background:rgba(193,155,108,0.94);color:#0b0d10;font-family:var(--font-mono);font-size:9.5px;font-weight:800;">AFTER SOFT WASH</span>
-              <input type="range" min="4" max="96" value="${state.roofSliderPct}" id="tb-roof-slider" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;z-index:7;" />
-            </div>
-          </div>
-
-          <!-- Real Secondary Project Photos + Core Services Grid -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);background:#141820;">
-              <img src="https://tbsoftwash.com/wp-content/uploads/tb_sliders/roof-cleaning-after-clearwater.jpg" alt="Clearwater Beach Roof Soft Wash" style="width:100%;height:96px;object-fit:cover;display:block;" />
-              <div style="padding:8px 10px;">
-                <div style="font-weight:700;font-size:11.5px;color:#f8fafc;">Clearwater Beach Mansion Roof</div>
-                <div style="font-size:10.5px;color:#94a3b8;">Zero-pressure ARMA sodium hypochlorite treatment</div>
-              </div>
-            </div>
-            <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);background:#141820;">
-              <img src="https://tbsoftwash.com/wp-content/uploads/tb_sliders/house-washing-after-safety-harbor.jpg" alt="Safety Harbor House Wash" style="width:100%;height:96px;object-fit:cover;display:block;" />
-              <div style="padding:8px 10px;">
-                <div style="font-weight:700;font-size:11.5px;color:#f8fafc;">Safety Harbor Estate Soft Wash</div>
-                <div style="font-size:10.5px;color:#94a3b8;">12V stucco, soffit, fascia &amp; lanai sanitizing</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Instant Quote Builder + 6-Service Matrix -->
-          <div style="padding:12px 14px;border-radius:11px;background:#151a23;border:1px solid rgba(193,155,108,0.35);display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;">
-            <div>
-              <div style="font-family:var(--font-mono);font-size:10px;color:#C19B6C;font-weight:700;">INTERACTIVE QUOTE BUILDER // CLEARWATER · ST. PETE · TAMPA</div>
-              <div style="font-size:12px;color:#e2e8f0;margin-top:3px;">Barrel Tile Roof (2,850 sq ft) + Driveway Trident CAT-5 Urethane Seal</div>
-              <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;">Includes 2-coat flood application, ASTM C-144 joint sand &amp; plant rinse</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-family:var(--font-mono);font-size:18px;font-weight:800;color:#00ffa3;">$1,140</div>
-              <div style="font-size:10px;color:#e5c391;">Multi-Service Bundle</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (tab.kind === 'academy') {
-    const mb = ((24 * state.dlProgress) / 100).toFixed(1);
-    return `
-      <div style="flex:1;min-height:0;display:flex;flex-direction:column;background:radial-gradient(ellipse at top,rgba(59,130,246,0.18),transparent 58%),#070b14;color:#f8fafc;">
-        <div class="web-canvas">
-          <!-- Academy SaaS Navbar -->
-          <div style="height:44px;padding:0 16px;border-bottom:1px solid rgba(255,255,255,0.09);display:flex;align-items:center;justify-content:space-between;background:rgba(7,11,20,0.92);position:sticky;top:0;z-index:5;">
-            <div style="display:flex;align-items:center;gap:10px;">
-              <span style="padding:3px 7px;border-radius:6px;background:rgba(59,130,246,0.2);border:1px solid #3b82f6;color:#93c5fd;font-family:var(--font-mono);font-size:10px;font-weight:700;">@TBSOFTWASH</span>
-              <span style="font-weight:700;font-size:12.5px;">Tampa Bay Soft Wash Academy</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:10px;">
-              <span style="color:#93c5fd;">88% COMPLETE</span>
-              <span style="color:#00ffa3;">CERT #TBSA-2026-0419 ✓</span>
-            </div>
-          </div>
-
-          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:13px;">
-            <!-- Audio / Video SOP Studio Card -->
-            <div style="padding:13px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(59,130,246,0.35);display:flex;flex-direction:column;gap:8px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-family:var(--font-mono);font-size:10px;color:#60a5fa;font-weight:700;">MODULE 04 // PROPORTIONING &amp; PUMP HYDRAULICS</span>
-                <span class="mono-kbd">AUDIO SOP · 14:28 / 18:40</span>
-              </div>
-              <div style="font-size:14.5px;font-weight:700;">12V Dedicated Batch vs. Air-Operated Double Diaphragm (AODD)</div>
-              <svg viewBox="0 0 460 30" style="width:100%;height:26px;">
-                ${Array.from({ length: 44 })
-                  .map((_, i) => {
-                    const h = 6 + ((i * 13) % 20);
-                    const y = (30 - h) / 2;
-                    const active = i < 31;
-                    return `<rect x="${i * 10.4}" y="${y}" width="6" height="${h}" rx="2" fill="${active ? '#3b82f6' : 'rgba(255,255,255,0.14)'}"/>`;
-                  })
-                  .join('')}
-              </svg>
-            </div>
-
-            <!-- 3-Tank Manifold Proportioner Gauges -->
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-              ${[
-                ['BUFFER WATER', '100 GAL', '82%', '#38bdf8'],
-                ['SODIUM HYPO (12.5%)', '55 GAL', '64%', '#facc15'],
-                ['SURFACTANT MIX', '7 GAL', '91%', '#00ffa3'],
-              ]
-                .map(
-                  ([lbl, cap, pct, col]) => `
-                <div style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.09);">
-                  <div style="font-family:var(--font-mono);font-size:9px;color:#94a3b8;">${lbl}</div>
-                  <div style="font-family:var(--font-mono);font-size:13.5px;font-weight:800;margin-top:3px;color:${col};">${cap} · ${pct}</div>
-                  <div style="height:4px;border-radius:999px;background:rgba(255,255,255,0.1);margin-top:6px;overflow:hidden;">
-                    <div style="width:${pct};height:100%;background:${col};"></div>
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
-
-            <!-- Full 6-Module Operator Track Grid -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              ${[
-                ['MOD 01', 'SH Chemistry & Plant Safety', 'PASSED · 100%', '#00ffa3'],
-                ['MOD 02', 'ARMA Tile & Shingle Roof SOP', 'PASSED · 96%', '#00ffa3'],
-                ['MOD 03', 'Stucco, Hardie & Lanai Wash', 'PASSED · 100%', '#00ffa3'],
-                ['MOD 04', '12V vs. AODD Rig Architecture', 'IN PROGRESS', '#60a5fa'],
-                ['MOD 05', 'ASTM C-144 & Trident CAT-5', 'UNLOCKED', '#94a3b8'],
-                ['MOD 06', 'Proof Packs & HOA Commercial Bids', 'UNLOCKED', '#94a3b8'],
-              ]
-                .map(
-                  ([code, title, st, col]) => `
-                <div style="padding:9px 11px;border-radius:9px;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                  <div style="min-width:0;">
-                    <div style="font-family:var(--font-mono);font-size:9px;color:${col};font-weight:700;">${code} · ${st}</div>
-                    <div style="font-size:11.5px;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${title}</div>
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
-
-            <!-- 186-SKU Rig Bill of Materials Spec Table -->
-            <div style="border-radius:10px;border:1px solid rgba(59,130,246,0.35);overflow:hidden;font-family:var(--font-mono);font-size:10.5px;">
-              <div style="padding:7px 12px;background:rgba(59,130,246,0.14);display:flex;justify-content:space-between;align-items:center;">
-                <strong style="color:#93c5fd;">186-SKU RIG BILL OF MATERIALS (EXPORTING PDF...)</strong>
-                <span style="color:#00ffa3;">4 CORE SUBSYSTEMS</span>
-              </div>
-              ${[
-                ['SKU-014', 'Yamada NDP-15 ½" Kynar/Viton AODD Pump', 'PRIMARY ROOF'],
-                ['SKU-042', 'Banjo 3-Way Polypropylene Proportioning Manifold', 'METERING'],
-                ['SKU-089', 'Hannay 18" Electric 12V Stainless Hose Reel (200ft)', 'DELIVERY'],
-                ['SKU-131', 'Deionized Twin-Bed Spot-Free Window Resin Skid', 'PURE WATER'],
-              ]
-                .map(
-                  ([sku, part, role]) => `
-                <div style="padding:7px 12px;border-top:1px solid rgba(255,255,255,0.06);display:grid;grid-template-columns:68px 1fr auto;gap:8px;">
-                  <span style="color:#60a5fa;">${sku}</span>
-                  <span style="color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${part}</span>
-                  <span style="color:#94a3b8;">${role}</span>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
-          </div>
-        </div>
-
-        <!-- Pinned Bottom CDP Download Progress Shelf (--dlpath) -->
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;background:#050708;">
+        ${stageHtml}
         <div class="cdp-download-shelf">
           <div style="display:flex;align-items:center;gap:8px;min-width:0;">
             <span style="color:#60a5fa;display:flex;">${ICONS.download}</span>
@@ -2626,275 +2416,8 @@ function renderMockWebpage(tab) {
     `;
   }
 
-  if (tab.kind === 'calendar') {
-    return `
-      <div class="web-canvas" style="background:#071112;color:#f0fdfa;">
-        <div style="padding:10px 16px;background:#0a1d1f;border-bottom:1.5px solid #14b8a6;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5;">
-          <div>
-            <div style="font-family:var(--font-mono);font-size:9.5px;color:#5eead4;letter-spacing:0.12em;">AIM-CALENDAR // INSTANT CALLER, QUOTE &amp; MMS DOSSIER VAULT</div>
-            <div style="font-weight:800;font-size:13px;margin-top:1px;">Repeat Caller Match: Evelyn Harper · (727) 555-0194</div>
-          </div>
-          <span class="task-mode-chip mapping">2-YR RECALL · 4.4ms</span>
-        </div>
-
-        <div style="padding:15px 18px;display:flex;flex-direction:column;gap:12px;">
-          <!-- Verified Customer Summary Card -->
-          <div style="padding:12px 14px;border-radius:10px;background:rgba(20,184,166,0.08);border:1px solid rgba(20,184,166,0.4);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;">
-            <div>
-              <div style="font-family:var(--font-mono);font-size:10px;color:#5eead4;font-weight:700;">VERIFIED PROPERTY &amp; PAST PAYMENT</div>
-              <div style="font-size:13px;font-weight:700;margin-top:3px;">12400 US Hwy 19 N, Lot 214 · Clearwater, FL 33764</div>
-              <div style="font-size:11.5px;color:#cbd5e1;margin-top:3px;">Park-model home + 2 outbuildings + lattice + awning + carport chlorine soft wash</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-family:var(--font-mono);font-size:18px;font-weight:800;color:#00ffa3;">$300.00</div>
-              <div style="font-family:var(--font-mono);font-size:9.5px;color:#99f6e4;">PAID BY CHECK · NOV 2024</div>
-            </div>
-          </div>
-
-          <!-- Chronological Diarized Call & MMS Timeline -->
-          <div style="border-radius:10px;border:1px solid rgba(255,255,255,0.1);overflow:hidden;font-family:var(--font-mono);font-size:10.5px;">
-            <div style="padding:7px 12px;background:rgba(255,255,255,0.04);display:flex;justify-content:space-between;color:#94a3b8;font-weight:700;">
-              <span>CHRONOLOGICAL CALL AUDIO, TRANSCRIPT &amp; MMS LOG</span>
-              <span style="color:#5eead4;">20 PHOTOS + 3 CALLS</span>
-            </div>
-            ${[
-              ['OCT 28, 2024 · 3:16 PM', 'Initial Inquiry Call (diarized audio) — Requested photos of Lot 214 awning & lattice', 'AUDIO 02:41'],
-              ['OCT 28, 2024 · 3:35 PM', '11 "Before" MMS Photos Received — Park model, 2 sheds, lattice & storm debris', '11 MMS JPG'],
-              ['OCT 28, 2024 · 3:44 PM', 'Quote & Booking Call — Quoted $300 all-inclusive · Booked Mon Nov 11 (11am–1pm)', 'QUOTED $300'],
-              ['NOV 11, 2024 · 1:52 PM', '9 "After" Completion Photos Sent — Reply: "Looks so much better!" + referral', '9 MMS JPG'],
-              ['RECENT CALL · 5:09 PM', 'Incoming 3m 46s Repeat Call — Two years to the day after original wash!', 'REPEAT LEAD'],
-            ]
-              .map(
-                ([dt, desc, pill]) => `
-              <div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.06);display:grid;grid-template-columns:145px 1fr auto;gap:8px;align-items:center;">
-                <span style="color:#5eead4;">${dt}</span>
-                <span style="color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${desc}</span>
-                <span style="padding:2px 7px;border-radius:5px;background:rgba(20,184,166,0.14);color:#99f6e4;font-size:9.5px;">${pill}</span>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-
-          <!-- MMS Photo Proof Strip -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div style="padding:10px 12px;border-radius:9px;background:#0b191b;border:1px solid rgba(255,255,255,0.09);">
-              <div style="font-family:var(--font-mono);font-size:9.5px;color:#fbbf24;font-weight:700;">BEFORE MMS // OCT 28 (11 PHOTOS)</div>
-              <div style="font-size:11.5px;color:#cbd5e1;margin-top:4px;">"This is the awning &amp; carport lattice." · Advise clearing small knickknacks only.</div>
-            </div>
-            <div style="padding:10px 12px;border-radius:9px;background:#0b191b;border:1px solid rgba(0,255,163,0.3);">
-              <div style="font-family:var(--font-mono);font-size:9.5px;color:#00ffa3;font-weight:700;">COMPLETION MMS // NOV 11 (9 PHOTOS)</div>
-              <div style="font-size:11.5px;color:#cbd5e1;margin-top:4px;">Full chlorine soft wash + carport slab rinse · Customer: "Looks so much better."</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (tab.kind === 'joshua') {
-    const curTyped = PORTAL_TYPE_PHRASES[state.portalPhraseIdx].slice(0, state.portalCharIdx);
-    return `
-      <div class="web-canvas" style="background:#070d14;color:#e2e8f0;">
-        <div style="padding:10px 16px;background:#0c1928;border-bottom:2px solid #00b8ff;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5;">
-          <div>
-            <div style="font-family:var(--font-mono);font-size:9.5px;color:#7dd3fc;letter-spacing:0.12em;">BRIANV1981 / AIM-JOSHUA // MODEL-AGNOSTIC EXOSKELETON OS (v1.1.4)</div>
-            <div style="font-weight:800;font-size:13px;margin-top:1px;">Any Model. Any Harness. One Shared Short-Term &amp; Long-Term Project Brain.</div>
-          </div>
-          <span class="task-mode-chip typing">LIVE KEYSTROKE + LANCEDB</span>
-        </div>
-
-        <div style="padding:15px 18px;display:flex;flex-direction:column;gap:12px;">
-          <!-- Connected Harnesses Grid -->
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-family:var(--font-mono);">
-            ${[
-              ['HARNESSES', 'AGY·GROK·OC·CDX', '#00ffa3'],
-              ['SHARED BRAIN', 'LANCEDB + BM25', '#38bdf8'],
-              ['30% RULE', 'HANDOFF > COMPACT', '#facc15'],
-              ['RECALL SPEED', '3.6 ms ($0 LLM)', '#00ffa3'],
-            ]
-              .map(
-                ([k, v, c]) => `
-              <div style="padding:9px 10px;border-radius:8px;background:#0e1826;border:1px solid rgba(255,255,255,0.09);">
-                <div style="font-size:8.5px;color:#94a3b8;">${k}</div>
-                <div style="font-size:11.5px;font-weight:800;color:${c};margin-top:3px;">${v}</div>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-
-          <!-- Live Agent Keystroke Typing into Shared Brain Sandbox -->
-          <div style="padding:12px;border-radius:10px;background:#0e1826;border:1px solid rgba(0,184,255,0.5);box-shadow:0 0 18px rgba(0,184,255,0.1);display:grid;grid-template-columns:130px 1fr auto;gap:8px;align-items:end;">
-            <div>
-              <div style="font-family:var(--font-mono);font-size:9.5px;color:#94a3b8;margin-bottom:4px;">ACTIVE VESSEL</div>
-              <div style="padding:6px 9px;border-radius:6px;background:#070d14;border:1px solid rgba(255,255,255,0.12);font-family:var(--font-mono);font-size:11px;color:#00ffa3;">Grok CLI -&gt; MCP</div>
-            </div>
-            <div>
-              <div style="font-family:var(--font-mono);font-size:9.5px;color:#38bdf8;margin-bottom:4px;">AGENT TYPING INTO #brain-query...</div>
-              <div style="padding:6px 9px;border-radius:6px;background:#070d14;border:1.5px solid #00b8ff;font-family:var(--font-mono);font-size:11px;color:#ffffff;min-height:28px;"><span id="live-portal-typed">${escapeHtml(curTyped)}</span><span class="live-type-caret"></span></div>
-            </div>
-            <span style="padding:7px 12px;border-radius:6px;background:#00b8ff;color:#041019;font-family:var(--font-mono);font-size:10.5px;font-weight:800;">RECALL</span>
-          </div>
-
-          <!-- Cross-OS Quickstart + 3 Installer Modes -->
-          <div style="border-radius:10px;border:1px solid rgba(255,255,255,0.1);overflow:hidden;font-family:var(--font-mono);font-size:10.5px;">
-            <div style="padding:7px 12px;background:#111f31;display:flex;justify-content:space-between;color:#94a3b8;font-weight:700;">
-              <span>J.O.S.H.U.A. ARCHITECTURE &amp; INSTALLER MODES (LINUX · WSL · MACOS · WINDOWS 11)</span>
-              <span style="color:#00ffa3;">MIT OPEN SOURCE</span>
-            </div>
-            ${[
-              ['Option A · install.sh', 'Clean project exoskeleton: AGENTS.md + ./aim + LanceDB MCP', 'DEFAULT'],
-              ['Option B · install-agent.sh', 'Specialist co-agent node under ~/aim-agents/<persona>', 'CO-AGENT'],
-              ['Datajack (.engram)', 'Portable Parquet knowledge cartridges for P2P / air-gapped backup', 'CARTRIDGE'],
-              ['GitOps Worktrees', './aim fix <issue> isolates every agent in workspace/issue-N', 'GUARDRAIL'],
-              ['Blackbox Seal', 'Seals raw transcripts at 0600 before baton pass to fresh vessel', 'AUDITABLE'],
-            ]
-              .map(
-                ([m, desc, tag]) => `
-              <div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.06);display:grid;grid-template-columns:155px 1fr auto;gap:8px;align-items:center;">
-                <span style="color:#7dd3fc;font-weight:700;">${m}</span>
-                <span style="color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${desc}</span>
-                <span style="color:#00ffa3;font-weight:700;">${tag}</span>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (tab.kind === 'youtube') {
-    return `
-      <div class="web-canvas" style="background:#0f0a07;color:#fff7ed;">
-        <div style="padding:10px 16px;background:#1c110a;border-bottom:2px solid #f97316;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5;">
-          <div>
-            <div style="font-family:var(--font-mono);font-size:9.5px;color:#fdba74;letter-spacing:0.12em;">AIM-YOUTUBE // CENTRAL DRY VIDEO KNOWLEDGE &amp; SPOKE ENGINE</div>
-            <div style="font-weight:800;font-size:13px;margin-top:1px;">492 Indexed Videos · 1,444 LanceDB Fragments · 38 Active Spokes</div>
-          </div>
-          <span class="task-mode-chip" style="color:#fb923c;border-color:rgba(249,115,22,0.5);background:rgba(249,115,22,0.14);">82/82 PYTEST GREEN</span>
-        </div>
-
-        <div style="padding:15px 18px;display:flex;flex-direction:column;gap:12px;">
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-family:var(--font-mono);">
-            <div style="padding:10px;border-radius:9px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.35);">
-              <div style="font-size:9px;color:#fdba74;">INDEXED LIBRARY</div>
-              <div style="font-size:16px;font-weight:800;color:#ffffff;margin-top:3px;">492 Videos</div>
-            </div>
-            <div style="padding:10px;border-radius:9px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);">
-              <div style="font-size:9px;color:#fdba74;">HYBRID VECTORS</div>
-              <div style="font-size:16px;font-weight:800;color:#00ffa3;margin-top:3px;">1,444 Chunks</div>
-            </div>
-            <div style="padding:10px;border-radius:9px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);">
-              <div style="font-size:9px;color:#fdba74;">SPOKE DELIVERABLES</div>
-              <div style="font-size:16px;font-weight:800;color:#38bdf8;margin-top:3px;">38 / 38 (0 Err)</div>
-            </div>
-          </div>
-
-          <!-- Spoke Co-Agent Consumers Table -->
-          <div style="border-radius:10px;border:1px solid rgba(255,255,255,0.1);overflow:hidden;font-family:var(--font-mono);font-size:10.5px;">
-            <div style="padding:7px 12px;background:rgba(249,115,22,0.12);display:flex;justify-content:space-between;color:#fed7aa;font-weight:700;">
-              <span>SINGLE DRY SOURCE OF TRUTH -&gt; DOWNSTREAM CONTENT CO-AGENTS</span>
-              <span>ZERO DUPLICATION</span>
-            </div>
-            ${[
-              ['aim-tbsoftwash-content', 'Exterior restoration SOPs, chemistry safety & local Tampa Bay guides', 'SYNCED ✓'],
-              ['aim-ld-content', 'B2B commercial intent authority articles & Day-Zero case studies', 'SYNCED ✓'],
-              ['aim-skorbane-content', 'Technical AI engineering breakdowns & sovereign architecture', 'SYNCED ✓'],
-              ['aim-mega-guide', 'Long-form podcast/video -> structured chapter SOP generator', 'READY ✓'],
-            ]
-              .map(
-                ([agent, scope, st]) => `
-              <div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.06);display:grid;grid-template-columns:162px 1fr auto;gap:8px;align-items:center;">
-                <span style="color:#fb923c;font-weight:700;">${agent}</span>
-                <span style="color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${scope}</span>
-                <span style="color:#00ffa3;font-weight:700;">${st}</span>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-
-          <div style="padding:11px 13px;border-radius:10px;background:#17100b;border:1px solid rgba(255,255,255,0.09);font-family:var(--font-mono);font-size:10.5px;color:#fed7aa;line-height:1.6;">
-            $ python3 scripts/lint_deliverable.py --all-active &amp;&amp; pytest -q<br/>
-            <span style="color:#00ffa3;">&gt; 82 passed in 1.42s · 38/38 spoke research summaries verified clean</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Authentic Full-Page GitHub Dark-Mode Repository UI (100% IDLE · 0% CPU)
-  return `
-    <div class="web-canvas" style="background:#0d1117;color:#e6edf3;">
-      <div style="padding:10px 16px;background:#161b22;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
-          <span style="color:#58a6ff;font-weight:600;">BrianV1981</span>
-          <span style="color:#8b949e;">/</span>
-          <strong style="color:#f0f6fc;">aim-connect</strong>
-          <span style="padding:1px 7px;border-radius:999px;border:1px solid #30363d;font-size:10px;color:#8b949e;">Public</span>
-        </div>
-        <div style="display:flex;gap:6px;font-family:var(--font-mono);font-size:10.5px;">
-          <span style="padding:3px 9px;border-radius:6px;background:#21262d;border:1px solid #30363d;">⊙ Issues 4</span>
-          <span style="padding:3px 9px;border-radius:6px;background:#21262d;border:1px solid #30363d;">★ Star 142</span>
-          <span style="padding:3px 9px;border-radius:6px;background:#238636;color:#ffffff;font-weight:700;">&lt;&gt; Code ▾</span>
-        </div>
-      </div>
-
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
-        <!-- GitHub Commit Header + 7-Row File Tree -->
-        <div style="border-radius:8px;border:1px solid #30363d;overflow:hidden;font-size:11.5px;">
-          <div style="padding:8px 12px;background:#161b22;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10.5px;">
-            <span><strong>BrianV1981</strong> feat(#275,#281): wire waitingForHuman 2FA takeover &amp; THINKING/NEW filters</span>
-            <span style="color:#3fb950;">✓ f67ea00 · 255/255 passing</span>
-          </div>
-          ${[
-            ['📁 .github/workflows', 'CI pytest + Pages showcase + shareability gate', 'Today'],
-            ['📁 backend/', 'FastAPI WS PTY + CDP .leases.lock + /analyst (#268)', '18m ago'],
-            ['📁 frontend/src/', 'Emerald Matrix V4 + Markup Studio + DOCS 1-TAB', '18m ago'],
-            ['📁 docs/demo/', '12-node / 40-session interactive showcase', 'Today'],
-            ['📄 AGENTS.md', 'J.O.S.H.U.A. Sovereign OS & GitOps worktree mandates', '2d ago'],
-            ['📄 README.md', 'Own your stack. Don’t rent a seat. (v2.0)', 'Today'],
-            ['📄 startup.sh', 'Idempotent 3-window tmux launcher (:8000/:8001)', '4d ago'],
-          ]
-            .map(
-              ([f, msg, age]) => `
-            <div style="padding:7px 12px;border-top:1px solid #21262d;display:grid;grid-template-columns:155px 1fr auto;gap:8px;align-items:center;">
-              <span style="color:#e6edf3;font-family:var(--font-mono);font-size:11px;">${f}</span>
-              <span style="color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${msg}</span>
-              <span style="color:#8b949e;font-size:10.5px;">${age}</span>
-            </div>
-          `
-            )
-            .join('')}
-        </div>
-
-        <!-- Rendered README.md Card + Quickstart -->
-        <div style="padding:14px 16px;border-radius:8px;border:1px solid #30363d;background:#0d1117;display:flex;flex-direction:column;gap:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-family:var(--font-mono);font-size:10px;color:#8b949e;">README.md</span>
-            <span style="font-family:var(--font-mono);font-size:10px;color:#eab308;">💤 IDLE LEASE · 0% CPU · ZERO CURSOR MOTION</span>
-          </div>
-          <div style="font-size:17px;font-weight:800;">A.I.M. Connect — Own your stack. Don't rent a seat.</div>
-          <div style="font-size:12px;color:#8b949e;line-height:1.55;">
-            Self-hosted multi-agent workstation cockpit with 3FA (Password + TOTP + WebAuthn Passkeys), PBKDF2 AES-256-GCM WebSocket E2EE, custom spoken voice macros, SQLite FTS5 forensics, and subagent-isolated CDP browser streaming.
-          </div>
-          <div style="padding:9px 12px;border-radius:6px;background:#161b22;border:1px solid #30363d;font-family:var(--font-mono);font-size:10.5px;color:#c9d1d9;">
-            $ git clone https://github.com/BrianV1981/aim-connect.git &amp;&amp; cd aim-connect &amp;&amp; ./startup.sh
-          </div>
-          <div style="display:flex;height:7px;border-radius:999px;overflow:hidden;">
-            <span style="width:52%;background:#3572A5;" title="Python 52%"></span>
-            <span style="width:42%;background:#f1e05a;" title="JavaScript 42%"></span>
-            <span style="width:6%;background:#563d7c;" title="CSS 6%"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  return stageHtml;
 }
-
 function renderHomepage() {
   return `
     <div class="home-stage">
@@ -4804,38 +4327,32 @@ function drawMarkupAnn(ctx, ann, baseW = 960) {
   }
 }
 
-function paintMarkupBaseScene(ctx, w, h, att) {
+function paintMarkupBaseScene(ctx, w, h, att, onImageReady) {
   ctx.fillStyle = '#050807';
   ctx.fillRect(0, 0, w, h);
+
+  const imgSrc = att?.screenSrc || resolveScreenForUrl(att?.url);
+  if (imgSrc) {
+    let cached = MARKUP_IMAGE_CACHE.get(imgSrc);
+    if (!cached) {
+      cached = new Image();
+      cached.onload = () => {
+        if (typeof onImageReady === 'function') onImageReady();
+      };
+      cached.src = imgSrc;
+      MARKUP_IMAGE_CACHE.set(imgSrc, cached);
+    }
+    if (cached.complete && cached.naturalWidth > 0) {
+      ctx.drawImage(cached, 0, 0, w, h);
+      return;
+    }
+  }
+
   ctx.fillStyle = '#0b1411';
   ctx.fillRect(0, 0, w, 46);
-  ctx.strokeStyle = 'rgba(0,255,163,0.35)';
-  ctx.strokeRect(24, 68, w - 48, 130);
   ctx.fillStyle = '#00ffa3';
   ctx.font = 'bold 15px "JetBrains Mono", monospace';
-  ctx.fillText(`CDP SNAPSHOT // ${att?.filename || 'screenshot.png'} (${att?.dims || '1440×900'})`, 24, 29);
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 24px Inter, sans-serif';
-  ctx.fillText('LeadDeeds Day-Zero Commercial Intelligence // Live Viewport', 44, 112);
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '14px "JetBrains Mono", monospace';
-  ctx.fillText('[MAP #0] figCutaway (2.8ms)   ·   [MAP #1] seatSlider ($150 -> $30)   ·   14/14 Routes HTTP 200', 44, 152);
-  const cols = ['#00ffa3', '#00b8ff', '#ff8a1e'];
-  ['01 // DAY-ZERO SIGNALS', '02 // ENTITY GRAPH (4,852)', '03 // BYOA MCP SSE'].forEach((lbl, idx) => {
-    const bx = 24 + idx * ((w - 64) / 3 + 8);
-    const bw = (w - 64) / 3;
-    ctx.fillStyle = 'rgba(255,255,255,0.03)';
-    ctx.fillRect(bx, 224, bw, 150);
-    ctx.strokeStyle = cols[idx];
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(bx, 224, bw, 150);
-    ctx.fillStyle = cols[idx];
-    ctx.font = 'bold 13px "JetBrains Mono", monospace';
-    ctx.fillText(lbl, bx + 16, 258);
-    ctx.fillStyle = '#cbd5e1';
-    ctx.font = '12px Inter, sans-serif';
-    ctx.fillText('Click or drag here to drop ①②③ pins, boxes, circles, or arrows', bx + 16, 294);
-  });
+  ctx.fillText(`CDP SNAPSHOT // ${att?.filename || 'screenshot.png'} (${att?.dims || '1280×713'})`, 24, 29);
 }
 
 function renderShotMarkupModal() {
@@ -4897,7 +4414,7 @@ function renderShotMarkupModal() {
         </div>
 
         <div class="shot-markup-stage">
-          <canvas id="shot-markup-canvas" class="shot-markup-canvas" width="920" height="420"></canvas>
+          <canvas id="shot-markup-canvas" class="shot-markup-canvas" width="920" height="512"></canvas>
         </div>
 
         <div class="shot-markup-footer">
@@ -4940,6 +4457,7 @@ function renderRawTermStage(sess, extraMsgs) {
 }
 
 function render() {
+  clearActiveScrambles();
   document.documentElement.setAttribute('data-theme', state.theme);
   const root = document.getElementById('proto-root');
   if (!root) return;
@@ -5115,12 +4633,13 @@ function render() {
               <span id="scramble-history" class="hide-halfscreen">HISTORY</span>
             </button>
             <button
+              id="btn-top-kb"
               class="ghost-btn ${state.showOnScreenKeyboard ? 'active' : ''}"
               data-act="toggle-os-kb"
               title="Toggle On-Screen Sovereign Keyboard (${state.showOnScreenKeyboard ? 'ON' : 'OFF'})"
             >
               ${ICONS.keyboard}
-              <span class="hide-halfscreen">${state.showOnScreenKeyboard ? 'KB ON' : 'KB OFF'}</span>
+              <span id="scramble-kb" class="hide-halfscreen">${state.showOnScreenKeyboard ? 'KB ON' : 'KB OFF'}</span>
             </button>
             <button
               class="ghost-btn desktop-only ${state.modal === 'settings' ? 'active' : ''}"
@@ -6074,11 +5593,13 @@ function bindInteractions() {
     ['scramble-browser', 'BROWSER', 'btn-tool-browser'],
     ['scramble-files', 'FILES', 'btn-tool-files'],
     ['scramble-history', 'HISTORY', 'btn-top-history'],
+    ['scramble-kb', state.showOnScreenKeyboard ? 'KB ON' : 'KB OFF', 'btn-top-kb'],
   ].forEach(([spanId, label, btnId]) => {
     const sp = document.getElementById(spanId);
     const bt = document.getElementById(btnId);
     if (sp && bt) attachScramble(sp, label, bt);
   });
+  bindStandaloneButtonScrambles();
 
   document.querySelectorAll('.spotlight-card').forEach((card) => {
     card.addEventListener('pointermove', (e) => {
@@ -6615,9 +6136,9 @@ function bindInteractions() {
       if (!found) return;
       const off = document.createElement('canvas');
       off.width = 920;
-      off.height = 420;
+      off.height = 512;
       const ctx = off.getContext('2d');
-      paintMarkupBaseScene(ctx, 920, 420, found);
+      paintMarkupBaseScene(ctx, 920, 512, found);
       (found.annotations || []).forEach((ann) => drawMarkupAnn(ctx, ann, 920));
       const a = document.createElement('a');
       a.href = off.toDataURL('image/png');
@@ -6836,12 +6357,14 @@ function bindInteractions() {
         state.activeSession = target;
         let list = state.stagedAttachments[target] || [];
         if (!list.length) {
+          const activeTab = state.browserTabs.find((t) => t.id === state.activeBrowserTab) || state.browserTabs[0];
           const seed = {
             id: `shot-${Date.now()}`,
-            filename: 'screenshot-leaddeeds-v4.png',
+            filename: `screenshot-${(activeTab?.agentKey || 'browser')}.png`,
             path: 'docs/screenshots/emerald-matrix-arch.svg',
-            dims: '1440×900 PNG',
-            url: 'https://www.leaddeeds.com',
+            screenSrc: activeTab?.screenSrc || resolveScreenForUrl(activeTab?.url),
+            dims: '1280×713 PNG',
+            url: activeTab?.url || 'https://www.leaddeeds.com',
             annotated: false,
             annotations: [],
           };
@@ -7061,14 +6584,15 @@ function bindInteractions() {
         const id = `tab-${Date.now()}`;
         state.browserTabs.push({
           id,
-          title: 'New Operator Tab',
-          url: 'https://www.leaddeeds.com',
+          title: 'Google',
+          url: 'https://www.google.com/',
           agentKey: '',
           sublabel: '',
           color: null,
           isWorking: false,
           waitingForHuman: null,
-          kind: 'leaddeeds',
+          kind: 'screenshot',
+          screenSrc: './screens/google.webp',
         });
         state.activeBrowserTab = id;
       }
@@ -7106,7 +6630,8 @@ function bindInteractions() {
           id: `shot-${Date.now()}`,
           filename: `screenshot-${host}-${stamp}.png`,
           path: 'docs/screenshots/emerald-matrix-arch.svg',
-          dims: state.shotFullPage ? '1440×2680 FULL PNG' : '1440×900 PANE PNG',
+          screenSrc: cur?.screenSrc || resolveScreenForUrl(cur?.url),
+          dims: state.shotFullPage ? '1280×1600 FULL PNG' : '1280×713 PANE PNG',
           url: cur?.url || '',
           annotated: false,
           annotations: [],
@@ -7338,6 +6863,7 @@ function bindInteractions() {
       const cur = state.browserTabs.find((t) => t.id === state.activeBrowserTab);
       if (val && cur) {
         cur.url = val.startsWith('http') ? val : `https://${val}`;
+        cur.screenSrc = resolveScreenForUrl(cur.url);
         render();
       }
     };
@@ -7361,12 +6887,14 @@ function bindInteractions() {
           ev.preventDefault();
           const target = state.activeSession || 'aim-connect';
           const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+          const curTab = state.browserTabs.find((t) => t.id === state.activeBrowserTab);
           const pasted = {
             id: `paste-${Date.now()}`,
             filename: `clipboard-${stamp}.png`,
             path: 'docs/screenshots/emerald-matrix-arch.svg',
+            screenSrc: curTab?.screenSrc || './screens/leaddeeds.webp',
             dims: 'CLIPBOARD PNG',
-            url: 'clipboard',
+            url: curTab?.url || 'https://www.leaddeeds.com',
             annotated: false,
             annotations: [],
           };
@@ -7489,7 +7017,7 @@ function bindInteractions() {
     let draft = null;
     const repaint = () => {
       if (!ctx) return;
-      paintMarkupBaseScene(ctx, markupCv.width, markupCv.height, att);
+      paintMarkupBaseScene(ctx, markupCv.width, markupCv.height, att, repaint);
       state.markupAnns.forEach((ann) => drawMarkupAnn(ctx, ann, markupCv.width));
       if (draft) drawMarkupAnn(ctx, draft, markupCv.width);
     };
