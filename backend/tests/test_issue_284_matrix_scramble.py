@@ -76,6 +76,7 @@ def test_app_jsx_wires_kb_scramble_and_standalone_button_delegation():
 
     assert "useStandaloneButtonScrambles" in app_text
     assert "kbTabScramble = useMatrixScramble(showKeyboard ? 'KB ON' : 'KB OFF')" in app_text
+    assert app_text.index("const [showKeyboard, setShowKeyboard]") < app_text.index("const kbTabScramble")
     assert "{kbTabScramble.display}" in app_text
     assert "onMouseEnter={kbTabScramble.triggerScramble}" in app_text
     assert "onMouseLeave={kbTabScramble.resetScramble}" in app_text

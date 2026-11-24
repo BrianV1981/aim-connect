@@ -138,7 +138,6 @@ function App() {
   const browserTabScramble = useMatrixScramble('BROWSER');
   const filesTabScramble = useMatrixScramble('FILES');
   const historyTabScramble = useMatrixScramble('HISTORY');
-  const kbTabScramble = useMatrixScramble(showKeyboard ? 'KB ON' : 'KB OFF');
   const homeSloganScramble = useMatrixScramble("Don't rent a seat.");
   useStandaloneButtonScrambles(true);
 
@@ -274,6 +273,7 @@ function App() {
   const terminalColumnRef = useRef(null);
   const splitFitRafRef = useRef(null);
   const [showKeyboard, setShowKeyboard] = useState(false);
+  const kbTabScramble = useMatrixScramble(showKeyboard ? 'KB ON' : 'KB OFF');
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
