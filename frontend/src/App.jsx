@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { AnsiUp } from 'ansi_up';
 import { FitAddon } from '@xterm/addon-fit';
@@ -43,6 +43,11 @@ import {
   classifyVoiceCommand,
   formatDictationTranscript,
 } from './voiceDictationUtils';
+import {
+  completeSlashCommand,
+  filterSlashCommands,
+  isSessionResetSlashCommand,
+} from './slashCommandUtils';
 
 const THEME_META_COLORS = {
   emerald: '#050505',
@@ -708,6 +713,13 @@ function App() {
   const composerTextRef = useRef(composerText);
   composerTextRef.current = composerText;
   const submitComposerPromptRef = useRef(null);
+  const composerInputRef = useRef(null);
+  const [slashCommands, setSlashCommands] = useState([]);
+  const slashCommandsCacheRef = useRef({});
+  const [slashActiveIdx, setSlashActiveIdx] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const [chatResetBySession, setChatResetBySession] = useState({});
+  const liveTurnsMetaRef = useRef({});
   const [stagedAttachments, setStagedAttachments] = useState({});
   const stagedAttachmentsRef = useRef(stagedAttachments);
   stagedAttachmentsRef.current = stagedAttachments;
@@ -1932,6 +1944,90 @@ function App() {
     }
   }, [activeSession]);
 
+  const activeFleetVessel =
+    fleet.find((f) => f && f.session_name === activeSession)?.vessel || '';
+
+  useEffect(() => {
+    setSlashDismissed(false);
+    setSlashActiveIdx(0);
+    if (!isAuthenticated || !activeSession) {
+      setSlashCommands([]);
+      return undefined;
+    }
+    const cacheKey = `${activeSession}:${activeFleetVessel}`;
+    if (slashCommandsCacheRef.current[cacheKey]) {
+      setSlashCommands(slashCommandsCacheRef.current[cacheKey]);
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const qs = activeFleetVessel ? `?vessel=${encodeURIComponent(activeFleetVessel)}` : '';
+        const res = await fetch(
+          `/api/sessions/${encodeURIComponent(activeSession)}/slash-commands${qs}`
+        );
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const cmds = Array.isArray(data?.commands) ? data.commands : [];
+        slashCommandsCacheRef.current[cacheKey] = cmds;
+        if (!cancelled) {
+          setSlashCommands(cmds);
+        }
+      } catch {
+        // Keep cached slash commands on transient failure
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, activeSession, activeFleetVessel]);
+
+  const slashDropdownItems = useMemo(
+    () =>
+      agentStageMode === 'chat' && !slashDismissed
+        ? filterSlashCommands(slashCommands, composerText)
+        : [],
+    [agentStageMode, slashDismissed, slashCommands, composerText]
+  );
+
+  useEffect(() => {
+    if (slashActiveIdx >= slashDropdownItems.length) {
+      setSlashActiveIdx(0);
+    }
+  }, [slashActiveIdx, slashDropdownItems.length]);
+
+  const applySlashCommandChoice = useCallback((item) => {
+    const filled = completeSlashCommand(item);
+    if (!filled) return;
+    composerTextRef.current = filled;
+    setComposerText(filled);
+    setVoiceInterimText('');
+    setSlashActiveIdx(0);
+    setSlashDismissed(false);
+    setTimeout(() => {
+      composerInputRef.current?.focus?.();
+    }, 0);
+  }, []);
+
+  const handleComposerKeyDown = (e) => {
+    if (slashDropdownItems.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSlashActiveIdx((prev) => (prev + 1) % slashDropdownItems.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSlashActiveIdx(
+        (prev) => (prev - 1 + slashDropdownItems.length) % slashDropdownItems.length
+      );
+    } else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey)) {
+      e.preventDefault();
+      const chosen = slashDropdownItems[slashActiveIdx] || slashDropdownItems[0];
+      if (chosen) applySlashCommandChoice(chosen);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setSlashDismissed(true);
+    }
+  };
+
   const shouldBeListeningRef = useRef(false);
   const lastVoiceEndedWithSpace = useRef(false);
   const lastVoiceEndedSentence = useRef(true);
@@ -2198,18 +2294,35 @@ function App() {
     const cleanText = normalizeWindowsPathsInText(composerTextRef.current.trim());
     const combined = [cleanText, attRefs].filter(Boolean).join(' ');
     if (!combined) return;
+    const isResetCmd = attachments.length === 0 && isSessionResetSlashCommand(cleanText);
     pasteToTerminal(combined);
     setTimeout(() => sendCommand('\r'), 90);
-    setOptimisticChatBySession((prev) => ({
-      ...prev,
-      [target]: [
-        ...(prev[target] || []).slice(-4),
-        { id: `opt-${Date.now()}`, text: cleanText, attachments, createdAt: Date.now() },
-      ],
-    }));
+    if (isResetCmd) {
+      const curMeta = liveTurnsMetaRef.current[target] || { source: '', sig: '0:0:0' };
+      setChatResetBySession((prev) => ({
+        ...prev,
+        [target]: { prevSource: curMeta.source, prevSig: curMeta.sig, resetAt: Date.now() },
+      }));
+      setOptimisticChatBySession((prev) => {
+        if (!prev[target]?.length) return prev;
+        const next = { ...prev };
+        delete next[target];
+        return next;
+      });
+    } else {
+      setOptimisticChatBySession((prev) => ({
+        ...prev,
+        [target]: [
+          ...(prev[target] || []).slice(-4),
+          { id: `opt-${Date.now()}`, text: cleanText, attachments, createdAt: Date.now() },
+        ],
+      }));
+    }
     composerTextRef.current = '';
     setComposerText('');
     setVoiceInterimText('');
+    setSlashDismissed(false);
+    setSlashActiveIdx(0);
     lastVoiceEndedWithSpace.current = false;
     lastVoiceEndedSentence.current = true;
     if (attachments.length > 0) {
@@ -2903,6 +3016,19 @@ function App() {
                       termTheme={termTheme}
                       autoScroll={sessionAutoScroll}
                       optimisticMessages={optimisticChatBySession[activeSession] || []}
+                      resetMarker={chatResetBySession[activeSession] || null}
+                      onSnapshotMeta={(sess, meta) => {
+                        if (sess) liveTurnsMetaRef.current[sess] = meta;
+                      }}
+                      onResetResolved={(sess) => {
+                        if (!sess) return;
+                        setChatResetBySession((prev) => {
+                          if (!prev[sess]) return prev;
+                          const next = { ...prev };
+                          delete next[sess];
+                          return next;
+                        });
+                      }}
                       onReconcileOptimistic={reconcileOptimisticChat}
                       onOpenFileLink={handleOpenFileFromChat}
                       onDownloadAttachment={downloadShotFile}
@@ -3186,6 +3312,41 @@ function App() {
                   </div>
                 )}
 
+                {slashDropdownItems.length > 0 && (
+                  <div className="slash-autocomplete-popover" role="listbox" aria-label="Slash commands and skills">
+                    <div className="slash-autocomplete-hdr">
+                      <span>SLASH COMMANDS &amp; SKILLS</span>
+                      <span style={{ color: 'var(--text-muted)' }}>↑↓ · Enter / Tab to insert · Enter again to run</span>
+                    </div>
+                    <div className="slash-autocomplete-list">
+                      {slashDropdownItems.map((item, idx) => (
+                        <button
+                          key={item.cmd}
+                          type="button"
+                          role="option"
+                          aria-selected={idx === slashActiveIdx}
+                          className={`slash-autocomplete-item ${idx === slashActiveIdx ? 'active' : ''}`}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            applySlashCommandChoice(item);
+                          }}
+                          onMouseEnter={() => setSlashActiveIdx(idx)}
+                        >
+                          <div className="slash-item-top">
+                            <span className="slash-item-cmd">{item.cmd}</span>
+                            <span className={`slash-item-badge ${item.kind === 'skill' ? 'is-skill' : ''}`}>
+                              {item.kind === 'skill' ? 'SKILL' : (item.source || 'CLI').toUpperCase()}
+                            </span>
+                          </div>
+                          {item.description && (
+                            <div className="slash-item-desc">{item.description}</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <form className="ld-composer-row" onSubmit={handleComposerSubmit}>
                   <button
                     type="button"
@@ -3197,12 +3358,13 @@ function App() {
                   </button>
                   <div className={`ld-input-box ${isListening ? 'is-listening' : ''}`}>
                     <input
+                      ref={composerInputRef}
                       type="text"
                       className="ld-prompt-field"
                       placeholder={
                         isListening
                           ? `Listening on mic — speak directive for ${activeSession}...`
-                          : `Transmit directive to ${activeSession}... (Paste screenshot with Ctrl+V)`
+                          : `Transmit directive to ${activeSession}... (Type / for commands or Ctrl+V screenshot)`
                       }
                       value={
                         isListening && agentStageMode === 'chat'
@@ -3211,8 +3373,11 @@ function App() {
                       }
                       onChange={(e) => {
                         if (voiceInterimText) setVoiceInterimText('');
+                        setSlashDismissed(false);
+                        setSlashActiveIdx(0);
                         setComposerText(e.target.value);
                       }}
+                      onKeyDown={handleComposerKeyDown}
                       onPaste={handleComposerPaste}
                       autoComplete="off"
                     />

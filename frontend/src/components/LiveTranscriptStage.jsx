@@ -7,6 +7,10 @@ import {
   computeScrollDistanceFromBottom,
   decideTurnScrollAction,
 } from '../sessionScrollUtils';
+import {
+  computeTurnsSignature,
+  shouldShowFreshSessionReset,
+} from '../slashCommandUtils';
 
 export default function LiveTranscriptStage({
   activeSession = '',
@@ -17,6 +21,9 @@ export default function LiveTranscriptStage({
   termTheme = 'match',
   autoScroll = false,
   optimisticMessages = [],
+  resetMarker = null,
+  onSnapshotMeta,
+  onResetResolved,
   onReconcileOptimistic,
   onOpenFileLink,
   onDownloadAttachment,
@@ -35,6 +42,7 @@ export default function LiveTranscriptStage({
   const [hasUnseenBelow, setHasUnseenBelow] = useState(false);
   const scrollRef = useRef(null);
   const activeSessionRef = useRef(activeSession);
+  const onSnapshotMetaRef = useRef(onSnapshotMeta);
   const needsBottomAnchorRef = useRef(true);
   const wasPinnedRef = useRef(true);
   const prevOptimisticLenRef = useRef(0);
@@ -42,6 +50,7 @@ export default function LiveTranscriptStage({
   const prevTurnCountRef = useRef(0);
 
   activeSessionRef.current = activeSession;
+  onSnapshotMetaRef.current = onSnapshotMeta;
 
   const handleStreamScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -79,6 +88,10 @@ export default function LiveTranscriptStage({
           source: data.source || '',
           turns: nextTurns,
           loadedFor: targetSession,
+        });
+        onSnapshotMetaRef.current?.(targetSession, {
+          source: data.source || '',
+          sig: computeTurnsSignature(nextTurns),
         });
         onReconcileOptimistic?.(targetSession, nextTurns, { rewound });
       }
@@ -177,9 +190,26 @@ export default function LiveTranscriptStage({
         ? { background: '#000000', color: '#ffffff' }
         : undefined;
 
+  const isFreshReset =
+    Boolean(resetMarker) &&
+    turnsData.loadedFor === activeSession &&
+    shouldShowFreshSessionReset(resetMarker, turnsData);
+
+  useEffect(() => {
+    if (
+      resetMarker &&
+      turnsData.loadedFor === activeSession &&
+      !shouldShowFreshSessionReset(resetMarker, turnsData)
+    ) {
+      onResetResolved?.(activeSession);
+    }
+  }, [activeSession, resetMarker, turnsData, onResetResolved]);
+
+  const visibleTurns = isFreshReset ? [] : turnsData.turns;
+
   const vesselLabel = (turnsData.vessel || fleetItem?.vessel || 'AGY').toUpperCase();
   const serverPrompts = new Set(
-    turnsData.turns.map((t) => (t.user || '').trim()).filter(Boolean)
+    visibleTurns.map((t) => (t.user || '').trim()).filter(Boolean)
   );
   const pendingOptimistic = optimisticMessages.filter(
     (m) => m.text && !serverPrompts.has(m.text.trim())
@@ -188,14 +218,24 @@ export default function LiveTranscriptStage({
   return (
     <div className="live-transcript-stage" style={overrideStyle}>
       <div className="stream-scroll" ref={scrollRef} onScroll={handleStreamScroll}>
-        {loading && turnsData.turns.length === 0 ? (
-          <div className="fleet-empty-state">Loading live structured session turns...</div>
-        ) : turnsData.turns.length === 0 && pendingOptimistic.length === 0 ? (
-          <div className="fleet-empty-state">
-            No structured turns recorded yet for {activeSession}. Send a directive below or switch to RAW TERM.
+        {isFreshReset && (
+          <div className="fresh-session-banner">
+            <Icon name="zap" size={14} />
+            <span>
+              Fresh {vesselLabel} session started (<code>/new</code>) — send your first prompt below.
+            </span>
           </div>
+        )}
+        {loading && visibleTurns.length === 0 && !isFreshReset ? (
+          <div className="fleet-empty-state">Loading live structured session turns...</div>
+        ) : visibleTurns.length === 0 && pendingOptimistic.length === 0 ? (
+          isFreshReset ? null : (
+            <div className="fleet-empty-state">
+              No structured turns recorded yet for {activeSession}. Send a directive below or switch to RAW TERM.
+            </div>
+          )
         ) : (
-          turnsData.turns.map((turn) => (
+          visibleTurns.map((turn) => (
             <div key={`turn-${turn.idx}`} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className={`transmission-block op-style-${operatorStyle} op-side-${operatorSide}`}>
                 <div className="transmission-header" style={{ color: 'var(--op-accent, var(--text-muted))' }}>

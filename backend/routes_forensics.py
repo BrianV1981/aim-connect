@@ -24,6 +24,7 @@ from routes_sessions import (
     _normalize_workspace_root,
     _read_transcript_telemetry,
     extract_spoken_summary,
+    parse_pane_telemetry,
 )
 
 router = APIRouter()
@@ -1126,5 +1127,215 @@ def get_session_live_turns(session_name: str, limit: int = Query(24)):
         "source": source_label,
         "turn_count": len(sliced),
         "turns": sliced,
+    }
+
+
+_BUILTIN_SLASH_COMMANDS: dict[str, list[dict[str, str]]] = {
+    "agy": [
+        {"cmd": "/new", "description": "Start a fresh conversation"},
+        {"cmd": "/compact", "description": "Compact conversation context"},
+        {"cmd": "/context", "description": "Inspect active context window usage"},
+        {"cmd": "/model", "description": "Switch active Gemini model"},
+        {"cmd": "/resume", "description": "Resume an earlier conversation"},
+        {"cmd": "/rewind", "description": "Rewind recent turns"},
+        {"cmd": "/browser", "description": "Invoke browser automation"},
+        {"cmd": "/skills", "description": "List available skills"},
+        {"cmd": "/goal", "description": "Run thorough goal-driven loop"},
+        {"cmd": "/plan", "description": "Create step-by-step plan"},
+        {"cmd": "/teamwork", "description": "Coordinate multi-agent swarm"},
+        {"cmd": "/grill-me", "description": "Interactive design interview"},
+        {"cmd": "/learn", "description": "Persist lesson or rule"},
+        {"cmd": "/boost", "description": "Deep reasoning & verification mode"},
+        {"cmd": "/schedule", "description": "Schedule timer or recurring job"},
+        {"cmd": "/clear", "description": "Clear screen & reset view"},
+        {"cmd": "/help", "description": "Show CLI slash command help"},
+    ],
+    "grok": [
+        {"cmd": "/new", "description": "Start a fresh Grok conversation"},
+        {"cmd": "/clear", "description": "Clear screen & reset conversation"},
+        {"cmd": "/compact", "description": "Compact conversation history"},
+        {"cmd": "/context", "description": "Show context window telemetry"},
+        {"cmd": "/model", "description": "Switch active Grok model"},
+        {"cmd": "/help", "description": "Show Grok CLI commands"},
+    ],
+    "opencode": [
+        {"cmd": "/new", "description": "Start a new OpenCode session"},
+        {"cmd": "/compact", "description": "Summarize and compact session"},
+        {"cmd": "/models", "description": "Switch provider/model"},
+        {"cmd": "/sessions", "description": "Browse OpenCode sessions"},
+        {"cmd": "/undo", "description": "Undo last edit/turn"},
+        {"cmd": "/redo", "description": "Redo undone edit/turn"},
+        {"cmd": "/review", "description": "Review workspace changes"},
+        {"cmd": "/init", "description": "Initialize project AGENTS.md"},
+        {"cmd": "/themes", "description": "Switch OpenCode UI theme"},
+        {"cmd": "/help", "description": "Show OpenCode commands"},
+    ],
+    "codex": [
+        {"cmd": "/new", "description": "Start a new Codex session"},
+        {"cmd": "/compact", "description": "Compact context"},
+        {"cmd": "/model", "description": "Switch model"},
+        {"cmd": "/review", "description": "Review git diff"},
+        {"cmd": "/status", "description": "Inspect session status"},
+        {"cmd": "/clear", "description": "Clear conversation"},
+    ],
+}
+
+
+def _detect_session_vessel(session_name: str, explicit_vessel: str = "") -> str:
+    clean_v = (explicit_vessel or "").strip().lower()
+    if clean_v in _BUILTIN_SLASH_COMMANDS:
+        return clean_v
+    try:
+        panes = subprocess.run(
+            ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_current_command}"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        pane_cmd = (panes.stdout or "").splitlines()[0].strip() if panes.returncode == 0 and panes.stdout.strip() else ""
+        cap = subprocess.run(
+            ["tmux", "capture-pane", "-t", session_name, "-S", "-40", "-p"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        parsed = parse_pane_telemetry(cap.stdout or "", pane_cmd=pane_cmd, session_name=session_name)
+        detected = (parsed.get("vessel") or "").lower()
+        if detected in _BUILTIN_SLASH_COMMANDS:
+            return detected
+    except Exception:
+        pass
+    return "agy"
+
+
+def _skill_dirs_for_vessel(vessel: str, cwd_path: str = "") -> list[str]:
+    dirs: list[str] = []
+    if cwd_path and os.path.isdir(cwd_path):
+        for rel in (".gemini/skills", ".grok/skills", ".opencode/skills", ".agents/skills"):
+            cand = os.path.join(cwd_path, rel)
+            if os.path.isdir(cand):
+                dirs.append(cand)
+    v = (vessel or "agy").lower()
+    if v == "grok":
+        dirs.append(os.path.join(HOME_DIR, ".grok", "skills"))
+    elif v == "opencode":
+        dirs.append(os.path.join(HOME_DIR, ".config", "opencode", "skills"))
+        dirs.append(os.path.join(HOME_DIR, ".opencode", "skills"))
+    else:
+        dirs.append(os.path.join(HOME_DIR, ".gemini", "antigravity-cli", "skills"))
+        dirs.append(os.path.join(HOME_DIR, ".gemini", "skills"))
+        dirs.append(os.path.join(HOME_DIR, ".gemini", "antigravity-cli", "builtin", "skills"))
+    return [d for d in dirs if os.path.isdir(d)]
+
+
+def _parse_skill_frontmatter(skill_md_path: str, fallback_name: str) -> tuple[str, str]:
+    name = fallback_name
+    desc = ""
+    try:
+        with open(skill_md_path, "r", encoding="utf-8", errors="ignore") as fh:
+            head = fh.read(2048)
+    except OSError:
+        return name, desc
+
+    lines = head.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return name, desc
+
+    fm_lines: list[str] = []
+    for ln in lines[1:]:
+        if ln.strip() == "---":
+            break
+        fm_lines.append(ln)
+
+    in_desc_block = False
+    desc_parts: list[str] = []
+    for ln in fm_lines:
+        stripped = ln.strip()
+        if in_desc_block:
+            if ln.startswith((" ", "\t")) and stripped:
+                desc_parts.append(stripped)
+                continue
+            in_desc_block = False
+        if ln.lower().startswith("name:"):
+            val = ln.split(":", 1)[1].strip().strip("'\"")
+            if val:
+                name = val
+        elif ln.lower().startswith("description:"):
+            val = ln.split(":", 1)[1].strip()
+            if val in (">", "|", ">-", "|-"):
+                in_desc_block = True
+            else:
+                desc = val.strip("'\"")
+    if desc_parts:
+        desc = " ".join(desc_parts)
+    desc = re.sub(r"\s+", " ", desc).strip()
+    if len(desc) > 140:
+        desc = desc[:137] + "..."
+    return name, desc
+
+
+@router.get("/api/sessions/{session_name}/slash-commands", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_session_slash_commands(session_name: str, vessel: str = Query("")):
+    """Return built-in slash commands and installed SKILL.md commands for the active session harness (#287)."""
+    if not SESSION_NAME_RE.match(session_name):
+        raise HTTPException(status_code=400, detail="Invalid session name.")
+
+    resolved_vessel = _detect_session_vessel(session_name, explicit_vessel=vessel)
+    cwd_path = ""
+    try:
+        cwd_path = _resolve_session_cwd(session=session_name)
+    except Exception:
+        cwd_path = ""
+
+    commands: list[dict[str, str]] = []
+    seen_cmds: set[str] = set()
+
+    for b in _BUILTIN_SLASH_COMMANDS.get(resolved_vessel, _BUILTIN_SLASH_COMMANDS["agy"]):
+        cmd_str = b["cmd"]
+        key = cmd_str.lower()
+        if key in seen_cmds:
+            continue
+        seen_cmds.add(key)
+        commands.append(
+            {
+                "cmd": cmd_str,
+                "kind": "builtin",
+                "description": b.get("description", ""),
+                "source": resolved_vessel,
+            }
+        )
+
+    skill_entries: list[dict[str, str]] = []
+    for skill_root in _skill_dirs_for_vessel(resolved_vessel, cwd_path):
+        try:
+            entries = sorted(os.scandir(skill_root), key=lambda e: e.name.lower())
+        except OSError:
+            continue
+        for entry in entries:
+            if not entry.is_dir(follow_symlinks=True):
+                continue
+            skill_md = os.path.join(entry.path, "SKILL.md")
+            if not os.path.isfile(skill_md):
+                continue
+            skill_name, desc = _parse_skill_frontmatter(skill_md, entry.name)
+            cmd_str = f"/{skill_name.lstrip('/')}"
+            key = cmd_str.lower()
+            if key in seen_cmds:
+                continue
+            seen_cmds.add(key)
+            skill_entries.append(
+                {
+                    "cmd": cmd_str,
+                    "kind": "skill",
+                    "description": desc or "Custom skill",
+                    "source": os.path.basename(skill_root),
+                }
+            )
+
+    commands.extend(sorted(skill_entries, key=lambda x: x["cmd"].lower()))
+    return {
+        "session": session_name,
+        "vessel": resolved_vessel,
+        "commands": commands,
     }
 
