@@ -37,6 +37,12 @@ import {
   saveSessionLayoutMap,
   upsertSessionLayout,
 } from './sessionLayoutUtils';
+import {
+  appendDictatedTextToComposer,
+  buildComposerDisplayValue,
+  classifyVoiceCommand,
+  formatDictationTranscript,
+} from './voiceDictationUtils';
 
 const THEME_META_COLORS = {
   emerald: '#050505',
@@ -249,8 +255,11 @@ function App() {
   const [agentStageMode, setAgentStageModeState] = useState(() =>
     localStorage.getItem('aim-agent-stage-mode') === 'chat' ? 'chat' : 'pty'
   );
+  const agentStageModeRef = useRef(agentStageMode);
+  agentStageModeRef.current = agentStageMode;
   const setAgentStageMode = useCallback((mode) => {
     const next = mode === 'chat' ? 'chat' : 'pty';
+    agentStageModeRef.current = next;
     setAgentStageModeState(next);
     localStorage.setItem('aim-agent-stage-mode', next);
   }, []);
@@ -313,6 +322,7 @@ function App() {
   const [isNativeScrollMode, setIsNativeScrollMode] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [voiceInterimText, setVoiceInterimText] = useState('');
   const recognitionRef = useRef(null);
   const [voiceAutoRead, setVoiceAutoRead] = useState(() =>
     JSON.parse(localStorage.getItem('aim-voice-autoread') ?? 'false')
@@ -352,6 +362,18 @@ function App() {
   const [voiceAutoSend, setVoiceAutoSend] = useState(() =>
     JSON.parse(localStorage.getItem('aim-voice-send') ?? 'true')
   );
+  const voiceContinuousRef = useRef(voiceContinuous);
+  const voiceAutoEnterRef = useRef(voiceAutoEnter);
+  const voiceAutoExecuteRef = useRef(voiceAutoExecute);
+  const voiceAutoCapitalizeRef = useRef(voiceAutoCapitalize);
+  const voiceSlashesRef = useRef(voiceSlashes);
+  const voiceAutoSendRef = useRef(voiceAutoSend);
+  voiceContinuousRef.current = voiceContinuous;
+  voiceAutoEnterRef.current = voiceAutoEnter;
+  voiceAutoExecuteRef.current = voiceAutoExecute;
+  voiceAutoCapitalizeRef.current = voiceAutoCapitalize;
+  voiceSlashesRef.current = voiceSlashes;
+  voiceAutoSendRef.current = voiceAutoSend;
 
   const stopSpeaking = () => {
     if (ttsAbortRef.current) {
@@ -683,7 +705,12 @@ function App() {
     () => localStorage.getItem('aim-show-keybar') === 'true'
   );
   const [composerText, setComposerText] = useState('');
+  const composerTextRef = useRef(composerText);
+  composerTextRef.current = composerText;
+  const submitComposerPromptRef = useRef(null);
   const [stagedAttachments, setStagedAttachments] = useState({});
+  const stagedAttachmentsRef = useRef(stagedAttachments);
+  stagedAttachmentsRef.current = stagedAttachments;
   const [editingShot, setEditingShot] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
@@ -1921,6 +1948,7 @@ function App() {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
+      setVoiceInterimText('');
       setIsListening(false);
       return;
     }
@@ -1928,97 +1956,77 @@ function App() {
     shouldBeListeningRef.current = true;
     lastVoiceEndedWithSpace.current = false;
     lastVoiceEndedSentence.current = true;
+    setVoiceInterimText('');
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
 
     recognition.onresult = (event) => {
-      const lastIdx = event.results.length - 1;
-      const transcript = event.results[lastIdx][0].transcript;
-      const lowerTrimmed = transcript.trim().toLowerCase();
+      const interimParts = [];
+      const startIdx = typeof event.resultIndex === 'number' ? event.resultIndex : event.results.length - 1;
 
-      const matchingMacro = macroLibraryRef.current?.find(
-        (m) => m.voiceTrigger && m.voiceTrigger.toLowerCase() === lowerTrimmed
-      );
+      for (let i = startIdx; i < event.results.length; i++) {
+        const res = event.results[i];
+        const transcript = res?.[0]?.transcript || '';
+        if (!res?.isFinal) {
+          if (transcript.trim()) interimParts.push(transcript.trim());
+          continue;
+        }
 
-      let isEnterCommand = false;
-      let isSubmitCommand = false;
-      if (lowerTrimmed === 'enter' && voiceAutoEnter) isEnterCommand = true;
-      if (lowerTrimmed === 'send' && voiceAutoSend) isSubmitCommand = true;
-      if (lowerTrimmed === 'execute' && voiceAutoExecute) isSubmitCommand = true;
+        const cmd = classifyVoiceCommand(transcript, {
+          macroLibrary: macroLibraryRef.current,
+          voiceAutoEnter: voiceAutoEnterRef.current,
+          voiceAutoSend: voiceAutoSendRef.current,
+          voiceAutoExecute: voiceAutoExecuteRef.current,
+        });
+        const inChatMode = agentStageModeRef.current === 'chat';
 
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        if (matchingMacro) {
-          ws.current.send(JSON.stringify({ type: 'input', payload: matchingMacro.cmd }));
+        if (cmd.kind === 'macro' && cmd.macro) {
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'input', payload: cmd.macro.cmd }));
+          }
           lastVoiceEndedWithSpace.current = false;
           lastVoiceEndedSentence.current = true;
-        } else if (isSubmitCommand || isEnterCommand) {
-          ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
-          lastVoiceEndedWithSpace.current = false;
-          lastVoiceEndedSentence.current = true;
-        } else {
-          let finalPayload = transcript.trim().replace(/\s+/g, ' ');
-
-          if (voiceAutoCapitalize && lastVoiceEndedSentence.current) {
-            finalPayload = finalPayload.trimStart();
-            finalPayload = finalPayload.charAt(0).toUpperCase() + finalPayload.slice(1);
-          }
-
-          if (voiceSlashes) {
-            finalPayload = finalPayload
-              .replace(/\s*\bback\s?slash\b\s*/gi, '\\')
-              .replace(/\s*\b(?:forward\s)?slash\b\s*/gi, '/')
-              .replace(/\s*\bdash\b\s*/gi, '-');
-          }
-
-          finalPayload = finalPayload
-            .replace(/\bdot dot dot\b/gi, '...')
-            .replace(/\bdot dot\b/gi, '..')
-            .replace(/\bcomma\b/gi, ',')
-            .replace(/\bperiod\b/gi, '.')
-            .replace(/\bquestion mark\b/gi, '?')
-            .replace(/\b(?:open|left)\s+paren(?:thesis)?\b\s*/gi, '(')
-            .replace(/\s*\b(?:close|right)\s+paren(?:thesis)?\b/gi, ')')
-            .replace(/\bquote\b\s*/gi, '"')
-            .replace(/\s*\bunquote\b/gi, '"')
-            .replace(/\s+([.,?!])/g, '$1');
-
-          if (voiceAutoCapitalize) {
-            finalPayload = finalPayload.replace(/([.?!])\s+([a-z])/g, (match, p1, p2) => p1 + ' ' + p2.toUpperCase());
-          }
-
-          let prefix = '';
-          if (lastVoiceEndedWithSpace.current) {
-            const startsWithPunctuation = /^[.,?!)]/.test(finalPayload.trimStart());
-            const startsWithUnquote = finalPayload.startsWith('"') && lowerTrimmed.startsWith('unquote');
-            if (startsWithPunctuation || startsWithUnquote) {
-              prefix = '\b';
+        } else if (cmd.kind === 'submit') {
+          if (inChatMode) {
+            const target = activeSessionRef.current;
+            const hasDraft = Boolean(composerTextRef.current.trim()) || Boolean((stagedAttachmentsRef.current?.[target] || []).length);
+            if (hasDraft && submitComposerPromptRef.current) {
+              submitComposerPromptRef.current();
+            } else if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+              ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
             }
+          } else if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'input', payload: '\r' }));
           }
-
-          let appendSpace = ' ';
-          if (
-            finalPayload.endsWith('(') ||
-            finalPayload.endsWith('/') ||
-            finalPayload.endsWith('\\') ||
-            finalPayload.endsWith('-')
-          ) {
-            appendSpace = '';
+          lastVoiceEndedWithSpace.current = false;
+          lastVoiceEndedSentence.current = true;
+        } else if (cmd.kind === 'dictation') {
+          const formatted = formatDictationTranscript(transcript, {
+            voiceAutoCapitalize: voiceAutoCapitalizeRef.current,
+            voiceSlashes: voiceSlashesRef.current,
+            lastEndedWithSpace: lastVoiceEndedWithSpace.current,
+            lastEndedSentence: lastVoiceEndedSentence.current,
+          });
+          if (!formatted.text) continue;
+          if (inChatMode) {
+            setComposerText((prev) => {
+              const next = appendDictatedTextToComposer(prev, formatted);
+              composerTextRef.current = next;
+              return next;
+            });
+          } else if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'input', payload: formatted.ptyPayload }));
           }
-          if (finalPayload.endsWith('"') && lowerTrimmed.endsWith('quote') && !lowerTrimmed.endsWith('unquote')) {
-            appendSpace = '';
-          }
-
-          ws.current.send(JSON.stringify({ type: 'input', payload: prefix + finalPayload + appendSpace }));
-
-          lastVoiceEndedWithSpace.current = appendSpace === ' ';
-          lastVoiceEndedSentence.current =
-            /[.?!]\s*$/.test(finalPayload) || /[.?!]$/.test(finalPayload.trimEnd());
+          lastVoiceEndedWithSpace.current = formatted.endedWithSpace;
+          lastVoiceEndedSentence.current = formatted.endedSentence;
         }
       }
+
+      setVoiceInterimText(interimParts.join(' ').trim());
     };
 
     recognition.onerror = (event) => {
@@ -2026,6 +2034,7 @@ function App() {
       const hard = ['not-allowed', 'network', 'service-not-allowed', 'audio-capture', 'language-not-supported'];
       if (hard.includes(event.error)) {
         shouldBeListeningRef.current = false;
+        setVoiceInterimText('');
         setIsListening(false);
         const msg =
           {
@@ -2041,7 +2050,8 @@ function App() {
     };
 
     recognition.onend = () => {
-      if (!voiceContinuous) {
+      setVoiceInterimText('');
+      if (!voiceContinuousRef.current) {
         shouldBeListeningRef.current = false;
         setIsListening(false);
         return;
@@ -2180,13 +2190,12 @@ function App() {
     }
   };
 
-  const handleComposerSubmit = (e) => {
-    e.preventDefault();
+  const submitComposerPrompt = useCallback(() => {
     const target = activeSessionRef.current || activeSession;
     if (!target) return;
-    const attachments = stagedAttachments[target] || [];
+    const attachments = stagedAttachmentsRef.current?.[target] || [];
     const attRefs = attachments.map((a) => `@${a.path}`).join(' ');
-    const cleanText = normalizeWindowsPathsInText(composerText.trim());
+    const cleanText = normalizeWindowsPathsInText(composerTextRef.current.trim());
     const combined = [cleanText, attRefs].filter(Boolean).join(' ');
     if (!combined) return;
     pasteToTerminal(combined);
@@ -2198,10 +2207,20 @@ function App() {
         { id: `opt-${Date.now()}`, text: cleanText, attachments, createdAt: Date.now() },
       ],
     }));
+    composerTextRef.current = '';
     setComposerText('');
+    setVoiceInterimText('');
+    lastVoiceEndedWithSpace.current = false;
+    lastVoiceEndedSentence.current = true;
     if (attachments.length > 0) {
       setStagedAttachments((prev) => ({ ...prev, [target]: [] }));
     }
+  }, [activeSession]);
+  submitComposerPromptRef.current = submitComposerPrompt;
+
+  const handleComposerSubmit = (e) => {
+    e.preventDefault();
+    submitComposerPrompt();
   };
 
   const openSettingsModal = (tab = 'appearance') => {
@@ -3176,7 +3195,7 @@ function App() {
                   >
                     <Icon name="zap" size={15} />
                   </button>
-                  <div className="ld-input-box">
+                  <div className={`ld-input-box ${isListening ? 'is-listening' : ''}`}>
                     <input
                       type="text"
                       className="ld-prompt-field"
@@ -3185,8 +3204,15 @@ function App() {
                           ? `Listening on mic — speak directive for ${activeSession}...`
                           : `Transmit directive to ${activeSession}... (Paste screenshot with Ctrl+V)`
                       }
-                      value={composerText}
-                      onChange={(e) => setComposerText(e.target.value)}
+                      value={
+                        isListening && agentStageMode === 'chat'
+                          ? buildComposerDisplayValue(composerText, voiceInterimText)
+                          : composerText
+                      }
+                      onChange={(e) => {
+                        if (voiceInterimText) setVoiceInterimText('');
+                        setComposerText(e.target.value);
+                      }}
                       onPaste={handleComposerPaste}
                       autoComplete="off"
                     />

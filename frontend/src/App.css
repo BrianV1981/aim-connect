@@ -3385,6 +3385,11 @@ mark.find-hit-mark.active-hit {
   border-color: rgba(var(--accent-rgb), 0.55);
 }
 
+.ld-input-box.is-listening {
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22);
+}
+
 .ld-prompt-field {
   flex: 1;
   min-width: 0;
