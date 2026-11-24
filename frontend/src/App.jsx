@@ -2175,7 +2175,7 @@ function App() {
     }
   };
 
-  const pasteToTerminal = (rawText) => {
+  const pasteToTerminal = (rawText, opts = {}) => {
     if (!rawText) return;
     const cleaned = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '');
     if (!cleaned) return;
@@ -2185,6 +2185,7 @@ function App() {
           type: 'paste',
           payload: cleaned,
           session: activeSessionRef.current || activeSession,
+          submit: Boolean(opts.submit),
         })
       );
       lastVoiceEndedWithSpace.current = false;
@@ -2295,8 +2296,7 @@ function App() {
     const combined = [cleanText, attRefs].filter(Boolean).join(' ');
     if (!combined) return;
     const isResetCmd = attachments.length === 0 && isSessionResetSlashCommand(cleanText);
-    pasteToTerminal(combined);
-    setTimeout(() => sendCommand('\r'), 90);
+    pasteToTerminal(combined, { submit: true });
     if (isResetCmd) {
       const curMeta = liveTurnsMetaRef.current[target] || { source: '', sig: '0:0:0' };
       setChatResetBySession((prev) => ({

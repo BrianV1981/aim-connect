@@ -9,6 +9,7 @@ import hashlib
 import sqlite3
 import shutil
 import logging
+import uuid
 from pydantic import BaseModel
 from fastapi import APIRouter, Header, HTTPException, Depends, Request, Response
 from main import (
@@ -17,6 +18,7 @@ from main import (
     SESSION_NAME_RE, AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT,
     ENABLE_E2EE, E2EE_SECRET, HOME_DIR
 )
+from ws_handler import is_single_slash_command, pane_still_holds_slash_command
 import asyncio
 
 router = APIRouter()
@@ -1108,10 +1110,10 @@ def exec_tmux_window_command(name: str, req: TmuxWindowExecRequest) -> dict:
 
 @router.post("/api/sessions/{name}/command", dependencies=[Depends(verify_token), Depends(require_admin)])
 def send_session_command(name: str, req: SessionCommandRequest) -> dict:
-    """Safely inject a command or slash skill (e.g. /aim-memory-wiki, /aim-handoff) into a tmux session (#209).
+    """Safely inject a command or slash skill (e.g. /aim-memory-wiki, /aim-handoff) into a tmux session (#209, #288).
 
-    Uses the 2-step tmux buffer + separate Enter key protocol so interactive TUIs
-    (AGY, Grok, OpenCode) do not swallow the Enter keystroke.
+    Uses an isolated named tmux buffer (-b), bracketed paste (-p -r -d), a 0.25s TUI
+    settle delay, separate Enter, and a capture-pane confirmation check for slash skills.
     """
     if not SESSION_NAME_RE.match(name):
         raise HTTPException(status_code=400, detail="Invalid session name.")
@@ -1119,11 +1121,32 @@ def send_session_command(name: str, req: SessionCommandRequest) -> dict:
     if not cmd_text:
         raise HTTPException(status_code=400, detail="Command cannot be empty.")
 
+    buf_name = f"aim_cmd_{uuid.uuid4().hex[:10]}"
     try:
-        subprocess.run(["tmux", "set-buffer", "--", cmd_text], capture_output=True, text=True, check=True)
-        subprocess.run(["tmux", "paste-buffer", "-t", name], capture_output=True, text=True, check=True)
-        time.sleep(0.1)
+        subprocess.run(
+            ["tmux", "load-buffer", "-b", buf_name, "-"],
+            input=cmd_text,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        subprocess.run(
+            ["tmux", "paste-buffer", "-p", "-r", "-d", "-b", buf_name, "-t", name],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        time.sleep(0.25)
         subprocess.run(["tmux", "send-keys", "-t", name, "Enter"], capture_output=True, text=True, check=True)
+        if is_single_slash_command(cmd_text):
+            time.sleep(0.15)
+            cap = subprocess.run(
+                ["tmux", "capture-pane", "-t", name, "-S", "-8", "-p"],
+                capture_output=True,
+                text=True,
+            )
+            if cap.returncode == 0 and pane_still_holds_slash_command(cap.stdout, cmd_text):
+                subprocess.run(["tmux", "send-keys", "-t", name, "Enter"], capture_output=True, text=True, check=True)
         return {"status": "sent", "session": name, "command": cmd_text}
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=f"Tmux command injection failed: {e.stderr or str(e)}")

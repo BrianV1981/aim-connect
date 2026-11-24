@@ -15,6 +15,7 @@ import pty
 import signal
 import errno
 import select
+import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from main import (
     AIM_CONNECT_ROOT, BACKEND_DIR, ENABLE_E2EE, E2EE_SECRET, ALLOWED_IPS, 
@@ -248,32 +249,131 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
-async def execute_bracketed_paste(session_name: str, paste_text: str) -> bool:
-    """Load text into tmux buffer via stdin and paste with bracketed paste (-p)
-    and LF separator (-r) without sending Enter (#216).
+_SINGLE_SLASH_CMD_RE = re.compile(r"^/[A-Za-z0-9_.:-]+$")
+
+
+def is_single_slash_command(text: str) -> bool:
+    """Return True for single-token /slash commands or skills (no arguments)."""
+    return bool(_SINGLE_SLASH_CMD_RE.match((text or "").strip()))
+
+
+def pane_still_holds_slash_command(pane_text: str, slash_cmd: str) -> bool:
+    """Return True if the CLI prompt still holds the unsubmitted /slash command after Enter 1."""
+    clean_cmd = (slash_cmd or "").strip()
+    if not clean_cmd:
+        return False
+    lines = [ln.rstrip() for ln in (pane_text or "").splitlines() if ln.strip()]
+    tail = lines[-8:]
+    pat = re.compile(rf"^(?:[>›❯$#]\s*)?{re.escape(clean_cmd)}\s*$")
+    return any(pat.match(ln.strip()) for ln in tail)
+
+
+async def execute_bracketed_paste(
+    session_name: str,
+    paste_text: str,
+    *,
+    submit_enter: bool = False,
+    settle_s: float = 0.25,
+) -> bool:
+    """Load text into tmux buffer via stdin and paste with bracketed paste (-p -r).
+
+    When submit_enter=True (#288), uses an isolated named buffer (-b) with auto-delete (-d),
+    waits settle_s for the interactive TUI to finish parsing the paste, sends Enter, and
+    confirms single-token /slash skills if Enter 1 only closed the CLI slash menu.
     """
     normalized = (paste_text or "").replace("\r\n", "\n").replace("\r", "\n").rstrip("\n")
     if not normalized or not session_name:
         return False
+
+    if not submit_enter:
+        proc1 = await asyncio.create_subprocess_exec(
+            "tmux",
+            "load-buffer",
+            "-",
+            stdin=asyncio.subprocess.PIPE,
+        )
+        await proc1.communicate(input=normalized.encode("utf-8"))
+        if proc1.returncode != 0:
+            return False
+        proc2 = await asyncio.create_subprocess_exec(
+            "tmux",
+            "paste-buffer",
+            "-p",
+            "-r",
+            "-t",
+            session_name,
+        )
+        await proc2.wait()
+        return proc2.returncode == 0
+
+    buf_name = f"aim_ws_{uuid.uuid4().hex[:10]}"
     proc1 = await asyncio.create_subprocess_exec(
         "tmux",
         "load-buffer",
+        "-b",
+        buf_name,
         "-",
         stdin=asyncio.subprocess.PIPE,
     )
     await proc1.communicate(input=normalized.encode("utf-8"))
     if proc1.returncode != 0:
         return False
+
     proc2 = await asyncio.create_subprocess_exec(
         "tmux",
         "paste-buffer",
         "-p",
         "-r",
+        "-d",
+        "-b",
+        buf_name,
         "-t",
         session_name,
     )
     await proc2.wait()
-    return proc2.returncode == 0
+    if proc2.returncode != 0:
+        return False
+
+    await asyncio.sleep(settle_s)
+    proc_enter = await asyncio.create_subprocess_exec(
+        "tmux",
+        "send-keys",
+        "-t",
+        session_name,
+        "Enter",
+    )
+    await proc_enter.wait()
+    if proc_enter.returncode != 0:
+        return False
+
+    if is_single_slash_command(normalized):
+        await asyncio.sleep(0.15)
+        proc_cap = await asyncio.create_subprocess_exec(
+            "tmux",
+            "capture-pane",
+            "-t",
+            session_name,
+            "-S",
+            "-8",
+            "-p",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        cap_out, _ = await proc_cap.communicate()
+        if proc_cap.returncode == 0 and pane_still_holds_slash_command(
+            (cap_out or b"").decode("utf-8", errors="replace"),
+            normalized,
+        ):
+            proc_enter2 = await asyncio.create_subprocess_exec(
+                "tmux",
+                "send-keys",
+                "-t",
+                session_name,
+                "Enter",
+            )
+            await proc_enter2.wait()
+
+    return True
 
 
 async def _run_tmux_cmd(*tmux_args: str) -> tuple[int, str, str]:
@@ -1101,8 +1201,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     elif msg_type == "paste":
                         text = data.get("payload", "")
                         paste_session = data.get("session") or target_session
+                        submit_after = bool(data.get("submit"))
                         if text and paste_session:
-                            asyncio.create_task(execute_bracketed_paste(paste_session, text))
+                            asyncio.create_task(
+                                execute_bracketed_paste(
+                                    paste_session,
+                                    text,
+                                    submit_enter=submit_after,
+                                )
+                            )
                     elif msg_type == "submit":
                         text = data.get("payload", "")
                         logger.info(f"Executing aim-communicate for {target_session} with {text}")

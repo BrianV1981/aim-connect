@@ -147,7 +147,7 @@ def test_get_sessions_and_fleet_panes_endpoint(client, valid_token, tmp_path):
 
 
 def test_send_session_command_two_step_tmux_protocol(client, valid_token):
-    """POST /api/sessions/{name}/command uses set-buffer + paste-buffer + separate Enter."""
+    """POST /api/sessions/{name}/command uses isolated named-buffer bracketed paste + separate Enter (#209, #288)."""
     calls = []
 
     def fake_run(cmd, *args, **kwargs):
@@ -166,9 +166,11 @@ def test_send_session_command_two_step_tmux_protocol(client, valid_token):
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "sent"
-        assert calls == [
-            ["tmux", "set-buffer", "--", "/aim-memory-wiki"],
-            ["tmux", "paste-buffer", "-t", "aim-connect"],
+        assert calls[0][:3] == ["tmux", "load-buffer", "-b"]
+        buf_name = calls[0][3]
+        assert calls[:3] == [
+            ["tmux", "load-buffer", "-b", buf_name, "-"],
+            ["tmux", "paste-buffer", "-p", "-r", "-d", "-b", buf_name, "-t", "aim-connect"],
             ["tmux", "send-keys", "-t", "aim-connect", "Enter"],
         ]
 
