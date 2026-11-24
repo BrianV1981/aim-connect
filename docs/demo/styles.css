@@ -1051,6 +1051,7 @@ svg.lucide {
   color: var(--op-color);
   line-height: 1.6;
   max-width: 90%;
+  white-space: pre-wrap;
   transition: all 0.16s ease;
 }
 
@@ -1178,12 +1179,12 @@ svg.lucide {
 }
 
 .composer-icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-muted);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1193,15 +1194,16 @@ svg.lucide {
 }
 
 .composer-icon-btn:hover {
-  background: var(--bg-subtle);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.52);
   color: var(--text-primary);
 }
 
 .composer-icon-btn.speak-on {
-  background: rgba(var(--accent-rgb), 0.13);
-  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: rgba(var(--accent-rgb), 0.55);
   color: var(--accent);
-  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.16);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.18);
 }
 
 .composer-icon-btn.mic-on {
@@ -1282,7 +1284,7 @@ svg.lucide {
 
 .ld-composer-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
   max-width: 920px;
   margin: 0 auto;
@@ -1311,22 +1313,78 @@ svg.lucide {
 }
 
 .ld-input-box {
+  position: relative;
   flex: 1;
   min-width: 0;
-  height: 44px;
+  min-height: 44px;
+  height: auto;
   border-radius: 14px;
   background: var(--bg-input);
   border: 1px solid var(--border-hairline);
   display: flex;
-  align-items: center;
-  padding: 0 6px 0 16px;
+  align-items: flex-end;
+  padding: 4px 18px 4px 16px;
   gap: 8px;
-  transition: all 0.16s ease;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .ld-input-box:focus-within {
   border-color: rgba(var(--accent-rgb), 0.55);
   box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.08);
+}
+
+.ld-input-box.is-resizing {
+  border-color: rgba(var(--accent-rgb), 0.72);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.24), 0 0 24px rgba(var(--accent-rgb), 0.1);
+}
+
+.composer-resize-handle {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 14px;
+  height: 14px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 3;
+  border-radius: 4px;
+  opacity: 0.72;
+  transition: opacity 0.15s ease;
+}
+
+.composer-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--text-secondary);
+  border-right: 1.5px solid var(--text-secondary);
+  border-top-right-radius: 2px;
+}
+
+.composer-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 4px;
+  height: 4px;
+  border-top: 1.5px solid var(--text-muted);
+  border-right: 1.5px solid var(--text-muted);
+}
+
+.composer-resize-handle:hover,
+.ld-input-box.is-resizing .composer-resize-handle {
+  opacity: 1;
+}
+
+.composer-resize-handle:hover::before,
+.composer-resize-handle:hover::after,
+.ld-input-box.is-resizing .composer-resize-handle::before,
+.ld-input-box.is-resizing .composer-resize-handle::after {
+  border-color: var(--accent);
 }
 
 .ld-prompt-field {
@@ -1335,9 +1393,25 @@ svg.lucide {
   background: transparent;
   border: none;
   outline: none;
+  resize: none;
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 13.5px;
+  line-height: 1.45;
+  padding: 7px 0;
+  min-height: 34px;
+  margin: 0;
+  box-sizing: border-box;
+  overflow-y: hidden;
+}
+
+.composer-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  align-self: flex-end;
+  padding-bottom: 1px;
 }
 
 .ld-send-btn {
@@ -1345,7 +1419,7 @@ svg.lucide {
   height: 34px;
   border-radius: 10px;
   background: var(--accent);
-  border: none;
+  border: 1px solid rgba(var(--accent-rgb), 0.72);
   color: var(--accent-fg);
   display: flex;
   align-items: center;

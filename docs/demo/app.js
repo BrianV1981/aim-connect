@@ -1996,6 +1996,8 @@ const state = {
   modal: null,   // 'cmdk' | 'settings' | 'macros' | 'grab' | 'forensics' | 'delete-sess' | 'spawn-sess' | 'shot-markup' | null
   hudStep: 0,
   deferredPrompt: null,
+  composerDraft: '',
+  composerCustomHeight: null,
   sentMessages: {},
   stagedAttachments: {
     'aim-connect': [
@@ -5162,37 +5164,47 @@ function render() {
                   >
                     ${ICONS.zap}
                   </button>
-                  <div class="ld-input-box">
-                    <input
-                      type="text"
+                  <div class="ld-input-box" id="ld-input-box">
+                    <div
+                      class="composer-resize-handle"
+                      id="composer-resize-handle"
+                      role="separator"
+                      aria-orientation="horizontal"
+                      aria-label="Drag top-right corner to resize prompt box"
+                      title="Drag up/down to resize · Double-click to reset"
+                    ></div>
+                    <textarea
                       id="node-input"
+                      rows="1"
                       class="ld-prompt-field"
                       placeholder="${
                         state.micEnabled
                           ? `Listening on mic — speak directive for ${sess.name}...`
-                          : `Transmit directive to ${sess.name}... (Paste screenshot with Ctrl+V)`
+                          : `Transmit directive to ${sess.name}... (Enter send · Shift+Enter newline · Ctrl+V image)`
                       }"
                       autocomplete="off"
-                    />
-                    <button
-                      type="button"
-                      class="composer-icon-btn ${state.micEnabled ? 'mic-on' : ''}"
-                      data-act="toggle-mic"
-                      title="${state.micEnabled ? 'Voice Dictation ACTIVE (Click to Stop Mic)' : 'Voice Dictation OFF (Click to Start Mic)'}"
-                    >
-                      ${state.micEnabled ? ICONS.mic : ICONS.micOff}
-                    </button>
-                    <button
-                      type="button"
-                      class="composer-icon-btn ${state.speakEnabled ? 'speak-on' : ''}"
-                      data-act="toggle-speak"
-                      title="${state.speakEnabled ? 'Voice Spoken Summary ON (Click to Mute)' : 'Voice Spoken Summary OFF (Click to Enable & Speak)'}"
-                    >
-                      ${state.speakEnabled ? ICONS.volume : ICONS.volumeOff}
-                    </button>
-                    <button type="submit" class="ld-send-btn" title="Send Directive">
-                      ${ICONS.send}
-                    </button>
+                    >${escapeHtml(state.composerDraft || '')}</textarea>
+                    <div class="composer-actions-group">
+                      <button
+                        type="button"
+                        class="composer-icon-btn composer-mic-btn ${state.micEnabled ? 'mic-on' : ''}"
+                        data-act="toggle-mic"
+                        title="${state.micEnabled ? 'Voice Dictation ACTIVE (Click to Stop Mic)' : 'Voice Dictation OFF (Click to Start Mic)'}"
+                      >
+                        ${state.micEnabled ? ICONS.mic : ICONS.micOff}
+                      </button>
+                      <button
+                        type="button"
+                        class="composer-icon-btn composer-speak-btn ${state.speakEnabled ? 'speak-on' : ''}"
+                        data-act="toggle-speak"
+                        title="${state.speakEnabled ? 'Voice Spoken Summary ON (Click to Mute)' : 'Voice Spoken Summary OFF (Click to Enable & Speak)'}"
+                      >
+                        ${state.speakEnabled ? ICONS.volume : ICONS.volumeOff}
+                      </button>
+                      <button type="submit" class="ld-send-btn" title="Send Directive (Enter)">
+                        ${ICONS.send}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>
@@ -5883,6 +5895,8 @@ function bindInteractions() {
       const inp = document.getElementById('node-input');
       if (inp) {
         inp.value = `${inp.value ? `${inp.value} ` : ''}@${item.path} `;
+        state.composerDraft = inp.value;
+        syncMockComposerHeight(inp);
         inp.focus();
       }
     };
@@ -5934,6 +5948,8 @@ function bindInteractions() {
       const inp = document.getElementById('node-input');
       if (inp) {
         inp.value = `Review previous session ${item.id} (${item.session} — "${item.title}") at ${item.logPath}: `;
+        state.composerDraft = inp.value;
+        syncMockComposerHeight(inp);
         inp.focus();
       }
     };
@@ -5968,9 +5984,12 @@ function bindInteractions() {
         document.getElementById('node-composer')?.requestSubmit();
       } else if (key === 'BKSP' && inp) {
         inp.value = inp.value.slice(0, -1);
+        state.composerDraft = inp.value;
+        syncMockComposerHeight(inp);
         inp.focus();
       } else if (key.length === 1 && !state.kbCtrl && inp) {
         inp.value += key;
+        state.composerDraft = inp.value;
         if (state.kbShift === 1) state.kbShift = 0;
         inp.focus();
         render();
@@ -6910,8 +6929,44 @@ function bindInteractions() {
     };
   }
 
+  const syncMockComposerHeight = (el) => {
+    if (!el) return;
+    const minPx = 34;
+    const autoMaxPx = 140;
+    const maxPx = 260;
+    if (typeof state.composerCustomHeight === 'number' && Number.isFinite(state.composerCustomHeight)) {
+      const clamped = Math.max(minPx, Math.min(maxPx, Math.round(state.composerCustomHeight)));
+      el.style.height = `${clamped}px`;
+      el.style.overflowY = 'auto';
+      return;
+    }
+    el.style.height = '0px';
+    const measured = el.scrollHeight || minPx;
+    const next = Math.max(minPx, Math.min(autoMaxPx, measured));
+    el.style.height = `${next}px`;
+    el.style.overflowY = measured > autoMaxPx ? 'auto' : 'hidden';
+  };
+
   const promptInp = document.getElementById('node-input');
   if (promptInp) {
+    syncMockComposerHeight(promptInp);
+    promptInp.oninput = () => {
+      state.composerDraft = promptInp.value;
+      syncMockComposerHeight(promptInp);
+    };
+    promptInp.onkeydown = (ev) => {
+      if (
+        ev.key === 'Enter' &&
+        !ev.shiftKey &&
+        !ev.ctrlKey &&
+        !ev.metaKey &&
+        !ev.altKey &&
+        !ev.isComposing
+      ) {
+        ev.preventDefault();
+        document.getElementById('node-composer')?.requestSubmit();
+      }
+    };
     promptInp.onpaste = (ev) => {
       const items = ev.clipboardData?.items || [];
       for (const it of items) {
@@ -6939,6 +6994,37 @@ function bindInteractions() {
     };
   }
 
+  const resizeHandle = document.getElementById('composer-resize-handle');
+  const inputBox = document.getElementById('ld-input-box');
+  if (resizeHandle && promptInp) {
+    resizeHandle.onpointerdown = (ev) => {
+      if (ev.button !== undefined && ev.button !== 0) return;
+      ev.preventDefault();
+      const startH = promptInp.getBoundingClientRect().height || promptInp.offsetHeight || 34;
+      const startY = ev.clientY;
+      inputBox?.classList.add('is-resizing');
+      const onMove = (mv) => {
+        const next = Math.max(34, Math.min(260, Math.round(startH + (startY - mv.clientY))));
+        state.composerCustomHeight = next;
+        syncMockComposerHeight(promptInp);
+      };
+      const onUp = () => {
+        inputBox?.classList.remove('is-resizing');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    };
+    resizeHandle.ondblclick = (ev) => {
+      ev.preventDefault();
+      state.composerCustomHeight = null;
+      syncMockComposerHeight(promptInp);
+    };
+  }
+
   const form = document.getElementById('node-composer');
   if (form) {
     form.onsubmit = (e) => {
@@ -6957,6 +7043,7 @@ function bindInteractions() {
           },
         ];
         state.stagedAttachments[target] = [];
+        state.composerDraft = '';
         if (state.sessionAutoScroll || !state.chatScrolledUp) {
           state.lastScrolledSession = '';
           state.chatUnseenBelow = false;

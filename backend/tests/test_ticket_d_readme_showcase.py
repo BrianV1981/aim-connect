@@ -131,6 +131,22 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     assert "piper:en_GB-alan-medium" in app_js
     assert "WORKSPACE &amp; EDITOR" in app_js or "WORKSPACE & EDITOR" in app_js
 
+    # #289 / #290: Multi-row resizable textarea composer, Shift+Enter newline, & bordered Mic/Speaker controls
+    assert "<textarea" in app_js and 'id="node-input"' in app_js
+    assert "composer-resize-handle" in app_js and ".composer-resize-handle" in styles_css
+    assert "composer-actions-group" in app_js and ".composer-actions-group" in styles_css
+    assert "composer-mic-btn" in app_js and "composer-speak-btn" in app_js
+    assert "Shift+Enter" in app_js and "composerCustomHeight" in app_js
+    btn_block = styles_css.split(".composer-icon-btn {", 1)[1].split("}", 1)[0]
+    assert "border:" in btn_block and "transparent" not in btn_block
+
+    proto_dir = DEMO_DIR.parents[1] / "planning-artifacts" / "emerald-matrix-prototype"
+    if proto_dir.is_dir():
+        for fname in ("index.html", "styles.css", "app.js"):
+            assert (DEMO_DIR / fname).read_text(encoding="utf-8") == (proto_dir / fname).read_text(
+                encoding="utf-8"
+            ), f"docs/demo/{fname} and planning-artifacts/emerald-matrix-prototype/{fname} drifted"
+
 
 def test_readme_features_interactive_ecosystem_showcase_front_and_center():
     """#259: Interactive 12-Node / 40-Session A.I.M. Ecosystem Showcase must appear front-and-center at top of README.md."""
