@@ -125,6 +125,7 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     assert "bindStandaloneButtonScrambles" in app_js
     assert 'id="scramble-kb"' in app_js
     assert "prevTabsLeft" in app_js and "copilot-tabs-row" in app_js
+    assert "prevStreamTop" in app_js and "hop-bottom-fab" in app_js
 
     # Settings parity (#266, #222): Workspace & Editor card + Alan UK J.O.S.H.U.A. / JARVIS Piper voice
     assert "piper:en_GB-alan-medium" in app_js

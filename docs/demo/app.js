@@ -4467,6 +4467,9 @@ function render() {
   const prevTabsLeft = document.querySelector('.copilot-tabs-row')?.scrollLeft || 0;
   const prevFavLeft = document.querySelector('.cp-fav-bar')?.scrollLeft || 0;
   const prevFleetTop = document.querySelector('.fleet-scroll-list')?.scrollTop || 0;
+  const prevStreamTop = document.getElementById('live-stream-scroll')?.scrollTop || 0;
+  const prevWebShotTop = document.querySelector('.real-shot-canvas')?.scrollTop || 0;
+  const prevScrollCopyTop = document.getElementById('scrollcopy-pre')?.scrollTop || 0;
 
   const isHome = !state.activeSession;
   const sess = state.sessions.find((s) => s.name === state.activeSession) || state.sessions[0];
@@ -5032,11 +5035,13 @@ function render() {
                 }
 
                 ${
-                  !state.showHistory && !state.showScrollCopy && sess.isAgent !== false && state.chatScrolledUp
+                  !state.showHistory && !state.showScrollCopy && sess.isAgent !== false
                     ? `
                   <button
                     type="button"
+                    id="hop-bottom-fab"
                     class="hop-bottom-fab ${state.chatUnseenBelow ? 'has-unseen' : ''}"
+                    style="${state.chatScrolledUp ? '' : 'display:none;'}"
                     data-act="hop-to-bottom"
                     title="${state.chatUnseenBelow ? 'New reply below — hop to bottom' : 'Hop to bottom of session'}"
                   >
@@ -5585,6 +5590,14 @@ function render() {
   if (nextFavBar && prevFavLeft) nextFavBar.scrollLeft = prevFavLeft;
   const nextFleetList = document.querySelector('.fleet-scroll-list');
   if (nextFleetList && prevFleetTop) nextFleetList.scrollTop = prevFleetTop;
+  const nextStreamEl = document.getElementById('live-stream-scroll');
+  if (nextStreamEl && state.lastScrolledSession === state.activeSession && prevStreamTop) {
+    nextStreamEl.scrollTop = prevStreamTop;
+  }
+  const nextWebShot = document.querySelector('.real-shot-canvas');
+  if (nextWebShot && prevWebShotTop) nextWebShot.scrollTop = prevWebShotTop;
+  const nextScrollCopy = document.getElementById('scrollcopy-pre');
+  if (nextScrollCopy && prevScrollCopyTop) nextScrollCopy.scrollTop = prevScrollCopyTop;
 
   bindInteractions();
 }
@@ -6298,6 +6311,12 @@ function bindInteractions() {
         if (sc) sc.scrollTop = sc.scrollHeight;
         state.chatScrolledUp = false;
         state.chatUnseenBelow = false;
+        const fab = document.getElementById('hop-bottom-fab');
+        if (fab) {
+          fab.style.display = 'none';
+          fab.classList.remove('has-unseen');
+        }
+        return;
       }
       else if (act === 'flip-files-tree') {
         state.filesTreeSide = state.filesTreeSide === 'right' ? 'left' : 'right';
@@ -6986,7 +7005,11 @@ function bindInteractions() {
       if (!isUp && state.chatUnseenBelow) state.chatUnseenBelow = false;
       if (isUp !== state.chatScrolledUp) {
         state.chatScrolledUp = isUp;
-        render();
+        const fab = document.getElementById('hop-bottom-fab');
+        if (fab) {
+          fab.style.display = isUp ? 'inline-flex' : 'none';
+          fab.classList.toggle('has-unseen', Boolean(state.chatUnseenBelow));
+        }
       }
     };
   }
