@@ -1,9 +1,28 @@
-// Crisp Lucide 1.85px Geometric Line Icons (Zero Cartoon Emojis)
+// Crisp Lucide 1.85px Geometric Line Icons (Zero Cartoon Emojis — Emerald Matrix V4 #269)
 const ICONS = {
+  aimMark: `<svg class="lucide" style="width:18px;height:18px;" viewBox="0 0 24 24"><line x1="15.1" y1="6.9" x2="18.3" y2="10.6" stroke="var(--accent)" stroke-width="1.9"/><line x1="15.1" y1="17.1" x2="18.3" y2="13.4" stroke="var(--accent)" stroke-width="1.9"/><path d="M 7.8 9.4 C 10.6 9.7, 13.8 9.2, 13.8 7.3" stroke="var(--accent)" stroke-width="1.9"/><path d="M 8.1 14.2 C 10.9 12, 14.3 12, 17.5 12" stroke="var(--accent)" stroke-width="1.9"/><path d="M 11.2 12.5 C 13.1 13, 13.8 14.6, 13.8 16.7" stroke="var(--accent)" stroke-width="1.8"/><polyline points="4.6 6.2 10.2 12 4.6 17.8" stroke="var(--accent-secondary)" stroke-width="2.2"/><circle cx="13.8" cy="5.4" r="1.85" fill="var(--bg-canvas)" stroke="var(--accent)" stroke-width="1.9"/><circle cx="19.4" cy="12" r="1.85" fill="var(--bg-canvas)" stroke="var(--accent)" stroke-width="1.9"/><circle cx="13.8" cy="18.6" r="1.85" fill="var(--bg-canvas)" stroke="var(--accent)" stroke-width="1.9"/></svg>`,
   terminal: `<svg class="lucide" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
   sidebar: `<svg class="lucide" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`,
+  panelRight: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>`,
+  menu: `<svg class="lucide" style="width:14px;height:14px;" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`,
   globe: `<svg class="lucide" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
   files: `<svg class="lucide" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>`,
+  folder: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>`,
+  bookOpen: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+  pin: `<svg class="lucide" style="width:11px;height:11px;" viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>`,
+  code: `<svg class="lucide" style="width:11px;height:11px;" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
+  image: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`,
+  audio: `<svg class="lucide" style="width:16px;height:16px;" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+  video: `<svg class="lucide" style="width:14px;height:14px;" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect width="15" height="14" x="1" y="5" rx="2"/></svg>`,
+  fileBinary: `<svg class="lucide" style="width:16px;height:16px;" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12h4v6h-4z"/></svg>`,
+  message: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  grid: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>`,
+  arrowUp: `<svg class="lucide" style="width:11px;height:11px;" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`,
+  arrowDown: `<svg class="lucide" style="width:13px;height:13px;" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`,
+  arrowDownToLine: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg>`,
+  chevronRight: `<svg class="lucide" style="width:11px;height:11px;" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>`,
+  eyeOff: `<svg class="lucide" style="width:12px;height:12px;" viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`,
+  alert: `<svg class="lucide" style="width:13px;height:13px;" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
   split: `<svg class="lucide" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>`,
   search: `<svg class="lucide" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
   zap: `<svg class="lucide" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
@@ -92,54 +111,53 @@ const INITIAL_SESSIONS = [
     compacted: 0,
     browserTabId: 'tab-connect',
     color: { hex: '#eab308', rgb: '234, 179, 8', label: 'Gold' },
-    preview: 'Gen #10 active · 195/195 pytest · 3FA + CDP live',
+    preview: 'Gen #10 active · 255/255 pytest · #260–#282 live',
     priorTurns: [
       {
-        user: 'Picked up from Gen #09 (d94b8c7f). First check git status and confirm 193/193 backend tests pass before we open worktrees for #253 and #254.',
+        user: 'Picked up from Gen #09 (d94b8c7f). Verify baseline services and run full pytest before opening worktrees.',
         tools: [
           'Read(HANDOFF.md) · loaded Gen #09 baton in 12ms',
-          'pytest -q -> 193 passed in 2.18s · clean master @ 409d12a',
+          'pytest -q -> 255 passed · 0 oxlint errors · master @ f67ea00',
         ],
-        spoken: 'Loaded the Generation 9 handoff cleanly. All 193 backend tests are green on master and ready for isolated worktrees.',
+        body: 'Baseline verified on `master @ f67ea00` (**255/255 pytest**, `0` `oxlint` warnings). Loaded [HANDOFF.md](file:///HANDOFF.md) and [browser_copilot_architecture.md](file:///memory-wiki/pages/browser_copilot_architecture.md).',
+        spoken: 'Loaded the handoff cleanly. All 255 backend tests and shareability checks are green on master.',
       },
       {
-        user: 'Spawn ./aim fix 253 and ./aim fix 254. Every leased browser tab needs its owning agent color border, and the split-pane divider needs smooth pointer drag.',
+        user: 'Ship the 2-column flippable/resizable FILES IDE with DOCS 1-TAB reader (#262, #266, #267) and inline Audio/Video media player (#270).',
         tools: [
-          './aim fix 253 && ./aim fix 254 -> workspace/issue-253, workspace/issue-254',
-          'Edit(frontend/src/components/BrowserPane.jsx, App.jsx) · session color borders + col-resize divider',
-          'aim promote (#253, #254, #255) -> master @ 7d923ee · 195 passed in 2.31s',
+          './aim fix 262 && ./aim fix 270 -> workspace/issue-262, workspace/issue-270',
+          'Edit(frontend/src/components/FileExplorer.jsx, backend/routes_files.py) · HTTP 206 Range + 1-TAB docs',
+          'aim promote (#262, #266, #267, #270) -> 243 passed · 0 oxlint errors',
         ],
-        spoken: 'Shipped and promoted issues 253, 254, and 255 to master with 195 passing tests and colored browser lease borders.',
+        body: 'Shipped the collapsible **Left/Right `FILES` Explorer** (`RIGHT →` / `← LEFT`), `📖 DOCS` **`1-TAB: ON/OFF`** reader, and `250 MB` HTML5 Audio/Video Range player in [App.jsx](file:///frontend/src/App.jsx).',
+        spoken: 'Shipped the flippable two-column Files IDE, single-tab Project Docs reader, and inline audio and video Range player.',
       },
       {
-        user: 'Is the find button the same as the command palette or do they serve 2 different purposes? I tested find and when I scroll up a page or 2 it misses off-screen words.',
+        user: 'Add the <canvas> Visual Markup Studio (#273/#276) with ①②③ callout pins + WHITE/BLACK contrast halos, Discord Hop-to-Bottom ↓ (#277), and 6-pill THINKING/NEW Fleet filters (#281).',
         tools: [
-          'Read(frontend/src/components/TerminalPane.jsx, App.jsx) · verified xterm-addon-search vs tmux server scrollback',
+          'Edit(ShotMarkupModal.jsx, LiveTranscriptStage.jsx, FleetSidebar.jsx) · 6 inks + Hop-to-Bottom FAB + THINKING/NEW pills',
+          'pytest -q -> 251 passed · verified contrast halos on dark & light screenshots',
         ],
-        spoken: 'They serve different jobs: Command Palette jumps across sessions and commands, while Find only searched the visible 45 xterm rows because tmux holds scrollback server-side. Moving search into Scroll/Copy searches all 2,000 off-screen lines.',
+        body: 'Wired **Visual Markup Studio** (`① PIN`, `⭕ CIRCLE`, `▢ BOX`, `↘ ARROW`, `🖍 PEN` across `FIX`, `KEEP`, `INFO`, `MOVE`, `WHITE`, `BLACK`), OFF-by-default Auto-Scroll + floating **`↓` Hop-to-Bottom**, and Fleet `THINKING` / `NEW` pills.',
+        spoken: 'Added the Visual Markup Studio with six halo-guarded inks, the Discord-style hop-to-bottom button, and Thinking and New Fleet filters.',
       },
       {
-        user: 'Put the Macro Settings button on the Voice & Neural TTS tab too with a note about custom spoken voice macros, and let me highlight my operator replies in cyan/gold and move my dot to the right.',
+        user: 'Lock Split View to widescreen (>900px) so mobile stays 100% Full View (#279/#280), fix Browser punctuation VKs (#278), and wire waitingForHuman into 1-click TAKE CONTROL & 2FA / RESUME AGENT (#274/#275).',
         tools: [
-          'Edit(scratch/facelift-prototype/app.js, styles.css) · added Custom Voice Macros card + Operator Cyan/Right chat alignment',
+          'Edit(BrowserPane.jsx, routes_browser.py, routes_sessions.py) · .leases.lock + hud.byTarget + clear-human',
+          'aim promote (#274, #275, #278–#282) -> master @ f67ea00 · 255/255 passed',
         ],
-        spoken: 'Added the Custom Voice Macros spotlight card inside Voice settings and wired the Operator reply highlight and right-aligned chat dot.',
-      },
-      {
-        user: 'Add sessions without an open browser, non-agent split tmux server sessions like aim-connect-workspace and leaddeeds-motion-vault, and make History render every single turn cleanly.',
-        tools: [
-          'tmux list-sessions · inspected live 4-window aim-connect-workspace & leaddeeds-motion-vault topology',
-          'Wired 12-node fleet (7 browser-leased, 3 CLI-only agents, 2 split-tmux server nodes) + 100% full-turn History viewer',
-        ],
-        spoken: 'Added non-browser CLI agents, live split-pane tmux server workspaces, and full turn-by-turn transcripts across all History generations.',
+        body: 'Promoted `#274`–`#282` to `master @ f67ea00`:\n- **Browser Handoff (`#275`):** `waitingForHuman` pulses the leased tab amber, elevates Fleet to `WAITING` (`BROWSER 2FA / LOGIN`), and surfaces **`TAKE CONTROL & 2FA`** + **`RESUME AGENT`**.\n- **Mobile Full-View (`#279`/`#280`):** `effectiveSplitMode` (`>900px`) keeps mobile `100%` Full View with zero header overlap.\n- **Analyst Engine (`#268`):** Native zero-`tmux` Python JOSHUA engine live in [routes_joshua_analyst.py](file:///backend/routes_joshua_analyst.py).',
+        spoken: 'Promoted issues 274 through 282 to master with 255 passing tests, full mobile ergonomics, and one-click 2FA browser takeover and resume.',
       },
     ],
-    userPrompt: 'Verify all 12 Fleet nodes, confirm non-browser sessions open cleanly in full terminal/tmux view, and check that every History card expands 100% of its recorded turns.',
+    userPrompt: 'Verify all 12 Fleet nodes, confirm [CHAT VIEW | RAW TERM], DOCS 1-TAB, Visual Markup Studio, and 1-click 2FA Takeover all match live master @ f67ea00.',
     tools: [
-      'node --check app.js · verified 39 sealed/live generations + 4-pane tmux server grid + 0 moat/PII leaks',
+      'pytest -q -> 255 passed in 2.41s · 0 oxlint errors · 0 moat/PII leaks',
     ],
+    body: '### Live System Sync Complete (`master @ f67ea00`)\n- **Test Suite:** `255 passed, 0 failed` (`0` `oxlint` warnings)\n- **Try Live Controls:** Click any `[file](file:///...)` pill like [HANDOFF.md](file:///HANDOFF.md) or [call_727_555_0194_harper.wav](file:///recordings/call_727_555_0194_harper.wav) to preview Markdown or play audio in `FILES`, click **`✏️`** on the staged screenshot chip below to open **Visual Markup Studio**, or test **`TAKE CONTROL & 2FA`** in the Browser pane.',
     spoken:
-      'Generation 10 is idle at 18.4 percent context with all twelve fleet nodes—including non-browser CLI agents and split-pane tmux server sessions—verified.',
+      'Generation 10 is live on master with all 255 backend tests green, structured Markdown chat view, two-column Files IDE, Visual Markup Studio, and one-click browser 2FA handoff.',
   },
   {
     name: 'aim-connect-workspace',
@@ -519,9 +537,9 @@ const INITIAL_SESSIONS = [
         pid: '418940',
         lines: [
           'operator@sovereign-node:~/aim-ld$ ls -lh artifacts/motion-vault/*.webm',
-          '-rw-r--r-- 1 kingb kingb 4.8M Nov 22 09:42 hero_pipeline_cutaway_60fps.webm',
-          '-rw-r--r-- 1 kingb kingb 2.9M Nov 22 09:43 entity_graph_zoom_60fps.webm',
-          '-rw-r--r-- 1 kingb kingb 3.4M Nov 22 09:44 mcp_sse_terminal_demo_60fps.webm',
+          '-rw-r--r-- 1 operator operator 4.8M Nov 22 09:42 hero_pipeline_cutaway_60fps.webm',
+          '-rw-r--r-- 1 operator operator 2.9M Nov 22 09:43 entity_graph_zoom_60fps.webm',
+          '-rw-r--r-- 1 operator operator 3.4M Nov 22 09:44 mcp_sse_terminal_demo_60fps.webm',
           'operator@sovereign-node:~/aim-ld$ sha256sum -c artifacts/motion-vault/SHA256SUMS',
           'hero_pipeline_cutaway_60fps.webm: OK · entity_graph_zoom_60fps.webm: OK · mcp_sse_terminal_demo_60fps.webm: OK',
         ],
@@ -731,13 +749,17 @@ const INITIAL_BROWSER_TABS = [
   },
   {
     id: 'tab-tb',
-    title: 'Tampa Bay Soft Wash // Clearwater & Tampa FL',
+    title: 'Tampa Bay Soft Wash // Staging & 2FA Gate',
     url: 'https://tbsoftwash.com',
     agentKey: 'aim-tbsoftwash',
-    sublabel: 'gate-hold',
-    hudBadge: 'WAITING · APPROVAL GATE [y/n]',
+    sublabel: '2fa-hold',
+    hudBadge: 'WAITING · BROWSER 2FA / DEPLOY GATE',
     color: { hex: '#ef4444', rgb: '239, 68, 68' },
     isWorking: false,
+    waitingForHuman: {
+      reason: 'Complete Cloudflare Access 2FA code before promoting fix/issue-231',
+      requestedAt: Date.now() - 45000,
+    },
     kind: 'tbsoftwash',
   },
   {
@@ -790,11 +812,29 @@ const INITIAL_BROWSER_TABS = [
     url: 'https://github.com/BrianV1981/aim-connect',
     agentKey: 'aim-connect',
     sublabel: 'idle-lease',
-    hudBadge: 'IDLE · LEASE HELD (0% CPU)',
+    hudBadge: 'IDLE · LEASE HELD (255/255 PYTEST)',
     color: { hex: '#eab308', rgb: '234, 179, 8' },
     isWorking: false,
+    waitingForHuman: null,
     kind: 'github-connect',
   },
+];
+
+const MARKUP_COLORS = [
+  { id: 'red', hex: '#FF3B5C', short: 'FIX', label: 'Fix / Bug / Delete', neutral: false },
+  { id: 'emerald', hex: '#00FFA3', short: 'KEEP', label: 'Keep / Match Style', neutral: false },
+  { id: 'cyan', hex: '#00B8FF', short: 'INFO', label: 'Question / Inspect', neutral: false },
+  { id: 'amber', hex: '#FBBF24', short: 'MOVE', label: 'Move / Resize / Layout', neutral: false },
+  { id: 'white', hex: '#FFFFFF', short: 'WHITE', label: 'Neutral White Ink', neutral: true },
+  { id: 'black', hex: '#111827', short: 'BLACK', label: 'Neutral Black Ink', neutral: true },
+];
+
+const MARKUP_TOOLS = [
+  { id: 'pin', label: '① PIN', hint: 'Tap to drop numbered callout (or drag directional arrow)' },
+  { id: 'circle', label: '⭕ CIRCLE', hint: 'Drag ellipse around target' },
+  { id: 'rect', label: '▢ BOX', hint: 'Drag rectangle around target' },
+  { id: 'arrow', label: '↘ ARROW', hint: 'Drag directional pointer arrow' },
+  { id: 'pen', label: '🖍 PEN', hint: 'Draw freehand stroke' },
 ];
 
 const SCROLLBACK_TOKENS = [
@@ -803,10 +843,10 @@ const SCROLLBACK_TOKENS = [
   { type: 'url', value: 'https://academy.tbsoftwash.com/course?token=magic_991a', display: 'https://academy.tbsoftwash.com/course?token=***', redacted: true },
   { type: 'url', value: 'https://mcp.leaddeeds.com/sse', display: 'https://mcp.leaddeeds.com/sse', redacted: false },
   { type: 'path', value: 'frontend/src/components/BrowserPane.jsx', display: 'frontend/src/components/BrowserPane.jsx', redacted: false },
-  { type: 'path', value: 'backend/routes_browser.py', display: 'backend/routes_browser.py', redacted: false },
+  { type: 'path', value: 'backend/routes_joshua_analyst.py', display: 'backend/routes_joshua_analyst.py', redacted: false },
   { type: 'ip', value: '127.0.0.1:9222', display: '127.0.0.1:9222 (CDP Screencast)', redacted: false },
   { type: 'ip', value: '0.0.0.0:8000', display: '0.0.0.0:8000 (FastAPI Orchestrator)', redacted: false },
-  { type: 'sha', value: '7d923ee', display: '7d923ee (aim-connect · #255 colored session pills)', redacted: false },
+  { type: 'sha', value: 'f67ea00', display: 'f67ea00 (aim-connect · #274–#282 Browser 2FA & Fleet Filters)', redacted: false },
   { type: 'sha', value: 'a6d8ea67', display: 'a6d8ea67 (aim-ld · Website v2 Emerald Matrix launch)', redacted: false },
 ];
 
@@ -820,7 +860,7 @@ const FORENSIC_TURNS = [
         name: 'run_command (aim-browser)',
         exit: 0,
         duration: '384ms',
-        args: 'aim-browser --tab v2-live --open "https://www.leaddeeds.com" --ax-tree',
+        args: 'aim-browser --tab v2-live --open "https://www.leaddeeds.com" --snapshot --json',
         stdout: 'targetId=9F2B1104 · lease=aim-ld/v2-live · 14/14 routes HTTP 200 · FIG 1.0 + $150->$30 Seat Ladder verified',
       },
       {
@@ -835,90 +875,203 @@ const FORENSIC_TURNS = [
   {
     id: 'turn-18',
     step: 'STEP 18 · 00:56:40',
-    prompt: 'Verify tbsoftwash.com quote builder + 36m recall cadence and aim-connect pytest suite.',
+    prompt: 'Verify waitingForHuman 2FA takeover (#275), Visual Markup Studio (#273/#276), and full 255-test suite.',
     tools: [
       {
         name: 'run_command (pytest)',
         exit: 0,
-        duration: '2.31s',
+        duration: '2.41s',
         args: '~/aim-connect/backend/venv/bin/pytest -q',
-        stdout: '195 passed in 2.31s (commit 7d923ee)',
+        stdout: '255 passed in 2.41s (commit f67ea00 · 0 oxlint errors)',
       },
     ],
   },
 ];
 
 const FTS5_HITS = [
+  { source: 'fts5', session: 'aim-connect', when: 'Today · 18:13', snippet: 'Promoted #274, #275, #278–#282 to master @ f67ea00 (255/255 pytest): 1-click TAKE CONTROL & 2FA, THINKING/NEW Fleet filters, Mobile Full-View.' },
   { source: 'fts5', session: 'aim-ld', when: 'Today · 01:03', snippet: 'Promoted Website v2 (#539 / PR #540) to www.leaddeeds.com · 14/14 routes HTTP 200 · 726/726 pytest.' },
-  { source: 'fts5', session: 'aim-tbsoftwash', when: 'Today · 00:58', snippet: 'Closed 11/11 audit items (Grade A+) across 40 Tampa Bay city pages + 36m roof & Trident paver recall.' },
-  { source: 'brain', session: 'aim-connect', when: 'memory-wiki/ui-facelift.md', snippet: 'Emerald Matrix palette (#050505 + #00FFA3 + #00B8FF) unified with leaddeeds.com + embedded CDP.' },
+  { source: 'brain', session: 'aim-connect', when: 'memory-wiki/pages/browser_copilot_architecture.md', snippet: 'Stale-PID .leases.lock + per-target hud.byTarget[targetId] + waitingForHuman -> Fleet WAITING chimes (#274/#275).' },
   { source: 'brain', session: 'tbsoftwash-academy', when: 'memory-wiki/academy_architecture.md', snippet: '16 Core & Springboard quizzes, 186-SKU rig builder, and /verify/TBSA-2026 live on Vercel.' },
 ];
 
 const INITIAL_SWARM_FEED = [
   { from: 'aim-joshua', to: 'aim-ld', time: '01:01:14', msg: 'LanceDB hybrid index refreshed (312 chunks). SEC EDGAR & Slot 13 vectors ready.' },
-  { from: 'aim-auditor', to: 'aim-tbsoftwash', time: '00:54:09', msg: 'Audit Pass 5 signed off at Grade A+ across tbsoftwash.com and academy.tbsoftwash.com.' },
+  { from: 'aim-auditor', to: 'aim-connect', time: '00:54:09', msg: 'Verified 255/255 pytest + 0 oxlint errors + Option 1A /analyst SQLite C-level set_authorizer (#268).' },
 ];
 
+// Exact 8 Production TTS Voices from SettingsModal.jsx (#222–#224)
 const TTS_VOICES = [
-  { id: 'piper:en_US-lessac-medium', label: 'Offline Piper — Lessac Medium (Local Zero-Cloud)' },
-  { id: 'piper:en_US-ryan-high', label: 'Offline Piper — Ryan High (Executive Baritone)' },
-  { id: 'piper:en_US-amy-medium', label: 'Offline Piper — Amy Medium (Local Crisp)' },
-  { id: 'edge:en-US-ChristopherNeural', label: 'Cloud Edge — Christopher Neural' },
-  { id: 'edge:en-US-AriaNeural', label: 'Cloud Edge — Aria Neural' },
-  { id: 'edge:en-US-GuyNeural', label: 'Cloud Edge — Guy Neural' },
-  { id: 'browser:default', label: 'Browser Native — System Default' },
-  { id: 'browser:en-GB', label: 'Browser Native — English (UK)' },
+  { id: 'piper:en_GB-alan-medium', label: 'Offline Piper — Alan (UK J.O.S.H.U.A. / JARVIS)' },
+  { id: 'piper:en_US-ryan-medium', label: 'Offline Piper — Ryan (US Male)' },
+  { id: 'piper:en_US-lessac-medium', label: 'Offline Piper — Lessac (US Female)' },
+  { id: 'edge:en-GB-RyanNeural', label: 'Edge Neural — Ryan (UK J.O.S.H.U.A. / JARVIS)' },
+  { id: 'edge:en-US-BrianNeural', label: 'Edge Neural — Brian (US Male)' },
+  { id: 'edge:en-US-AndrewNeural', label: 'Edge Neural — Andrew (US Warm Male)' },
+  { id: 'edge:en-US-AvaNeural', label: 'Edge Neural — Ava (US Female)' },
+  { id: 'browser:default', label: 'Browser Native Speech API' },
 ];
 
 const FILES_DB = {
   'HANDOFF.md': {
-    brain: true,
+    type: 'file',
+    isDoc: true,
+    coreDoc: 'HANDOFF',
     status: 'M',
-    code: `# AIM-CONNECT // SOVEREIGN NODE HANDOFF
-0. TACTICAL STATE: Master @ 7d923ee (195/195 pytest · 38/38 Jest)
-1. UI FACELIFT: LeadDeeds Emerald Matrix V2 prototype at 100% feature parity
-2. MACRO ENGINE: All 18 control/command defaults + Global Server Sync + Voice Triggers
-3. NEXT GATE: Operator sign-off -> Phased GitOps worktrees (#256+)`,
-    oldDiff: `- Header buttons: 16 mixed emoji pills
-- Macros: 17 horizontal buttons overlapping split pane
-- Theme: Hardcoded Navy #0B162C`,
-    newDiff: `+ Frosted 50px LeadDeeds IDE bar (half-screen coherent)
-+ Bolt Quick-Actions + Control Keypad + Full Macro Studio
-+ 4 Semantic Themes (Emerald, Pure OLED, Daylight Crisp, Navy)`,
+    code: `# AIM-CONNECT — Engineering Handoff
+
+> **Updated:** 2026-11-23 · **Master:** \`f67ea00\` (\`255 passed\`, \`0\` \`oxlint\` errors)
+
+## 0. COMPLETED WORK
+- **\`#274\`, \`#275\`, \`#278\`–\`#282\`:** Browser \`.leases.lock\` + \`hud.byTarget\`, \`waitingForHuman\` -> **\`TAKE CONTROL & 2FA\`** / **\`RESUME AGENT\`**, widescreen \`effectiveSplitMode\` (\`>900px\`), & \`THINKING\`/\`NEW\` Fleet filters.
+- **\`#262\`, \`#270\`–\`#273\`, \`#276\`, \`#277\`:** \`DOCS\` \`1-TAB\` reader, inline Audio/Video Range player, \`<canvas>\` Visual Markup Studio (6 inks), & Discord \`↓\` Hop-to-Bottom.
+- **\`#268\`:** Native Zero-\`tmux\` Python \`/analyst\` JOSHUA Engine ([routes_joshua_analyst.py](file:///backend/routes_joshua_analyst.py)).
+
+## 1. KNOWLEDGE BASE LINKS
+- Read [AGENTS.md](file:///AGENTS.md) or [browser_copilot_architecture.md](file:///memory-wiki/pages/browser_copilot_architecture.md) in place via \`1-TAB: ON\`.`,
+    oldDiff: `- Master @ 7d923ee (195 passed)
+- Flat 1-column Files viewer
+- 4 Fleet filter chips`,
+    newDiff: `+ Master @ f67ea00 (255 passed, 0 oxlint errors)
++ 2-column Left/Right Files IDE + DOCS 1-TAB + Audio/Video Range player
++ 6 Fleet filter pills (ALL · THINKING · NEW · NO WEB · TMUX · CTX >=30%)`,
+  },
+  'README.md': {
+    type: 'file',
+    isDoc: true,
+    coreDoc: 'README',
+    status: 'M',
+    code: `# AIM-Connect — Own your stack. Don't rent a seat.
+
+**A Clientless, Sovereign Web Terminal, Co-Pilot Browser & AI Agent Fleet Cockpit.**
+
+- **Emerald Matrix V4 (\`4\` Synced Color Schemes):** Obsidian \`#050505\` + \`#00FFA3\`, Pure OLED, Daylight Crisp, & Classic AIM Navy.
+- **Co-Pilot Browser (\`--headless=new\` CDP \`:9222\`):** Multi-subagent \`--tab\` leasing, \`<5ms\` zero-VLM Site Maps, **\`TAKE CONTROL & 2FA\`** handoffs, and \`<canvas>\` **Visual Markup Studio**.
+- **2-Column Web IDE & Media Suite:** Left/Right flippable tree, \`DOCS\` \`1-TAB\` reader, Monaco \`DiffEditor\`, and \`250 MB\` Audio/Video Range streaming.`,
+    oldDiff: `- Legacy single-tab terminal README`,
+    newDiff: `+ Full Emerald Matrix V4 + Co-Pilot Browser + Visual Markup Studio guide`,
   },
   'AGENTS.md': {
-    brain: true,
+    type: 'file',
+    isDoc: true,
+    coreDoc: 'AGENTS',
     status: '',
-    code: `# J.O.S.H.U.A. — Joint Operational Systems for Heuristic User Automation
-- Designation: J.O.S.H.U.A.
-- Operator: Brian Vasquez (@BrianV1981)
-- Mandates: GitOps Worktrees (./aim fix), TDD First, Local-Only Memory Wiki`,
+    code: `# J.O.S.H.U.A. — Sovereign Operating System Mandates
+
+1. **Identity:** J.O.S.H.U.A. operating on behalf of Operator Brian Vasquez (\`@BrianV1981\`).
+2. **GitOps Worktrees:** Never code on \`master\`; isolate every ticket via \`./aim fix <id>\` and TDD first.
+3. **30% Context Baton Pass:** Seal session blackbox and hand off cleanly via \`/aim-handoff\` well before the \`512k\` AGY cliff.
+4. **Spoken Summary (\`🔊\`):** End every turn with a plain-English \`🔊\` summary for Piper / Edge Neural TTS.`,
     oldDiff: `- Context cliff: 30% flat`,
     newDiff: `+ Dual AGY 30% Save/Handoff + 51.2% (512k) Compaction Cliff`,
   },
   'memory-wiki/index.md': {
-    brain: true,
-    status: 'M',
-    code: `# Memory Wiki Index (Local-Only Sovereign Knowledge)
-- [architecture/emerald-matrix.md] LeadDeeds #050505 + #00FFA3 design tokens
-- [browser/cdp-leasing.md] Multi-subagent targetId isolation & session colors
-- [security/3fa-e2ee.md] TOTP + WebAuthn Passkeys + PBKDF2 AES-GCM WebSocket`,
+    type: 'file',
+    isDoc: true,
+    wikiDoc: true,
+    status: '',
+    code: `# Project Memory Wiki Index (Local-Only Sovereign Knowledge)
+
+- [browser_copilot_architecture.md](file:///memory-wiki/pages/browser_copilot_architecture.md) — CDP \`:9222\` split-pane, \`.leases.lock\`, \`hud.byTarget\`, & \`waitingForHuman\` 2FA takeover (\`#240\`–\`#278\`)
+- [Frontend Cockpit App.jsx](file:///frontend/src/App.jsx) — \`[CHAT VIEW | RAW TERM]\`, \`effectiveSplitMode\`, & Hop-to-Bottom \`↓\`
+- [Native Analyst Engine](file:///backend/routes_joshua_analyst.py) — Zero-\`tmux\` Python SSE + C-level \`sqlite3.set_authorizer\` (\`#268\`)`,
     oldDiff: `- Last indexed: 298 chunks`,
     newDiff: `+ Last indexed: 312 chunks (BM25 + LanceDB vector)`,
   },
-  'src/emerald-theme.css': {
-    brain: false,
+  'memory-wiki/pages/browser_copilot_architecture.md': {
+    type: 'file',
+    isDoc: true,
+    wikiDoc: true,
+    status: 'M',
+    code: `# Co-Pilot Browser Split-Pane & Zero-VLM Self-Healing Site Maps
+
+## 1. Multi-Subagent \`targetId\` Leasing & Per-Target HUD (\`#274\`)
+- Subagents pass \`--tab <lease>\` (\`stealFocus: false\`) so parallel workers never hijack the Operator's active tab.
+- \`hud.byTarget[activeTargetId]\` isolates live cursor pills per tab while \`.leases.lock\` prevents concurrent write clobbers.
+
+## 2. Human-in-the-Loop 2FA Takeover (\`#275\`)
+- \`--request-human "<reason>"\` flags \`waitingForHuman\` in \`leases.json\`, fires Fleet \`WAITING\` chimes, and renders **\`TAKE CONTROL & 2FA\`** + **\`RESUME AGENT\`**.`,
+    oldDiff: `- Single global hud.json slot`,
+    newDiff: `+ Stale-PID .leases.lock + per-target hud.byTarget + clear-human 3FA route`,
+  },
+  'frontend/src/App.jsx': {
+    type: 'file',
+    status: 'M',
+    code: `// Emerald Matrix V4 Cockpit Shell (#256–#281)
+const isWidescreen = window.innerWidth > 900;
+const effectiveSplitMode = splitMode && isWidescreen;
+
+// Reconcile background unread queue when agent resumes THINKING (#281)
+const nextUnread = reconcileUnreadSessions(prevUnread, fleet, activeSession);
+
+// Discord-style parked reading mode: Auto-Scroll OFF by default (#277)
+const [sessionAutoScroll, setSessionAutoScroll] = useState(false);`,
+    oldDiff: `- const effectiveSplitMode = splitMode;`,
+    newDiff: `+ const effectiveSplitMode = splitMode && window.innerWidth > 900;`,
+  },
+  'backend/routes_joshua_analyst.py': {
+    type: 'file',
     status: 'A',
-    code: `:root[data-theme="emerald"] {
-  --bg-canvas: #050505;
-  --accent: #00FFA3;           /* LeadDeeds Signature Mint */
-  --accent-secondary: #00B8FF; /* Cyber Cyan */
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-}`,
-    oldDiff: `/* New semantic theme token sheet */`,
-    newDiff: `+ :root[data-theme="emerald"] { --bg-canvas: #050505; --accent: #00FFA3; }`,
+    code: `# Option 1A Native Zero-tmux Python JOSHUA Engine (#268)
+SAFE_MASTER_COLUMNS = frozenset({
+    "folio", "site_address", "city", "zip", "owner_name", "officer_phone"
+})
+
+def _install_ro_authorizer(conn: sqlite3.Connection) -> None:
+    """Enforce C-level SQLITE_READ / SQLITE_IGNORE column allowlist."""
+    conn.set_authorizer(_master_db_authorizer)`,
+    oldDiff: `# New native /analyst engine`,
+    newDiff: `+ Streaming SSE /api/joshua/chat + 11 workspace tools + 250/mo quota metering`,
+  },
+  'docs/screenshots/emerald-matrix-arch.svg': {
+    type: 'image',
+    dims: '1280 × 720',
+    size: '48.2 KB',
+    status: '',
+    code: '',
+    oldDiff: '',
+    newDiff: '',
+  },
+  'recordings/call_727_555_0194_harper.wav': {
+    type: 'audio',
+    mimeType: 'audio/wav',
+    duration: '00:04',
+    size: '176.4 KB',
+    status: '',
+    code: '',
+    oldDiff: '',
+    newDiff: '',
+  },
+  'artifacts/copilot_hud_demo.mp4': {
+    type: 'video',
+    mimeType: 'video/mp4',
+    dims: '1440 × 900',
+    duration: '00:15',
+    size: '4.80 MB',
+    status: '',
+    code: '',
+    oldDiff: '',
+    newDiff: '',
+  },
+  'engrams/joshua_core.engram': {
+    type: 'binary',
+    mimeType: 'application/octet-stream',
+    size: '4.20 MB',
+    errorReason: 'Portable Datajack Parquet Cartridge (312 hybrid BM25 + vector chunks, SHA-256 sealed). Binary/non-UTF-8 bytes cannot be edited as plain text in Monaco — download or copy path below.',
+    status: '',
+    code: '',
+    oldDiff: '',
+    newDiff: '',
+  },
+  '.env.example': {
+    type: 'file',
+    dotfile: true,
+    status: '',
+    code: `# Sovereign Environment Template (Hidden when Dotfile Filter is ON)
+AIM_PUBLIC_URL=https://localhost:8000
+ALLOWED_IPS=127.0.0.1,198.51.100.42`,
+    oldDiff: '',
+    newDiff: '',
   },
 };
 
@@ -943,11 +1096,11 @@ const SESSION_HISTORY_REINCARNATIONS = [
     isCurrent: true,
     turns: 24,
     tokens: '184k (18.4%)',
-    title: 'Emerald Matrix Ecosystem Showcase, Colored Browser Pills & Draggable Split Resizer (#253–#255)',
+    title: 'Emerald Matrix V4, 2-Column Files/Media IDE, Visual Markup Studio & 1-Click 2FA Handoff (#256–#282)',
     logPath: '~/.gemini/antigravity-cli/brain/1f1f1dbb-0324-4f49-94e4-e6952cc9e3c1/.system_generated/logs/transcript.jsonl',
     sampleTurns: [
-      { role: 'OPERATOR', text: 'Promote the full A.I.M. Ecosystem—show 10-session project history, custom voice macros, aim-calendar caller recall, aim-joshua, and aim-youtube.' },
-      { role: 'J.O.S.H.U.A.', text: 'Shipped #253–#255 (195/195 pytest) and wired 40 multi-generation history records, 120fps sliders, and live ecosystem tabs.' },
+      { role: 'OPERATOR', text: 'Ship the 2-column Files IDE, DOCS 1-TAB reader, Visual Markup Studio, Discord Hop-to-Bottom, and 1-click Browser 2FA Takeover.' },
+      { role: 'J.O.S.H.U.A.', text: 'Promoted #256–#282 to master @ f67ea00 (255/255 pytest, 0 oxlint errors) with full Desktop & 390px Full-View Mobile parity.' },
     ],
   },
   {
@@ -1739,15 +1892,23 @@ const state = {
   operatorStyle: localStorage.getItem('proto-op-style') || 'cyan', // 'cyan' | 'gold' | 'emerald' | 'grey'
   operatorSide: localStorage.getItem('proto-op-side') || 'right',  // 'right' | 'left'
 
+  // Live Cockpit Stage & Scroll State (#260, #272, #277)
+  agentStageMode: 'chat', // 'chat' | 'pty'
+  sessionAutoScroll: false, // OFF by default (#277)
+  chatScrolledUp: false,
+  chatUnseenBelow: false,
+
   // All SettingsModal.jsx + IntegrationsModal.jsx state
   settingsTab: 'appearance', // 'appearance' | 'keyboard' | 'voice' | 'integrations' | 'security'
   termFontSize: 13,
   termPalette: 'match',      // 'match' | 'standard' | 'hacker' | 'contrast'
+  editorFontSize: 13,
+  editorWordWrap: true,
   autoCaps: true,
   alertChime: true,
   kbFeedback: 'ticks',       // 'ticks' | 'haptic' | 'off'
   voiceAutoRead: true,
-  ttsVoice: 'piper:en_US-lessac-medium',
+  ttsVoice: 'piper:en_GB-alan-medium',
   voiceContinuous: true,
   voiceAutoEnter: true,
   voiceAutoSend: true,
@@ -1781,22 +1942,66 @@ const state = {
   swarmFeed: [...INITIAL_SWARM_FEED],
   swarmTarget: 'aim-connect',
 
-  // Files & Git Diff State
+  // 2-Column Files IDE, DOCS 1-TAB Reader & Media Player State (#262, #266, #267, #270)
   filesNavMode: 'files', // 'files' | 'git'
+  filesTreeSide: 'left', // 'left' | 'right'
+  filesTreeCollapsed: false,
+  filesTreeWidth: 226,
+  filesShowMobileTree: false,
+  filesHideDotfiles: true,
+  docsSingleTabMode: false,
+  docsHistory: { entries: ['HANDOFF.md'], index: 0 },
+  fileTabs: [
+    { id: 'ftab-handoff', path: 'HANDOFF.md', isDocsReader: false },
+    { id: 'ftab-app', path: 'frontend/src/App.jsx', isDocsReader: false },
+    { id: 'ftab-audio', path: 'recordings/call_727_555_0194_harper.wav', isDocsReader: false },
+  ],
   activeFile: 'HANDOFF.md',
+  mdViewMode: 'preview', // 'preview' | 'code'
+  imageZoomMode: 'fit',  // 'fit' | 'actual'
+  fileSelectMode: false,
+  audioPlaybackRate: 1,
+  expandedDirs: {
+    docs: true,
+    'frontend/src': true,
+    backend: true,
+    recordings: true,
+    artifacts: true,
+    engrams: true,
+    'memory-wiki': true,
+  },
   fileConflictBanner: false,
   fileSavedBadge: '',
+  fileCopyBadge: '',
 
-  // Cmd+K Search & Delete / Spawn Session Modals
+  // Cmd+K Search, Browser 2FA Handoff & Visual Markup Studio (#273, #275, #276)
   cmdkQuery: '',
   sessionToDelete: '',
-  popover: null, // 'bolt' | null
-  modal: null,   // 'cmdk' | 'settings' | 'macros' | 'grab' | 'forensics' | 'delete-sess' | 'spawn-sess' | null
+  popover: null, // 'bolt' | 'browser-dl' | null
+  modal: null,   // 'cmdk' | 'settings' | 'macros' | 'grab' | 'forensics' | 'delete-sess' | 'spawn-sess' | 'shot-markup' | null
   hudStep: 0,
   deferredPrompt: null,
   sentMessages: {},
-  stagedAttachments: {},
+  stagedAttachments: {
+    'aim-connect': [
+      {
+        id: 'shot-seed-1',
+        filename: 'screenshot-leaddeeds-v4.png',
+        path: 'docs/screenshots/emerald-matrix-arch.svg',
+        dims: '1440×900 PNG',
+        url: 'https://www.leaddeeds.com',
+        annotated: false,
+        annotations: [],
+      },
+    ],
+  },
   shotFlash: false,
+  shotFullPage: false,
+  sendContinueOnResume: true,
+  editingShot: null, // { sessionKey, shotId }
+  markupTool: 'pin',
+  markupColor: '#FF3B5C',
+  markupAnns: [],
   extBrowserFlash: false,
   browserDownloads: [
     {
@@ -1849,6 +2054,12 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
+  if (state.modal === 'shot-markup' && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    state.markupAnns = state.markupAnns.slice(0, -1);
+    render();
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     state.modal = state.modal === 'cmdk' ? null : 'cmdk';
@@ -2019,7 +2230,7 @@ function renderLockScreen() {
       <div class="auth-card ld-mask-glass">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div style="display:flex;align-items:center;gap:10px;">
-            <div class="ld-brand-box">${ICONS.shield}</div>
+            <div class="ld-brand-box">${ICONS.aimMark}</div>
             <div>
               <div style="font-family:var(--font-mono);font-weight:700;font-size:15px;">AIM<span style="color:var(--accent);">CONNECT</span> // 3FA GATE</div>
               <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.12em;">ZERO-TRUST TOTP · WEBAUTHN · E2EE</div>
@@ -2636,16 +2847,16 @@ function renderMockWebpage(tab) {
         <!-- GitHub Commit Header + 7-Row File Tree -->
         <div style="border-radius:8px;border:1px solid #30363d;overflow:hidden;font-size:11.5px;">
           <div style="padding:8px 12px;background:#161b22;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10.5px;">
-            <span><strong>BrianV1981</strong> fix(#255): wrap session names in colored pills</span>
-            <span style="color:#3fb950;">✓ 7d923ee · 195/195 passing</span>
+            <span><strong>BrianV1981</strong> feat(#275,#281): wire waitingForHuman 2FA takeover &amp; THINKING/NEW filters</span>
+            <span style="color:#3fb950;">✓ f67ea00 · 255/255 passing</span>
           </div>
           ${[
-            ['📁 .github/workflows', 'CI pytest + oxlint + shareability gate', '3d ago'],
-            ['📁 backend/', 'FastAPI WebSocket PTY + loopback CDP screencast', '14m ago'],
-            ['📁 frontend/src/', 'Emerald Matrix UI + Voice Macros + Split Resizer', '14m ago'],
-            ['📁 joshua_os/', 'Hybrid BM25 + LanceDB recall CLI', '5d ago'],
+            ['📁 .github/workflows', 'CI pytest + Pages showcase + shareability gate', 'Today'],
+            ['📁 backend/', 'FastAPI WS PTY + CDP .leases.lock + /analyst (#268)', '18m ago'],
+            ['📁 frontend/src/', 'Emerald Matrix V4 + Markup Studio + DOCS 1-TAB', '18m ago'],
+            ['📁 docs/demo/', '12-node / 40-session interactive showcase', 'Today'],
             ['📄 AGENTS.md', 'J.O.S.H.U.A. Sovereign OS & GitOps worktree mandates', '2d ago'],
-            ['📄 README.md', 'Own your stack. Don’t rent a seat. (v1.8.0)', 'Yesterday'],
+            ['📄 README.md', 'Own your stack. Don’t rent a seat. (v2.0)', 'Today'],
             ['📄 startup.sh', 'Idempotent 3-window tmux launcher (:8000/:8001)', '4d ago'],
           ]
             .map(
@@ -3026,34 +3237,233 @@ function renderHistoryVault(sess) {
   `;
 }
 
+let _cachedWavUrl = '';
+function getSyntheticWavUrl() {
+  if (_cachedWavUrl) return _cachedWavUrl;
+  const sampleRate = 8000;
+  const seconds = 4;
+  const numSamples = sampleRate * seconds;
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, s) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const env = Math.sin(Math.min(1, t * 4) * Math.PI * 0.5) * Math.exp(-t * 0.45);
+    const freq = t < 1.2 ? 523.25 : t < 2.4 ? 659.25 : 783.99;
+    const sample = Math.sin(2 * Math.PI * freq * t) * 0.25 * env;
+    view.setInt16(44 + i * 2, Math.max(-32767, Math.min(32767, Math.round(sample * 32767))), true);
+  }
+  _cachedWavUrl = URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+  return _cachedWavUrl;
+}
+
+function renderInlineMarkdown(rawLine) {
+  let s = escapeHtml(rawLine);
+  s = s.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\[([^\]]+)\]\(file:\/\/\/?([^)]+)\)/g, (_m, lbl, fpath) => {
+    const cleanPath = fpath.replace(/^\/+/, '');
+    return `<button type="button" class="md-file-link" data-md-file="${cleanPath}" title="Open ${cleanPath} in Files IDE">${ICONS.files} <span>${lbl}</span></button>`;
+  });
+  return s;
+}
+
+function renderMarkdownHtml(mdText) {
+  const src = String(mdText || '');
+  const parts = src.split(/```(\w*)\n([\s\S]*?)```/g);
+  const blocks = [];
+  for (let i = 0; i < parts.length; i += 3) {
+    const prose = parts[i] || '';
+    const lines = prose.split('\n');
+    let listBuf = [];
+    const flushList = () => {
+      if (listBuf.length) {
+        blocks.push(`<ul>${listBuf.map((li) => `<li>${renderInlineMarkdown(li)}</li>`).join('')}</ul>`);
+        listBuf = [];
+      }
+    };
+    for (const raw of lines) {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        flushList();
+        continue;
+      }
+      if (trimmed.startsWith('- ')) {
+        listBuf.push(trimmed.slice(2));
+      } else {
+        flushList();
+        if (trimmed.startsWith('### ')) blocks.push(`<h3>${renderInlineMarkdown(trimmed.slice(4))}</h3>`);
+        else if (trimmed.startsWith('## ')) blocks.push(`<h2>${renderInlineMarkdown(trimmed.slice(3))}</h2>`);
+        else if (trimmed.startsWith('# ')) blocks.push(`<h1>${renderInlineMarkdown(trimmed.slice(2))}</h1>`);
+        else if (trimmed.startsWith('> ')) {
+          blocks.push(
+            `<blockquote style="margin:0;padding:6px 11px;border-left:3px solid var(--accent);background:var(--bg-subtle);border-radius:0 7px 7px 0;color:var(--text-secondary);">${renderInlineMarkdown(trimmed.slice(2))}</blockquote>`
+          );
+        } else {
+          blocks.push(`<p>${renderInlineMarkdown(trimmed)}</p>`);
+        }
+      }
+    }
+    flushList();
+    if (i + 2 < parts.length) {
+      const lang = (parts[i + 1] || 'code').toUpperCase();
+      const codeBody = escapeHtml(parts[i + 2] || '');
+      blocks.push(
+        `<div class="md-code-card"><div class="md-code-hdr"><span>${lang}</span></div><pre class="md-code-pre">${codeBody}</pre></div>`
+      );
+    }
+  }
+  return `<div class="ld-markdown-body">${blocks.join('')}</div>`;
+}
+
+function openShowcaseFile(filePath, opts = {}) {
+  const clean = FILES_DB[filePath] ? filePath : 'HANDOFF.md';
+  const entry = FILES_DB[clean];
+  const inPlaceDocs = Boolean(opts.viaDocsHub && state.docsSingleTabMode && entry?.isDoc);
+
+  if (inPlaceDocs) {
+    const existingDocIdx = state.fileTabs.findIndex((t) => t.isDocsReader);
+    if (existingDocIdx >= 0) {
+      state.fileTabs[existingDocIdx] = { ...state.fileTabs[existingDocIdx], path: clean, isDocsReader: true };
+    } else {
+      state.fileTabs.push({ id: 'docs-reader-tab', path: clean, isDocsReader: true });
+    }
+    if (!opts.skipHistory) {
+      const sliced = state.docsHistory.entries.slice(0, state.docsHistory.index + 1);
+      if (sliced[sliced.length - 1] !== clean) sliced.push(clean);
+      state.docsHistory = { entries: sliced, index: sliced.length - 1 };
+    }
+    state.mdViewMode = 'preview';
+  } else {
+    const existing = state.fileTabs.find((t) => t.path === clean && !t.isDocsReader);
+    if (!existing) {
+      state.fileTabs.push({ id: `ftab-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, path: clean, isDocsReader: false });
+    }
+    if (clean.endsWith('.md')) state.mdViewMode = 'preview';
+  }
+  state.activeFile = clean;
+  state.filesNavMode = 'files';
+  state.filesShowMobileTree = false;
+  if (opts.openPane) {
+    state.activeTool = 'files';
+  }
+}
+
 function renderFilesView(isFull) {
-  const entry = FILES_DB[state.activeFile] || FILES_DB['HANDOFF.md'];
-  const fileKeys = Object.keys(FILES_DB);
+  const activeKey = FILES_DB[state.activeFile] ? state.activeFile : 'HANDOFF.md';
+  const entry = FILES_DB[activeKey];
+  const activeTabRecord =
+    state.fileTabs.find((t) => t.path === activeKey) ||
+    state.fileTabs[0] || { id: 'ftab-handoff', path: activeKey, isDocsReader: false };
+  const isMarkdown = activeKey.endsWith('.md');
+  const isMediaOrBin = ['image', 'audio', 'video', 'binary'].includes(entry.type);
+
+  const allPaths = Object.keys(FILES_DB).filter((p) => (state.filesHideDotfiles ? !FILES_DB[p].dotfile : true));
+  const coreDocs = ['README.md', 'HANDOFF.md', 'AGENTS.md'];
+  const wikiDocs = ['memory-wiki/index.md', 'memory-wiki/pages/browser_copilot_architecture.md'];
+  const gitChanged = Object.keys(FILES_DB).filter((k) => Boolean(FILES_DB[k].status));
+
+  const folderGroups = {};
+  const rootFiles = [];
+  allPaths.forEach((p) => {
+    const slash = p.indexOf('/');
+    if (slash === -1) rootFiles.push(p);
+    else {
+      const topDir = p.slice(0, p.lastIndexOf('/'));
+      folderGroups[topDir] = folderGroups[topDir] || [];
+      folderGroups[topDir].push(p);
+    }
+  });
+
+  const segments = activeKey.split('/');
 
   return `
-    <div class="copilot-top-bar">
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;">
+    <div class="copilot-top-bar files-top-bar">
+      <div class="copilot-top-left">
         <button class="subbar-util-btn ${state.filesNavMode === 'files' ? 'active' : ''}" data-fnav="files">
           ${ICONS.files} <span>FILES</span>
         </button>
         <button class="subbar-util-btn ${state.filesNavMode === 'git' ? 'active' : ''}" data-fnav="git">
-          ${ICONS.gitBranch} <span>GIT DIFF (3)</span>
+          ${ICONS.gitBranch} <span>GIT DIFF (${gitChanged.length})</span>
         </button>
-        <span style="opacity:0.25;">|</span>
-        <button class="fav-chip ${state.activeFile === 'HANDOFF.md' ? 'active' : ''}" data-file="HANDOFF.md">HANDOFF.md</button>
-        <button class="fav-chip ${state.activeFile === 'AGENTS.md' ? 'active' : ''}" data-file="AGENTS.md">AGENTS.md</button>
-        <button class="fav-chip ${state.activeFile === 'memory-wiki/index.md' ? 'active' : ''}" data-file="memory-wiki/index.md">memory-wiki/</button>
+
+        <div class="project-docs-hub-bar" role="group" aria-label="Project Docs Hub">
+          <span class="project-docs-hub-badge" title="Project Docs &amp; Memory Wiki Hub">
+            ${ICONS.bookOpen}
+            <span>DOCS</span>
+          </span>
+          ${
+            state.docsSingleTabMode
+              ? `
+            <button type="button" class="docs-nav-arrow-btn" data-act="docs-back" ${state.docsHistory.index <= 0 ? 'disabled' : ''} title="Back to previous Project Doc">←</button>
+            <button type="button" class="docs-nav-arrow-btn" data-act="docs-fwd" ${state.docsHistory.index >= state.docsHistory.entries.length - 1 ? 'disabled' : ''} title="Forward to next Project Doc">→</button>
+          `
+              : ''
+          }
+          ${coreDocs
+            .map((docKey) => {
+              const shortLbl = docKey.replace('.md', '');
+              return `<button type="button" class="fav-chip ${activeKey === docKey ? 'active' : ''}" data-doc-hub="${docKey}" title="${docKey}">${shortLbl}</button>`;
+            })
+            .join('')}
+          <select class="ld-select" id="wiki-hub-sel" style="width:auto;height:22px;padding:0 6px;font-size:10px;">
+            <option value="">memory-wiki/ (${wikiDocs.length})</option>
+            ${wikiDocs
+              .map((w) => `<option value="${w}">${w.split('/').pop().replace('.md', '')}</option>`)
+              .join('')}
+          </select>
+          <button
+            type="button"
+            class="docs-webnav-toggle ${state.docsSingleTabMode ? 'active' : ''}"
+            data-act="toggle-docs-1tab"
+            title="Toggle Single-Tab Website Navigation (navigate Project Docs &amp; Wiki in 1 reusable tab with Back/Forward vs opening a new tab per page)"
+          >
+            <span>${state.docsSingleTabMode ? '1-TAB: ON' : '1-TAB: OFF'}</span>
+          </button>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-        <button class="subbar-util-btn" data-act="save-file">${ICONS.check} <span>${state.fileSavedBadge || 'SAVE'}</span></button>
-        <button class="subbar-util-btn" data-act="copy-file">${ICONS.copyText} <span>COPY ALL</span></button>
+
+      <div class="copilot-top-right">
+        ${
+          entry.type === 'file' && (!isMarkdown || state.mdViewMode === 'code')
+            ? `<button class="subbar-util-btn active" data-act="save-file">${ICONS.check} <span>${state.fileSavedBadge || 'SAVE'}</span></button>`
+            : ''
+        }
+        <button class="subbar-util-btn" data-act="copy-file">
+          ${ICONS.copyText}
+          <span>${state.fileCopyBadge || (isMediaOrBin ? 'COPY PATH' : 'COPY ALL')}</span>
+        </button>
         <button
-          class="pane-full-upgrade-btn desktop-only ${isFull ? 'is-full' : ''}"
+          class="pane-full-upgrade-btn desktop-only desktop-split-only ${isFull ? 'is-full' : ''}"
           data-act="toggle-full"
           title="${isFull ? 'Return Files to Split Screen' : 'Upgrade Files to Full View'}"
         >
           ${isFull ? ICONS.split : ICONS.maximize}
           <span>${isFull ? 'SPLIT VIEW' : 'FULL VIEW'}</span>
+        </button>
+        <button
+          type="button"
+          class="ghost-btn ${!state.filesTreeCollapsed ? 'active' : ''}"
+          style="height:26px;padding:0 7px;"
+          data-act="collapse-files-tree"
+          title="${state.filesTreeCollapsed ? 'Show File Explorer Sidebar' : 'Collapse File Explorer Sidebar'}"
+        >
+          ${ICONS.menu}
         </button>
         <button class="ghost-btn" style="height:26px;padding:0 6px;" data-act="close-tool" title="Close Files">${ICONS.close}</button>
       </div>
@@ -3062,66 +3472,333 @@ function renderFilesView(isFull) {
     ${
       state.fileConflictBanner
         ? `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 14px;background:rgba(245,158,11,0.14);border-bottom:1px solid rgba(245,158,11,0.45);font-family:var(--font-mono);font-size:11px;color:#fbbf24;">
-        <span>HTTP 409 MTIME GUARD // Agent modified ${state.activeFile} on disk since opened.</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:7px 14px;background:rgba(245,158,11,0.14);border-bottom:1px solid rgba(245,158,11,0.45);font-family:var(--font-mono);font-size:11px;color:#fbbf24;">
+        <span style="display:inline-flex;align-items:center;gap:6px;">${ICONS.alert} <span>HTTP 409 MTIME GUARD // Agent modified ${escapeHtml(activeKey)} on disk since opened.</span></span>
         <div style="display:flex;gap:6px;">
           <button class="fav-chip" data-act="toggle-conflict">RELOAD DISK</button>
-          <button class="fav-chip" data-act="toggle-conflict">OVERWRITE</button>
+          <button class="danger-btn" style="height:24px;padding:0 9px;font-size:10px;" data-act="toggle-conflict">FORCE OVERWRITE</button>
         </div>
       </div>
     `
         : ''
     }
 
-    <div class="files-split-body">
-      <div class="files-tree-rail desktop-only">
-        <div style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-muted);padding:2px 6px 6px;letter-spacing:0.12em;">EXPLORER</div>
-        ${fileKeys
-          .map((k) => {
-            const meta = FILES_DB[k];
-            return `
-              <button class="tree-file-btn ${state.activeFile === k ? 'active' : ''}" data-file="${k}">
-                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${k}</span>
-                ${meta.status ? `<span style="color:${meta.status === 'M' ? '#fbbf24' : 'var(--accent)'};font-size:10px;">${meta.status}</span>` : ''}
-              </button>
-            `;
-          })
-          .join('')}
-        <button class="fav-chip" style="margin-top:auto;" data-act="toggle-conflict" title="Preview production HTTP 409 mtime conflict guard">
-          Test 409 Guard
-        </button>
-      </div>
+    <div
+      class="files-split-body ${state.filesTreeSide === 'right' ? 'tree-right' : 'tree-left'}"
+      id="files-split-body"
+      style="--files-tree-width:${state.filesTreeWidth}px;"
+    >
+      <aside class="files-tree-rail ${state.filesTreeCollapsed ? 'rail-collapsed' : ''} ${!state.filesShowMobileTree ? 'mobile-rail-hidden' : ''}">
+        <div class="files-tree-folder-row">
+          <span style="color:var(--accent);display:inline-flex;">${state.filesNavMode === 'git' ? ICONS.gitBranch : ICONS.folder}</span>
+          <span class="files-tree-folder-title">${state.filesNavMode === 'git' ? 'CHANGES (MASTER)' : 'AIM-CONNECT'}</span>
+        </div>
 
-      ${
-        state.filesNavMode === 'git'
-          ? `
-        <div class="git-diff-grid">
-          <div class="diff-col">
-            <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px;">HEAD // ${state.activeFile}</div>
-            ${entry.oldDiff
-              .split('\n')
-              .map((l) => `<div class="diff-del">${escapeHtml(l)}</div>`)
-              .join('')}
-          </div>
-          <div class="diff-col">
-            <div style="font-size:10px;color:var(--accent);margin-bottom:8px;">WORKING TREE // ${state.activeFile}</div>
-            ${entry.newDiff
-              .split('\n')
-              .map((l) => `<div class="diff-add">${escapeHtml(l)}</div>`)
-              .join('')}
+        <div class="files-tree-actions-row">
+          <button
+            type="button"
+            class="fav-chip tree-side-flip-btn"
+            data-act="flip-files-tree"
+            title="${state.filesTreeSide === 'right' ? 'Move File Explorer to Left side' : 'Move File Explorer to Right side'}"
+          >
+            ${state.filesTreeSide === 'right' ? ICONS.sidebar : ICONS.panelRight}
+            <span>${state.filesTreeSide === 'right' ? '← LEFT' : 'RIGHT →'}</span>
+          </button>
+          <div style="display:flex;align-items:center;gap:3px;">
+            <button
+              type="button"
+              class="fav-chip ${!state.filesHideDotfiles ? 'active' : ''}"
+              style="padding:0 5px;"
+              data-act="toggle-dotfiles"
+              title="${state.filesHideDotfiles ? 'Dotfiles hidden — click to show .env.example' : 'Showing dotfiles — click to filter'}"
+            >
+              ${state.filesHideDotfiles ? ICONS.eyeOff : ICONS.eye}
+            </button>
+            <button type="button" class="fav-chip" style="padding:0 5px;" data-act="toggle-conflict" title="Test HTTP 409 mtime conflict banner">409</button>
           </div>
         </div>
-      `
-          : `
-        <pre style="flex:1;margin:10px;padding:16px;border-radius:12px;background:var(--bg-term);border:1px solid var(--border-hairline);font-family:var(--font-mono);font-size:12px;line-height:1.75;color:var(--text-primary);overflow:auto;user-select:text;"><code>${entry.code
-          .split('\n')
-          .map(
-            (line, i) =>
-              `<span style="display:inline-block;width:28px;color:var(--text-muted);user-select:none;">${i + 1}</span>${escapeHtml(line)}`
-          )
-          .join('\n')}</code></pre>
-      `
+
+        <div class="files-tree-scroll">
+          ${
+            state.filesNavMode === 'git'
+              ? gitChanged
+                  .map(
+                    (gk) => `
+                  <button class="tree-file-btn ${activeKey === gk ? 'active' : ''}" data-file="${gk}">
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${gk}</span>
+                    <span style="color:${FILES_DB[gk].status === 'M' ? '#fbbf24' : 'var(--accent)'};font-size:9.5px;font-weight:700;">${FILES_DB[gk].status}</span>
+                  </button>
+                `
+                  )
+                  .join('')
+              : `
+                ${Object.keys(folderGroups)
+                  .map((dir) => {
+                    const isExp = state.expandedDirs[dir] !== false;
+                    return `
+                      <div>
+                        <button type="button" class="tree-file-btn" style="width:100%;font-weight:600;color:var(--text-primary);" data-toggle-dir="${dir}">
+                          <span style="display:inline-flex;align-items:center;gap:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <span style="font-size:9px;opacity:0.7;">${isExp ? '▾' : '▸'}</span>
+                            <span style="color:var(--accent);display:inline-flex;">${ICONS.folder}</span>
+                            <span>${dir}/</span>
+                          </span>
+                        </button>
+                        ${
+                          isExp
+                            ? folderGroups[dir]
+                                .map((fp) => {
+                                  const meta = FILES_DB[fp];
+                                  const leaf = fp.split('/').pop();
+                                  return `
+                                    <button type="button" class="tree-file-btn ${activeKey === fp ? 'active' : ''}" style="width:100%;padding-left:20px;" data-file="${fp}">
+                                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${leaf}</span>
+                                      ${meta.status ? `<span style="color:${meta.status === 'M' ? '#fbbf24' : 'var(--accent)'};font-size:9.5px;font-weight:700;">${meta.status}</span>` : ''}
+                                    </button>
+                                  `;
+                                })
+                                .join('')
+                            : ''
+                        }
+                      </div>
+                    `;
+                  })
+                  .join('')}
+                ${rootFiles
+                  .map((rf) => {
+                    const meta = FILES_DB[rf];
+                    return `
+                      <button type="button" class="tree-file-btn ${activeKey === rf ? 'active' : ''}" style="width:100%;" data-file="${rf}">
+                        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${rf}</span>
+                        ${meta.status ? `<span style="color:${meta.status === 'M' ? '#fbbf24' : 'var(--accent)'};font-size:9.5px;font-weight:700;">${meta.status}</span>` : ''}
+                      </button>
+                    `;
+                  })
+                  .join('')}
+              `
+          }
+        </div>
+      </aside>
+
+      ${
+        !state.filesTreeCollapsed
+          ? `<div class="files-tree-resizer desktop-only" id="files-tree-resizer" title="Drag to resize folder explorer · Double-click to reset width"></div>`
+          : ''
       }
+
+      <div class="files-editor-column">
+        <div class="copilot-tabs-row" style="padding:5px 10px;">
+          <button type="button" class="fav-chip mobile-tree-toggle" data-act="toggle-mobile-tree">
+            ${state.filesShowMobileTree ? 'HIDE TREE' : 'TREE'}
+          </button>
+          ${state.fileTabs
+            .map((ft) => {
+              const isSel = ft.path === activeKey;
+              const base = ft.path.split('/').pop();
+              const label = ft.isDocsReader ? `DOCS · ${base}` : base;
+              return `
+                <div class="cp-tab ${isSel ? 'active' : ''}" data-file="${ft.path}" title="${ft.path}">
+                  <span>${escapeHtml(label)}</span>
+                  ${
+                    state.fileTabs.length > 1
+                      ? `<span style="opacity:0.65;padding-left:3px;" data-close-ftab="${ft.id}" title="Close tab">×</span>`
+                      : ''
+                  }
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+
+        <div class="files-breadcrumb-bar">
+          <div class="files-breadcrumb-trail">
+            <span class="breadcrumb-seg-btn">aim-connect</span>
+            ${segments
+              .map((seg, idx) => {
+                const isLeaf = idx === segments.length - 1;
+                return `
+                  <span style="display:inline-flex;align-items:center;gap:4px;">
+                    <span style="opacity:0.4;display:inline-flex;">${ICONS.chevronRight}</span>
+                    ${
+                      isLeaf
+                        ? `<span class="breadcrumb-leaf">${escapeHtml(seg)}</span>`
+                        : `<span class="breadcrumb-seg-btn">${escapeHtml(seg)}</span>`
+                    }
+                  </span>
+                `;
+              })
+              .join('')}
+          </div>
+
+          <div class="files-breadcrumb-actions">
+            ${
+              activeTabRecord.isDocsReader
+                ? `<button type="button" class="fav-chip" data-act="pin-docs-tab" title="Pin current doc as its own standalone tab">${ICONS.pin} <span style="margin-left:3px;">PIN TAB</span></button>`
+                : ''
+            }
+            ${
+              isMarkdown && state.filesNavMode !== 'git'
+                ? `<button type="button" class="fav-chip ${state.mdViewMode === 'preview' ? 'active' : ''}" data-act="toggle-md-mode">${state.mdViewMode === 'preview' ? ICONS.code : ICONS.eye} <span style="margin-left:3px;">${state.mdViewMode === 'preview' ? 'EDIT CODE' : 'PREVIEW'}</span></button>`
+                : ''
+            }
+            ${entry.dims ? `<span class="mono-kbd" style="font-size:9.5px;">${entry.dims}</span>` : ''}
+            ${entry.duration ? `<span class="mono-kbd" style="font-size:9.5px;">${entry.duration}</span>` : ''}
+            ${entry.size ? `<span class="mono-kbd" style="font-size:9.5px;">${entry.size}</span>` : ''}
+            ${
+              entry.type === 'image'
+                ? `<button type="button" class="fav-chip ${state.imageZoomMode === 'actual' ? 'active' : ''}" data-act="toggle-img-zoom">${state.imageZoomMode === 'fit' ? '1:1 ZOOM' : 'FIT PANE'}</button>`
+                : ''
+            }
+            ${
+              !isMediaOrBin && state.filesNavMode !== 'git'
+                ? `<button type="button" class="fav-chip ${state.fileSelectMode ? 'active' : ''}" data-act="toggle-file-select">${state.fileSelectMode ? 'EDITOR MODE' : 'SELECT TEXT'}</button>`
+                : ''
+            }
+            ${
+              entry.type === 'file'
+                ? `<button type="button" class="fav-chip ${state.filesNavMode === 'git' ? 'active' : ''}" data-fnav="${state.filesNavMode === 'git' ? 'files' : 'git'}">DIFF VS HEAD</button>`
+                : ''
+            }
+          </div>
+        </div>
+
+        <div style="flex:1;min-height:0;display:flex;overflow:hidden;">
+          ${
+            state.filesNavMode === 'git' && entry.type === 'file'
+              ? `
+            <div class="git-diff-grid" style="flex:1;">
+              <div class="diff-col">
+                <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px;">HEAD // ${escapeHtml(activeKey)}</div>
+                ${(entry.oldDiff || '// clean')
+                  .split('\n')
+                  .map((l) => `<div class="diff-del">${escapeHtml(l)}</div>`)
+                  .join('')}
+              </div>
+              <div class="diff-col">
+                <div style="font-size:10px;color:var(--accent);margin-bottom:8px;">WORKING TREE // ${escapeHtml(activeKey)}</div>
+                ${(entry.newDiff || '// clean')
+                  .split('\n')
+                  .map((l) => `<div class="diff-add">${escapeHtml(l)}</div>`)
+                  .join('')}
+              </div>
+            </div>
+          `
+              : entry.type === 'image'
+              ? `
+            <div class="files-image-stage">
+              <svg viewBox="0 0 640 360" style="${state.imageZoomMode === 'actual' ? 'width:900px;height:506px;' : 'max-width:100%;max-height:100%;'}border-radius:10px;border:1px solid var(--border-hairline);background:#050807;box-shadow:0 14px 36px rgba(0,0,0,0.5);">
+                <rect width="640" height="360" fill="#050807"/>
+                <rect x="24" y="24" width="176" height="312" rx="10" fill="#0b1311" stroke="#00ffa3" stroke-opacity="0.45"/>
+                <text x="40" y="52" fill="#00ffa3" font-family="monospace" font-size="12" font-weight="bold">FLEET // 12 NODES</text>
+                <rect x="40" y="68" width="144" height="34" rx="6" fill="#10211c" stroke="#00ffa3"/>
+                <text x="50" y="90" fill="#ecfdf5" font-family="monospace" font-size="11">● aim-connect (AGY)</text>
+                <rect x="40" y="112" width="144" height="34" rx="6" fill="#18140c" stroke="#f59e0b"/>
+                <text x="50" y="134" fill="#fde68a" font-family="monospace" font-size="11">✋ aim-tbsoftwash</text>
+                <rect x="216" y="24" width="196" height="312" rx="10" fill="#090f14" stroke="#00b8ff" stroke-opacity="0.45"/>
+                <text x="232" y="52" fill="#38bdf8" font-family="monospace" font-size="12" font-weight="bold">CHAT VIEW // GFM</text>
+                <rect x="232" y="72" width="164" height="58" rx="8" fill="rgba(0,184,255,0.12)" stroke="#00b8ff"/>
+                <text x="244" y="104" fill="#e0f2fe" font-family="monospace" font-size="10">[OPERATOR // RIGHT ●]</text>
+                <circle cx="384" cy="306" r="14" fill="#0c1714" stroke="#00ffa3"/>
+                <text x="380" y="310" fill="#00ffa3" font-family="monospace" font-size="12">↓</text>
+                <rect x="428" y="24" width="188" height="312" rx="10" fill="#0b1110" stroke="#eab308" stroke-opacity="0.6"/>
+                <text x="444" y="52" fill="#fde047" font-family="monospace" font-size="12" font-weight="bold">CDP :9222 // 2FA</text>
+                <rect x="444" y="68" width="156" height="32" rx="6" fill="rgba(245,158,11,0.2)" stroke="#f59e0b"/>
+                <text x="454" y="88" fill="#fde68a" font-family="monospace" font-size="9.5">TAKE CONTROL &amp; 2FA</text>
+              </svg>
+            </div>
+          `
+              : entry.type === 'audio'
+              ? `
+            <div class="files-media-stage">
+              <div class="files-media-card">
+                <div class="files-media-card-header">
+                  <span class="files-media-icon-box" style="color:#38bdf8;">${ICONS.audio}</span>
+                  <div style="min-width:0;flex:1;">
+                    <div class="files-media-title">${escapeHtml(activeKey.split('/').pop())}</div>
+                    <div class="files-media-subpath">Diarized Repeat-Caller Recording · Evelyn Harper · Clearwater Lot 214</div>
+                  </div>
+                  <span class="mono-kbd" style="font-size:9.5px;">WAV · HTTP 206 RANGE</span>
+                </div>
+                <audio id="showcase-audio-el" class="files-audio-player" controls preload="metadata" src="${getSyntheticWavUrl()}"></audio>
+                <div class="files-media-meta-row">
+                  <div class="files-speed-pills">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-right:3px;">SPEED</span>
+                    ${[1, 1.25, 1.5, 2]
+                      .map(
+                        (r) => `<button type="button" class="fav-chip ${state.audioPlaybackRate === r ? 'active' : ''}" data-audio-rate="${r}">${r}x</button>`
+                      )
+                      .join('')}
+                  </div>
+                  <button type="button" class="fav-chip" data-act="dl-active-file">${ICONS.downloadSm} <span style="margin-left:4px;">SAVE AUDIO</span></button>
+                </div>
+              </div>
+            </div>
+          `
+              : entry.type === 'video'
+              ? `
+            <div class="files-media-stage">
+              <div class="files-media-card" style="width:min(680px,100%);">
+                <div style="border-radius:10px;overflow:hidden;border:1px solid var(--border-hairline);background:#040807;padding:24px;text-align:center;">
+                  <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent);margin-bottom:8px;">INLINE HTML5 VIDEO RANGE STREAM (#270 · 250 MB CAP)</div>
+                  <div style="font-size:14px;font-weight:700;color:#f8fafc;">Co-Pilot Browser Multi-Tab Subagent Screencast</div>
+                  <div style="font-family:var(--font-mono);font-size:10.5px;color:#94a3b8;margin-top:6px;">1440 × 900 · 60fps VP9 · 00:15 · Zero-VLM Landmark Lock</div>
+                </div>
+                <div class="files-media-meta-row">
+                  <div class="files-speed-pills">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-right:3px;">SPEED</span>
+                    ${[1, 1.25, 1.5, 2]
+                      .map(
+                        (r) => `<button type="button" class="fav-chip ${state.audioPlaybackRate === r ? 'active' : ''}" data-audio-rate="${r}">${r}x</button>`
+                      )
+                      .join('')}
+                  </div>
+                  <button type="button" class="fav-chip" data-act="dl-active-file">${ICONS.downloadSm} <span style="margin-left:4px;">SAVE VIDEO</span></button>
+                </div>
+              </div>
+            </div>
+          `
+              : entry.type === 'binary'
+              ? `
+            <div class="files-media-stage">
+              <div class="files-media-card">
+                <div class="files-media-card-header">
+                  <span class="files-media-icon-box" style="color:#fbbf24;background:rgba(245,158,11,0.1);">${ICONS.fileBinary}</span>
+                  <div style="min-width:0;flex:1;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                      <span class="files-binary-badge">BINARY / NON-UTF-8</span>
+                      <span class="mono-kbd" style="font-size:9.5px;">${entry.mimeType}</span>
+                      <span class="mono-kbd" style="font-size:9.5px;">${entry.size}</span>
+                    </div>
+                    <div class="files-media-title">${escapeHtml(activeKey.split('/').pop())}</div>
+                    <div class="files-media-subpath">${escapeHtml(activeKey)}</div>
+                  </div>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);line-height:1.55;">
+                  ${escapeHtml(entry.errorReason)}
+                </div>
+                <div class="files-media-meta-row">
+                  <div style="display:inline-flex;align-items:center;gap:8px;">
+                    <button type="button" class="subbar-util-btn active" data-act="dl-active-file">${ICONS.downloadSm} <span>DOWNLOAD FILE</span></button>
+                    <button type="button" class="fav-chip" data-act="copy-file">${ICONS.copyText} <span style="margin-left:4px;">${state.fileCopyBadge || 'COPY PATH'}</span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `
+              : isMarkdown && state.mdViewMode === 'preview' && !state.fileSelectMode
+              ? `<div class="files-md-preview" style="font-size:${state.editorFontSize + 1}px;">${renderMarkdownHtml(entry.code)}</div>`
+              : state.fileSelectMode
+              ? `<pre style="flex:1;margin:0;padding:16px 20px;background:var(--bg-term);font-family:var(--font-mono);font-size:${state.editorFontSize}px;line-height:1.7;color:var(--text-primary);overflow:auto;user-select:text;">${escapeHtml(entry.code)}</pre>`
+              : `
+            <textarea
+              id="showcase-code-editor"
+              spellcheck="false"
+              style="flex:1;width:100%;height:100%;border:none;outline:none;resize:none;padding:16px 20px;background:var(--bg-term);color:var(--text-primary);font-family:var(--font-mono);font-size:${state.editorFontSize}px;line-height:1.68;${state.editorWordWrap ? 'white-space:pre-wrap;' : 'white-space:pre;overflow-x:auto;'}"
+            >${escapeHtml(entry.code)}</textarea>
+          `
+          }
+        </div>
+      </div>
     </div>
   `;
 }
@@ -3355,6 +4032,67 @@ function renderSettingsModal(sess) {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div class="settings-group-card">
+              <div class="settings-group-title">WORKSPACE &amp; EDITOR (FILES TREE, STAGE VIEW &amp; SPLIT PRESETS)</div>
+              <div style="font-size:11.5px;color:var(--text-secondary);">
+                Keep Left for classic Windows Explorer muscle memory, or flip the File Tree to the Right outer edge so Chat View and Code sit directly side-by-side in Split Screen.
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:6px;border-top:1px solid var(--border-hairline);flex-wrap:wrap;">
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">FILE EXPLORER TREE SIDE</span>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" class="subbar-util-btn ${state.filesTreeSide === 'left' ? 'active' : ''}" data-tree-side="left">${ICONS.sidebar} <span>LEFT (WINDOWS DEFAULT)</span></button>
+                  <button type="button" class="subbar-util-btn ${state.filesTreeSide === 'right' ? 'active' : ''}" data-tree-side="right">${ICONS.panelRight} <span>RIGHT (OUTER EDGE)</span></button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:6px;border-top:1px solid var(--border-hairline);flex-wrap:wrap;">
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">DEFAULT AGENT SESSION STAGE</span>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" class="subbar-util-btn ${state.agentStageMode === 'chat' ? 'active' : ''}" data-stage-mode="chat">${ICONS.message} <span>CHAT VIEW (MARKDOWN)</span></button>
+                  <button type="button" class="subbar-util-btn ${state.agentStageMode === 'pty' ? 'active' : ''}" data-stage-mode="pty">${ICONS.terminal} <span>RAW TERMINAL (XTERM)</span></button>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:6px;border-top:1px solid var(--border-hairline);">
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-bottom:5px;">
+                    <span>Editor &amp; Preview Font Size</span>
+                    <span class="mono-kbd">${state.editorFontSize}px</span>
+                  </div>
+                  <input type="range" min="11" max="20" step="1" value="${state.editorFontSize}" class="ld-range" id="editor-fontsize-range" />
+                </div>
+                <div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin-bottom:5px;">
+                    Split-Pane Width Preset (${Math.round(100 - state.splitPct)}/${Math.round(state.splitPct)})
+                  </div>
+                  <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                    ${[
+                      [48, '50 / 50'],
+                      [38, '60 / 40 TERM'],
+                      [58, '40 / 60 PANE'],
+                    ]
+                      .map(
+                        ([pctVal, lbl]) =>
+                          `<button type="button" class="subbar-util-btn ${Math.abs(state.splitPct - pctVal) <= 3 ? 'active' : ''}" data-split-preset="${pctVal}">${lbl}</button>`
+                      )
+                      .join('')}
+                  </div>
+                </div>
+              </div>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Project Docs Single-Tab Website Reader (1-TAB)</div>
+                  <div style="font-size:11px;color:var(--text-muted);">Navigate README, HANDOFF, AGENTS &amp; memory-wiki in place inside one reusable tab with Back/Forward history</div>
+                </div>
+                <input type="checkbox" data-bool-set="docsSingleTabMode" ${state.docsSingleTabMode ? 'checked' : ''} />
+              </label>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Auto-Scroll Session Stream to Latest Reply (Optional)</div>
+                  <div style="font-size:11px;color:var(--text-muted);">OFF by default so tall replies never yank your reading position; pair with the floating ↓ Hop-to-Bottom button</div>
+                </div>
+                <input type="checkbox" data-bool-set="sessionAutoScroll" ${state.sessionAutoScroll ? 'checked' : ''} />
+              </label>
             </div>
           `
               : state.settingsTab === 'keyboard'
@@ -3959,6 +4697,248 @@ function renderCommandPalette() {
   `;
 }
 
+function isDarkInkHex(hex) {
+  const c = String(hex || '').replace('#', '');
+  if (c.length !== 6) return false;
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b < 64;
+}
+
+function drawMarkupAnn(ctx, ann, baseW = 960) {
+  if (!ctx || !ann) return;
+  const scale = Math.max(0.85, baseW / 960);
+  const strokeW = 3.4 * scale;
+  const col = ann.color || '#FF3B5C';
+  const dark = isDarkInkHex(col);
+  const halo = dark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.72)';
+
+  const drawArrowSeg = (x1, y1, x2, y2) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    if (Math.hypot(dx, dy) < 4) return;
+    const ang = Math.atan2(dy, dx);
+    const hLen = 14 * scale;
+    for (const [sc, boost] of [[halo, 3], [col, 0]]) {
+      ctx.save();
+      ctx.strokeStyle = sc;
+      ctx.fillStyle = sc;
+      ctx.lineWidth = strokeW + boost;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2 - Math.cos(ang) * hLen * 0.5, y2 - Math.sin(ang) * hLen * 0.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - hLen * Math.cos(ang - Math.PI / 6.2), y2 - hLen * Math.sin(ang - Math.PI / 6.2));
+      ctx.lineTo(x2 - hLen * Math.cos(ang + Math.PI / 6.2), y2 - hLen * Math.sin(ang + Math.PI / 6.2));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  };
+
+  if (ann.type === 'pin') {
+    const r = 14 * scale;
+    if (typeof ann.x2 === 'number' && Math.hypot(ann.x2 - ann.x, ann.y2 - ann.y) > r + 8) {
+      drawArrowSeg(ann.x, ann.y, ann.x2, ann.y2);
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ann.x, ann.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = dark ? '#F8FAFC' : '#07090c';
+    ctx.fill();
+    ctx.lineWidth = 2.8 * scale;
+    ctx.strokeStyle = col;
+    ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.font = `800 ${Math.round(13 * scale)}px "JetBrains Mono", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(ann.num || 1), ann.x, ann.y + 0.5);
+    ctx.restore();
+  } else if (ann.type === 'arrow') {
+    drawArrowSeg(ann.x1, ann.y1, ann.x2, ann.y2);
+  } else if (ann.type === 'circle') {
+    const cx = (ann.x1 + ann.x2) / 2;
+    const cy = (ann.y1 + ann.y2) / 2;
+    const rx = Math.max(4, Math.abs(ann.x2 - ann.x1) / 2);
+    const ry = Math.max(4, Math.abs(ann.y2 - ann.y1) / 2);
+    for (const [sc, boost] of [[halo, 3], [col, 0]]) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = sc;
+      ctx.lineWidth = strokeW + boost;
+      ctx.stroke();
+      ctx.restore();
+    }
+  } else if (ann.type === 'rect') {
+    const x = Math.min(ann.x1, ann.x2);
+    const y = Math.min(ann.y1, ann.y2);
+    const w = Math.max(4, Math.abs(ann.x2 - ann.x1));
+    const h = Math.max(4, Math.abs(ann.y2 - ann.y1));
+    for (const [sc, boost] of [[halo, 3], [col, 0]]) {
+      ctx.save();
+      ctx.strokeStyle = sc;
+      ctx.lineWidth = strokeW + boost;
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+    }
+  } else if (ann.type === 'pen' && Array.isArray(ann.points) && ann.points.length) {
+    for (const [sc, boost] of [[halo, 2.8], [col, 0]]) {
+      ctx.save();
+      ctx.strokeStyle = sc;
+      ctx.lineWidth = strokeW + boost;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(ann.points[0].x, ann.points[0].y);
+      for (let i = 1; i < ann.points.length; i++) ctx.lineTo(ann.points[i].x, ann.points[i].y);
+      if (ann.points.length === 1) ctx.lineTo(ann.points[0].x + 0.5, ann.points[0].y + 0.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function paintMarkupBaseScene(ctx, w, h, att) {
+  ctx.fillStyle = '#050807';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#0b1411';
+  ctx.fillRect(0, 0, w, 46);
+  ctx.strokeStyle = 'rgba(0,255,163,0.35)';
+  ctx.strokeRect(24, 68, w - 48, 130);
+  ctx.fillStyle = '#00ffa3';
+  ctx.font = 'bold 15px "JetBrains Mono", monospace';
+  ctx.fillText(`CDP SNAPSHOT // ${att?.filename || 'screenshot.png'} (${att?.dims || '1440×900'})`, 24, 29);
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 24px Inter, sans-serif';
+  ctx.fillText('LeadDeeds Day-Zero Commercial Intelligence // Live Viewport', 44, 112);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '14px "JetBrains Mono", monospace';
+  ctx.fillText('[MAP #0] figCutaway (2.8ms)   ·   [MAP #1] seatSlider ($150 -> $30)   ·   14/14 Routes HTTP 200', 44, 152);
+  const cols = ['#00ffa3', '#00b8ff', '#ff8a1e'];
+  ['01 // DAY-ZERO SIGNALS', '02 // ENTITY GRAPH (4,852)', '03 // BYOA MCP SSE'].forEach((lbl, idx) => {
+    const bx = 24 + idx * ((w - 64) / 3 + 8);
+    const bw = (w - 64) / 3;
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.fillRect(bx, 224, bw, 150);
+    ctx.strokeStyle = cols[idx];
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(bx, 224, bw, 150);
+    ctx.fillStyle = cols[idx];
+    ctx.font = 'bold 13px "JetBrains Mono", monospace';
+    ctx.fillText(lbl, bx + 16, 258);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillText('Click or drag here to drop ①②③ pins, boxes, circles, or arrows', bx + 16, 294);
+  });
+}
+
+function renderShotMarkupModal() {
+  if (state.modal !== 'shot-markup' || !state.editingShot) return '';
+  const list = state.stagedAttachments[state.editingShot.sessionKey] || [];
+  const att = list.find((a) => a.id === state.editingShot.shotId);
+  if (!att) return '';
+  const nextPin =
+    state.markupAnns.reduce((mx, a) => (a.type === 'pin' && a.num > mx ? a.num : mx), 0) + 1;
+
+  return `
+    <div class="modal-veil" data-act="close-modal" style="z-index:2300;padding-top:4vh;">
+      <div class="ld-modal-card shot-markup-modal" onclick="event.stopPropagation()">
+        <div class="shot-markup-header">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="color:var(--accent);display:inline-flex;">${ICONS.edit}</span>
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:0.08em;">
+              VISUAL MARKUP STUDIO // ${escapeHtml(att.filename)}
+            </span>
+            <span class="mono-kbd" style="font-size:9.5px;">${escapeHtml(att.dims || '1440×900 PNG')}</span>
+          </div>
+          <button type="button" class="ghost-btn" data-act="close-modal">${ICONS.close}</button>
+        </div>
+
+        <div class="shot-markup-toolbar">
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            ${MARKUP_TOOLS.map(
+              (t) => `
+              <button type="button" class="subbar-util-btn ${state.markupTool === t.id ? 'active' : ''}" data-mtool="${t.id}" title="${t.hint}">
+                <span>${t.id === 'pin' ? `① PIN (#${nextPin})` : t.label}</span>
+              </button>
+            `
+            ).join('')}
+          </div>
+
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            ${MARKUP_COLORS.map(
+              (c) => `
+              <button
+                type="button"
+                class="fav-chip ${state.markupColor === c.hex ? 'active' : ''}"
+                style="display:inline-flex;align-items:center;gap:5px;${state.markupColor === c.hex ? `border-color:${c.hex};` : ''}"
+                data-mcol="${c.hex}"
+                title="${c.label}"
+              >
+                <span style="width:10px;height:10px;border-radius:50%;background:${c.hex};border:1px solid rgba(255,255,255,0.5);"></span>
+                <span>${c.short}</span>
+              </button>
+            `
+            ).join('')}
+          </div>
+
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <button type="button" class="fav-chip" data-act="markup-undo" ${state.markupAnns.length === 0 ? 'disabled' : ''}>UNDO</button>
+            <button type="button" class="fav-chip" data-act="markup-clear" ${state.markupAnns.length === 0 ? 'disabled' : ''}>CLEAR</button>
+            <button type="button" class="subbar-util-btn" data-act="markup-download">${ICONS.downloadSm} <span>DOWNLOAD PNG</span></button>
+            <button type="button" class="neon-cta-btn" style="height:28px;padding:0 12px;" data-act="markup-apply">${ICONS.check} <span>APPLY &amp; ATTACH</span></button>
+          </div>
+        </div>
+
+        <div class="shot-markup-stage">
+          <canvas id="shot-markup-canvas" class="shot-markup-canvas" width="920" height="420"></canvas>
+        </div>
+
+        <div class="shot-markup-footer">
+          <span>6 Semantic &amp; Neutral Contrast-Halo Inks (#273/#276): Red=FIX · Emerald=KEEP · Cyan=INFO · Amber=MOVE · White/Black</span>
+          <span>Annotations: ${state.markupAnns.length} · Ctrl+Z to Undo</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderRawTermStage(sess, extraMsgs) {
+  const turns = [
+    ...(sess.priorTurns || []),
+    { user: sess.userPrompt, tools: sess.tools, spoken: sess.spoken },
+  ];
+  const lines = [
+    `\x1b[32m╭─ J.O.S.H.U.A. SOVEREIGN PTY // ${sess.name} (${sess.vessel} · ${sess.branch}) ─╮\x1b[0m`
+      .replace(/\x1b\[[0-9;]*m/g, ''),
+    ...turns.flatMap((t, idx) => [
+      ``,
+      `operator@sovereign-node:~/aim-connect$ # Turn ${idx + 1}`,
+      `> ${t.user}`,
+      ...(t.tools || []).map((tl) => `  • ${tl}`),
+      `🔊 ${t.spoken}`,
+    ]),
+    ...extraMsgs.map((m) => `> ${typeof m === 'string' ? m : m.text || '[attachment]'}`),
+    ``,
+    `operator@sovereign-node:~/aim-connect$ █`,
+  ];
+  return `
+    <div class="terminal-stage-pad">
+      <pre class="terminal-container-mock" id="live-stream-scroll" style="font-size:${state.termFontSize}px;">${escapeHtml(lines.join('\n'))}</pre>
+      <div class="tmux-f10-bar">
+        <span>[0] 0:${escapeHtml(sess.vessel.toLowerCase())}*  1:zsh-  (${escapeHtml(sess.name)})</span>
+        <span>F10 Menu · padding:0 FitAddon (#272 unclipped) · 255/255 pytest</span>
+      </div>
+    </div>
+  `;
+}
+
 function render() {
   document.documentElement.setAttribute('data-theme', state.theme);
   const root = document.getElementById('proto-root');
@@ -3966,20 +4946,31 @@ function render() {
 
   const isHome = !state.activeSession;
   const sess = state.sessions.find((s) => s.name === state.activeSession) || state.sessions[0];
-  const waiting = state.sessions.filter((s) => s.status === 'WAITING');
-  const unreadList = state.sessions.filter((s) => state.unreadSessions.includes(s.name));
-  const activeCount = state.sessions.filter(
-    (s) => s.status === 'THINKING' || s.status === 'WAITING' || state.unreadSessions.includes(s.name)
-  ).length;
+
+  const tabWaitByAgent = new Map();
+  state.browserTabs.forEach((t) => {
+    if (t.waitingForHuman && t.agentKey) tabWaitByAgent.set(t.agentKey, t.waitingForHuman);
+  });
+
+  const effectiveStatus = (s) => (tabWaitByAgent.has(s.name) ? 'WAITING' : s.status);
+
+  const waiting = state.sessions.filter((s) => effectiveStatus(s) === 'WAITING');
+  const thinkingList = state.sessions.filter((s) => s.isAgent !== false && effectiveStatus(s) === 'THINKING');
+  const unreadList = state.sessions.filter(
+    (s) => state.unreadSessions.includes(s.name) && effectiveStatus(s) !== 'THINKING'
+  );
 
   const serverCount = state.sessions.filter((s) => s.isAgent === false).length;
   const noBrowserCount = state.sessions.filter((s) => !s.browserTabId).length;
+  const highCtxCount = state.sessions.filter(
+    (s) => s.isAgent !== false && (s.tier !== 'normal' || s.compacted > 0)
+  ).length;
 
   let filtered = state.sessions.filter((s) => {
-    const isUnread = state.unreadSessions.includes(s.name);
-    if (state.filter === 'busy' && s.status !== 'THINKING' && s.status !== 'WAITING' && !isUnread) {
-      return false;
-    }
+    const stNow = effectiveStatus(s);
+    const isUnread = state.unreadSessions.includes(s.name) && stNow !== 'THINKING';
+    if (state.filter === 'thinking' && (s.isAgent === false || stNow !== 'THINKING')) return false;
+    if (state.filter === 'new' && !isUnread) return false;
     if (state.filter === 'servers' && s.isAgent !== false) return false;
     if (state.filter === 'nobrowser' && s.browserTabId) return false;
     if (state.filter === 'ctx' && (s.isAgent === false || (s.tier === 'normal' && !s.compacted))) return false;
@@ -3987,19 +4978,19 @@ function render() {
     return true;
   });
 
-  if (state.filter === 'busy') {
-    const rank = (s) => (s.status === 'WAITING' ? 0 : state.unreadSessions.includes(s.name) ? 1 : 2);
-    filtered = [...filtered].sort((a, b) => rank(a) - rank(b));
-  }
-
-  const isPhone = state.device === 'phone' || window.innerWidth <= 768;
-  const isFull = isPhone || state.layoutMode === 'full';
+  // Widescreen-only Split View (>900px) — Mobile (<=900px or phone-mode) stays 100% Full View (#279, #280)
+  const isWidescreen = state.device !== 'phone' && window.innerWidth > 900;
+  const isFull = !isWidescreen || state.layoutMode === 'full';
   const showRight = state.activeTool === 'browser' || state.activeTool === 'files';
   const showCenter = !showRight || !isFull;
   const isSplit = showRight && !isFull;
   const rightType = state.activeTool;
 
   const bTab = state.browserTabs.find((t) => t.id === state.activeBrowserTab) || state.browserTabs[0];
+  const waitingBrowserTab =
+    (bTab?.waitingForHuman ? bTab : null) ||
+    state.browserTabs.find((t) => Boolean(t.waitingForHuman)) ||
+    null;
   const isStarred = state.browserFavorites.some((f) => f.url === bTab.url);
   const extraMsgs = state.sentMessages[sess.name] || [];
 
@@ -4011,10 +5002,12 @@ function render() {
     <div class="lab-bar">
       <div class="lab-group">
         <span class="pulse-led"></span>
-        <span style="color:#00ffa3;font-weight:700;letter-spacing:0.12em;">EMERALD MATRIX // 100% FEATURE PARITY</span>
+        <span style="color:#00ffa3;font-weight:700;letter-spacing:0.12em;">EMERALD MATRIX V4 // LIVE #260–#282 PARITY (255/255 PYTEST)</span>
       </div>
       <div class="lab-group">
         <button class="lab-pill ${isHome && !state.isLocked ? 'active' : ''}" data-act="reset-home">HOMEPAGE</button>
+        <button class="lab-pill" data-act="open-markup-demo" title="Open <canvas> Visual Markup Studio (#273/#276)">MARKUP STUDIO</button>
+        <button class="lab-pill ${waitingBrowserTab ? 'active' : ''}" data-act="sim-2fa-gate" title="Trigger or inspect Human-in-the-Loop Browser 2FA Takeover (#275)">2FA GATE</button>
         <button class="lab-pill" data-act="cycle-op-style" title="Cycle Operator Reply Highlight (Cyan / Gold / Emerald / Grey)">USER COLOR: ${state.operatorStyle.toUpperCase()}</button>
         <button class="lab-pill ${state.operatorSide === 'right' ? 'active' : ''}" data-act="toggle-op-side" title="Toggle Operator Reply Dot Left vs Right Chat Box">
           ${state.operatorSide === 'right' ? 'USER DOT: RIGHT ●' : '● USER DOT: LEFT'}
@@ -4036,15 +5029,15 @@ function render() {
           state.isLocked
             ? renderLockScreen()
             : `
-        <!-- Frosted Glass Header (Zero Extra Buttons Added — Half-Screen Coherent!) -->
+        <!-- Frosted Glass Header (Mobile De-Duplicated — #279, #280) -->
         <header class="ld-header">
           <div class="hdr-cluster">
-            <button class="ghost-btn ${state.showSidebar ? 'active' : ''}" data-act="toggle-sidebar" title="Toggle Fleet Telemetry Rail">
+            <button class="ghost-btn desktop-only ${state.showSidebar ? 'active' : ''}" data-act="toggle-sidebar" title="Toggle Fleet Telemetry Rail">
               ${ICONS.sidebar}
             </button>
 
             <div class="ld-brand" id="brand-logo-btn" data-act="reset-home" title="Return to Sovereign Homepage">
-              <div class="ld-brand-box">${ICONS.terminal}</div>
+              <div class="ld-brand-box">${ICONS.aimMark}</div>
               <div class="ld-brand-word"><span id="scramble-brand-aim" style="color:var(--text-primary);">AIM</span><span id="scramble-brand-conn">CONNECT</span></div>
             </div>
 
@@ -4063,7 +5056,7 @@ function render() {
 
             ${
               waiting.length
-                ? `<button class="wait-alert-pill hide-halfscreen" data-pick-sess="${waiting[0].name}" title="Jump straight to session waiting for approval">
+                ? `<button class="wait-alert-pill hide-halfscreen" data-pick-sess="${waiting[0].name}" title="Jump straight to session waiting for approval or 2FA">
                     GATE // ${waiting.length}
                   </button>`
                 : ''
@@ -4094,7 +5087,7 @@ function render() {
                 ${ICONS.globe}
                 <span id="scramble-browser">BROWSER</span>
                 ${
-                  state.activeTool === 'browser'
+                  state.activeTool === 'browser' && isWidescreen
                     ? `<span class="seg-expand-badge ${state.layoutMode === 'full' ? 'is-full' : ''}">${state.layoutMode === 'full' ? 'SPLIT' : 'FULL'}</span>`
                     : ''
                 }
@@ -4103,7 +5096,7 @@ function render() {
                 ${ICONS.files}
                 <span id="scramble-files">FILES</span>
                 ${
-                  state.activeTool === 'files'
+                  state.activeTool === 'files' && isWidescreen
                     ? `<span class="seg-expand-badge ${state.layoutMode === 'full' ? 'is-full' : ''}">${state.layoutMode === 'full' ? 'SPLIT' : 'FULL'}</span>`
                     : ''
                 }
@@ -4130,7 +5123,7 @@ function render() {
               <span class="hide-halfscreen">${state.showOnScreenKeyboard ? 'KB ON' : 'KB OFF'}</span>
             </button>
             <button
-              class="ghost-btn ${state.modal === 'settings' ? 'active' : ''}"
+              class="ghost-btn desktop-only ${state.modal === 'settings' ? 'active' : ''}"
               data-act="open-settings"
               title="System Settings (Themes, Standalone App, Keyboard, Voice, Vault & 3FA)"
             >
@@ -4148,9 +5141,14 @@ function render() {
             <aside class="fleet-rail">
               <div class="rail-header">
                 <span class="rail-kicker">${ICONS.cpu} FLEET // ${String(state.sessions.length).padStart(2, '0')} NODES</span>
-                <button class="ghost-btn" style="height:24px;padding:0 7px;" data-act="open-spawn-sess" title="Spawn New Isolated Tmux Session">
-                  ${ICONS.plus} NEW
-                </button>
+                <div style="display:flex;gap:4px;">
+                  <button class="ghost-btn" style="height:24px;padding:0 7px;" data-act="open-spawn-sess" title="Spawn New Isolated Tmux Session">
+                    ${ICONS.plus} NEW
+                  </button>
+                  <button class="ghost-btn mobile-only-close" style="height:24px;padding:0 6px;" data-act="toggle-sidebar" title="Close Fleet Sidebar">
+                    ${ICONS.close}
+                  </button>
+                </div>
               </div>
 
               <div class="rail-controls">
@@ -4162,9 +5160,11 @@ function render() {
                 </div>
                 <div class="filter-tabs">
                   <button class="filter-chip ${state.filter === 'all' ? 'active' : ''}" data-flt="all">ALL (${state.sessions.length})</button>
+                  <button class="filter-chip ${state.filter === 'thinking' ? 'active' : ''} ${thinkingList.length ? 'has-thinking' : ''}" data-flt="thinking" title="Actively working / thinking AI agent sessions">THINKING (${thinkingList.length})</button>
+                  <button class="filter-chip ${state.filter === 'new' ? 'active' : ''} ${unreadList.length ? 'has-new' : ''}" data-flt="new" title="Agents that finished a turn while in the background">NEW (${unreadList.length})</button>
                   <button class="filter-chip ${state.filter === 'nobrowser' ? 'active' : ''}" data-flt="nobrowser" title="CLI-Only Agents &amp; Raw Tmux Servers with No Open Browser">NO WEB (${noBrowserCount})</button>
                   <button class="filter-chip ${state.filter === 'servers' ? 'active' : ''}" data-flt="servers" title="Non-Agent Split-Pane Tmux Server &amp; Worker Sessions">TMUX (${serverCount})</button>
-                  <button class="filter-chip ${state.filter === 'ctx' ? 'active' : ''}" data-flt="ctx">CTX ≥30%</button>
+                  <button class="filter-chip ${state.filter === 'ctx' ? 'active' : ''}" data-flt="ctx">CTX ≥30% (${highCtxCount})</button>
                 </div>
               </div>
 
@@ -4172,6 +5172,10 @@ function render() {
                 ${filtered
                   .map((s) => {
                     const isRawTmux = s.isAgent === false;
+                    const stNow = effectiveStatus(s);
+                    const has2faHold = tabWaitByAgent.has(s.name);
+                    const chipKind = has2faHold ? 'gate' : s.taskKind || 'idle';
+                    const chipLabel = has2faHold ? 'BROWSER 2FA / LOGIN' : s.taskLabel || stNow;
                     const showQuick = !isRawTmux && (s.name === state.activeSession || s.tier !== 'normal' || s.compacted > 0);
                     const wikiFlash = state.skillFlash[`${s.name}:wiki`];
                     const handoffFlash = state.skillFlash[`${s.name}:handoff`];
@@ -4183,14 +5187,14 @@ function render() {
                       >
                         <div class="card-top-row">
                           <div style="display:flex;align-items:center;gap:7px;min-width:0;">
-                            <span class="state-indicator ${s.status.toLowerCase()}"></span>
+                            <span class="state-indicator ${stNow.toLowerCase()}"></span>
                             <span class="project-pill" style="--agent-color:${s.color.hex};--agent-rgb:${s.color.rgb};">${s.name}</span>
-                            ${state.unreadSessions.includes(s.name) ? '<span class="card-new-badge">NEW</span>' : ''}
+                            ${state.unreadSessions.includes(s.name) && stNow !== 'THINKING' ? '<span class="card-new-badge">NEW</span>' : ''}
                           </div>
                           <div style="display:flex;align-items:center;gap:4px;">
                             ${
                               s.browserTabId
-                                ? `<span class="vessel-pill" style="color:var(--accent);border-color:rgba(var(--accent-rgb),0.4);" title="Leased Co-Pilot Browser Tab Open">🌐</span>`
+                                ? `<span class="vessel-pill" style="color:var(--accent);border-color:rgba(var(--accent-rgb),0.4);display:inline-flex;align-items:center;" title="Leased Co-Pilot Browser Tab Open"><span style="width:11px;height:11px;display:inline-flex;">${ICONS.globe}</span></span>`
                                 : ''
                             }
                             <span class="vessel-pill" style="${isRawTmux ? 'color:#34d399;border-color:rgba(16,185,129,0.45);' : ''}">${s.vessel}</span>
@@ -4204,7 +5208,7 @@ function render() {
                           <span style="display:inline-flex;align-items:center;gap:4px;">
                             ${ICONS.gitBranch} ${s.branch}${s.panes > 1 && isRawTmux === false ? ` · ${s.panes}p` : ''}
                           </span>
-                          <span class="task-mode-chip ${s.taskKind || 'idle'}">${escapeHtml(s.taskLabel || s.status)}</span>
+                          <span class="task-mode-chip ${chipKind}">${escapeHtml(chipLabel)}</span>
                         </div>
 
                         ${
@@ -4245,7 +5249,7 @@ function render() {
                         `
                         }
 
-                        <div class="card-preview">${escapeHtml(s.preview)}</div>
+                        <div class="card-preview">${escapeHtml(has2faHold ? tabWaitByAgent.get(s.name).reason : s.preview)}</div>
 
                         ${
                           showQuick
@@ -4277,7 +5281,7 @@ function render() {
                 ? `<main class="center-node-pane">${renderHomepage()}</main>`
                 : `
             <main class="center-node-pane" style="font-size:${state.termFontSize}px;">
-              <!-- Workspace Utility Subbar (Home for Paste, Scroll/Copy + Multi-Page Find, Grab, Forensics, History) -->
+              <!-- Workspace Utility Subbar ([CHAT VIEW | RAW TERM], Auto-Scroll ↓, Paste, Scroll/Copy, Grab, Forensics, History) -->
               <div class="node-subbar">
                 <div class="node-title-tag" style="min-width:0;overflow:hidden;" title="${sess.isAgent === false ? 'RAW TMUX WORKSPACE' : 'J.O.S.H.U.A.'} // ${sess.name.toUpperCase()}">
                   ${sess.isAgent === false ? ICONS.terminal : ICONS.shield}
@@ -4289,6 +5293,30 @@ function render() {
                   }
                 </div>
                 <div class="subbar-tools-row">
+                  ${
+                    sess.isAgent === false
+                      ? `
+                    <button type="button" class="subbar-util-btn ${state.tmuxGridMode ? 'active' : ''}" data-act="toggle-tmux-grid" title="Toggle Simultaneous Multi-Window Tmux Split Grid vs Interactive Raw Term">
+                      ${state.tmuxGridMode ? ICONS.grid : ICONS.terminal}
+                      <span>${state.tmuxGridMode ? 'SPLIT GRID' : 'RAW TERM'}</span>
+                    </button>
+                  `
+                      : `
+                    <button type="button" class="subbar-util-btn ${state.agentStageMode === 'chat' ? 'active' : ''}" data-act="toggle-stage-mode" title="Toggle Live Structured GFM Markdown Chat Bubbles vs Raw Interactive Xterm">
+                      ${state.agentStageMode === 'chat' ? ICONS.message : ICONS.terminal}
+                      <span>${state.agentStageMode === 'chat' ? 'CHAT VIEW' : 'RAW TERM'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="subbar-util-btn ${state.sessionAutoScroll ? 'active' : ''}"
+                      style="padding:0 6px;"
+                      data-act="toggle-autoscroll"
+                      title="Auto-Scroll to Latest Reply: ${state.sessionAutoScroll ? 'ON (click to turn OFF)' : 'OFF (parked reading mode — click to follow new replies)'}"
+                    >
+                      ${ICONS.arrowDownToLine}
+                    </button>
+                  `
+                  }
                   <button type="button" class="subbar-util-btn ${state.pasteBadge ? 'active' : ''}" data-act="paste-clip" title="Bracketed Paste from Clipboard">
                     ${state.pasteBadge ? ICONS.check : ICONS.clipboard}
                     <span>${state.pasteBadge || 'PASTE'}</span>
@@ -4324,154 +5352,181 @@ function render() {
                 </div>
               </div>
 
-              ${
-                state.showHistory
-                  ? renderHistoryVault(sess)
-                  : state.showScrollCopy
-                  ? (() => {
-                      const fullBuf = buildFullTmuxScrollback(sess, extraMsgs);
-                      const { html, count, activeIdx } = highlightScrollback(fullBuf);
-                      return `
-                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border-hairline);font-family:var(--font-mono);font-size:11px;">
-                  <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:220px;">
-                    <span style="color:var(--accent);display:flex;">${ICONS.search}</span>
-                    <input
-                      class="term-find-input"
-                      id="scroll-search-inp"
-                      style="width:min(230px,100%);border:1px solid var(--border-hairline);"
-                      placeholder="Search all 2,000+ tmux lines..."
-                      value="${escapeHtml(state.scrollSearchQuery)}"
-                    />
-                    ${
-                      state.scrollSearchQuery.trim()
-                        ? `
-                      <span class="mono-kbd">${count > 0 ? `${activeIdx + 1} / ${count}` : '0 HITS'}</span>
-                      <button type="button" class="fav-chip" data-act="scroll-hit-prev" title="Previous match across pages">▲</button>
-                      <button type="button" class="fav-chip" data-act="scroll-hit-next" title="Next match across pages">▼</button>
-                    `
-                        : ''
-                    }
-                  </div>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                    <button class="subbar-util-btn" data-act="copy-selected-scrollback">${ICONS.copyText} <span>COPY SELECTION</span></button>
-                    <button class="subbar-util-btn" data-act="copy-all-scrollback">${ICONS.copyText} <span>${state.scrollCopyBadge || 'COPY ALL'}</span></button>
-                    <button class="subbar-util-btn ${state.scrollPlainMode ? 'active' : ''}" data-act="toggle-scroll-plain">
-                      <span>${state.scrollPlainMode ? 'ANSI COLOR' : 'PLAIN TEXT'}</span>
-                    </button>
-                    <button class="subbar-util-btn" data-act="refresh-scrollback" title="Re-capture tmux buffer">${ICONS.refresh}</button>
-                    <button class="subbar-util-btn active" data-act="toggle-scrollcopy">EXIT</button>
-                  </div>
-                </div>
-                <pre class="scrollcopy-surface" id="scrollcopy-pre" style="font-size:${state.termFontSize}px;">${html}</pre>
-              `;
-                    })()
-                  : sess.isAgent === false
-                  ? renderTmuxServerWorkspace(sess)
-                  : `
-              <div class="stream-scroll" id="live-stream-scroll" style="${
-                state.termPalette === 'hacker'
-                  ? 'background:#010802;color:#22c55e;'
-                  : state.termPalette === 'contrast'
-                  ? 'background:#000000;color:#ffffff;'
-                  : ''
-              }">
-                ${[
-                  ...(sess.priorTurns || []),
-                  { user: sess.userPrompt, tools: sess.tools, spoken: sess.spoken },
-                ]
-                  .map(
-                    (turn) => `
-                  <div class="transmission-block op-style-${state.operatorStyle} op-side-${state.operatorSide}">
-                    <div class="transmission-header" style="color:var(--op-accent, var(--text-muted));">
+              <div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;">
+                ${
+                  state.showHistory
+                    ? renderHistoryVault(sess)
+                    : state.showScrollCopy
+                    ? (() => {
+                        const fullBuf = buildFullTmuxScrollback(sess, extraMsgs);
+                        const { html, count, activeIdx } = highlightScrollback(fullBuf);
+                        return `
+                  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border-hairline);font-family:var(--font-mono);font-size:11px;">
+                    <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:220px;">
+                      <span style="color:var(--accent);display:flex;">${ICONS.search}</span>
+                      <input
+                        class="term-find-input"
+                        id="scroll-search-inp"
+                        style="width:min(230px,100%);border:1px solid var(--border-hairline);"
+                        placeholder="Search all 2,000+ tmux lines..."
+                        value="${escapeHtml(state.scrollSearchQuery)}"
+                      />
                       ${
-                        state.operatorSide === 'right'
-                          ? `<div class="transmission-rule"></div><span>[OPERATOR // BRIAN]</span><span class="op-dot-ind"></span>`
-                          : `<span class="op-dot-ind"></span><span>[OPERATOR // BRIAN]</span><div class="transmission-rule"></div>`
-                      }
-                    </div>
-                    <div class="transmission-body-operator" style="font-size:${state.termFontSize}px;">${escapeHtml(turn.user)}</div>
-                  </div>
-
-                  <div class="transmission-block">
-                    <div class="transmission-header" style="color:var(--accent);">
-                      <span style="width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);"></span>
-                      <span>[J.O.S.H.U.A. // ${sess.vessel} ENGINE]</span>
-                      <div class="transmission-rule"></div>
-                    </div>
-                    <div class="transmission-body-agent">
-                      <div style="display:flex;flex-direction:column;gap:6px;">
-                        ${turn.tools
-                          .map((t) => `<div class="tool-exec-pill" style="font-size:${Math.max(11, state.termFontSize - 1)}px;">${ICONS.terminal} <span>${escapeHtml(t)}</span></div>`)
-                          .join('')}
-                      </div>
-                      <div class="spoken-brief-card" style="font-size:${state.termFontSize}px;">
-                        <span style="color:var(--accent-secondary);margin-top:2px;">${ICONS.volume}</span>
-                        <div>${escapeHtml(turn.spoken)}</div>
-                      </div>
-                    </div>
-                  </div>
-                `
-                  )
-                  .join('')}
-
-                ${extraMsgs
-                  .map((m) => {
-                    const msgText = typeof m === 'string' ? m : m.text;
-                    const msgAttachments = typeof m === 'object' && m?.attachments ? m.attachments : [];
-                    return `
-                  <div class="transmission-block op-style-${state.operatorStyle} op-side-${state.operatorSide}">
-                    <div class="transmission-header" style="color:var(--op-accent, var(--text-muted));">
-                      ${
-                        state.operatorSide === 'right'
-                          ? `<div class="transmission-rule"></div><span>[OPERATOR // LIVE]</span><span class="op-dot-ind"></span>`
-                          : `<span class="op-dot-ind"></span><span>[OPERATOR // LIVE]</span><div class="transmission-rule"></div>`
-                      }
-                    </div>
-                    <div class="transmission-body-operator" style="font-size:${state.termFontSize}px;">
-                      ${msgText ? `<div>${escapeHtml(msgText)}</div>` : ''}
-                      ${msgAttachments
-                        .map(
-                          (att) => `
-                        <div class="chat-shot-attachment-card">
-                          ${ICONS.camera}
-                          <span>${escapeHtml(att.filename)} · ${escapeHtml(att.dims)} (${escapeHtml(att.url)})</span>
-                        </div>
+                        state.scrollSearchQuery.trim()
+                          ? `
+                        <span class="mono-kbd">${count > 0 ? `${activeIdx + 1} / ${count}` : '0 HITS'}</span>
+                        <button type="button" class="fav-chip" data-act="scroll-hit-prev" title="Previous match across pages">▲</button>
+                        <button type="button" class="fav-chip" data-act="scroll-hit-next" title="Next match across pages">▼</button>
                       `
-                        )
-                        .join('')}
+                          : ''
+                      }
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <button class="subbar-util-btn" data-act="copy-selected-scrollback">${ICONS.copyText} <span>COPY SELECTION</span></button>
+                      <button class="subbar-util-btn" data-act="copy-all-scrollback">${ICONS.copyText} <span>${state.scrollCopyBadge || 'COPY ALL'}</span></button>
+                      <button class="subbar-util-btn ${state.scrollPlainMode ? 'active' : ''}" data-act="toggle-scroll-plain">
+                        <span>${state.scrollPlainMode ? 'ANSI COLOR' : 'PLAIN TEXT'}</span>
+                      </button>
+                      <button class="subbar-util-btn" data-act="refresh-scrollback" title="Re-capture tmux buffer">${ICONS.refresh}</button>
+                      <button class="subbar-util-btn active" data-act="toggle-scrollcopy">EXIT</button>
                     </div>
                   </div>
+                  <pre class="scrollcopy-surface" id="scrollcopy-pre" style="font-size:${state.termFontSize}px;">${html}</pre>
                 `;
-                  })
-                  .join('')}
-              </div>
-              `
-              }
-
-              ${
-                state.showTouchKeys && sess.isAgent !== false
-                  ? `
-                <div class="touch-keys-drawer" title="Right-click any macro chip to unpin">
-                  ${state.macros
-                    .filter((m) => m.pinned)
+                      })()
+                    : sess.isAgent === false
+                    ? renderTmuxServerWorkspace(sess)
+                    : state.agentStageMode === 'pty'
+                    ? renderRawTermStage(sess, extraMsgs)
+                    : `
+                <div class="stream-scroll" id="live-stream-scroll" style="${
+                  state.termPalette === 'hacker'
+                    ? 'background:#010802;color:#22c55e;'
+                    : state.termPalette === 'contrast'
+                    ? 'background:#000000;color:#ffffff;'
+                    : ''
+                }">
+                  ${[
+                    ...(sess.priorTurns || []),
+                    { user: sess.userPrompt, tools: sess.tools, body: sess.body, spoken: sess.spoken },
+                  ]
                     .map(
-                      (m) => `
-                    <button class="fav-chip" data-macro="${escapeHtml(m.cmd)}" data-rclick-unpin="${m.id}">
-                      ${m.isServer ? '☁ ' : ''}${escapeHtml(m.label)}
-                    </button>
+                      (turn) => `
+                    <div class="transmission-block op-style-${state.operatorStyle} op-side-${state.operatorSide}">
+                      <div class="transmission-header" style="color:var(--op-accent, var(--text-muted));">
+                        ${
+                          state.operatorSide === 'right'
+                            ? `<div class="transmission-rule"></div><span>[OPERATOR // BRIAN]</span><span class="op-dot-ind"></span>`
+                            : `<span class="op-dot-ind"></span><span>[OPERATOR // BRIAN]</span><div class="transmission-rule"></div>`
+                        }
+                      </div>
+                      <div class="transmission-body-operator" style="font-size:${state.termFontSize}px;">${escapeHtml(turn.user)}</div>
+                    </div>
+
+                    <div class="transmission-block">
+                      <div class="transmission-header" style="color:var(--accent);">
+                        <span style="width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);"></span>
+                        <span>[J.O.S.H.U.A. // ${sess.vessel} ENGINE]</span>
+                        <div class="transmission-rule"></div>
+                      </div>
+                      <div class="transmission-body-agent">
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                          ${turn.tools
+                            .map((t) => `<div class="tool-exec-pill" style="font-size:${Math.max(11, state.termFontSize - 1)}px;">${ICONS.terminal} <span>${escapeHtml(t)}</span></div>`)
+                            .join('')}
+                        </div>
+                        ${
+                          turn.body
+                            ? `<div style="font-size:${state.termFontSize}px;">${renderMarkdownHtml(turn.body)}</div>`
+                            : ''
+                        }
+                        <div class="spoken-brief-card" style="font-size:${state.termFontSize}px;">
+                          <span style="color:var(--accent-secondary);margin-top:2px;">${ICONS.volume}</span>
+                          <div>${escapeHtml(turn.spoken)}</div>
+                        </div>
+                      </div>
+                    </div>
                   `
                     )
                     .join('')}
-                  <button class="fav-chip" data-act="open-macro-mgr" title="Open Macro Studio">${ICONS.settings}</button>
+
+                  ${extraMsgs
+                    .map((m) => {
+                      const msgText = typeof m === 'string' ? m : m.text;
+                      const msgAttachments = typeof m === 'object' && m?.attachments ? m.attachments : [];
+                      const msgAgentReply = typeof m === 'object' ? m.agentReply : '';
+                      return `
+                    <div class="transmission-block op-style-${state.operatorStyle} op-side-${state.operatorSide}">
+                      <div class="transmission-header" style="color:var(--op-accent, var(--text-muted));">
+                        ${
+                          state.operatorSide === 'right'
+                            ? `<div class="transmission-rule"></div><span>[OPERATOR // LIVE]</span><span class="op-dot-ind"></span>`
+                            : `<span class="op-dot-ind"></span><span>[OPERATOR // LIVE]</span><div class="transmission-rule"></div>`
+                        }
+                      </div>
+                      <div class="transmission-body-operator" style="font-size:${state.termFontSize}px;">
+                        ${msgText ? `<div>${escapeHtml(msgText)}</div>` : ''}
+                        ${msgAttachments
+                          .map(
+                            (att) => `
+                          <div class="chat-shot-attachment-card">
+                            ${ICONS.camera}
+                            <button type="button" class="shot-link-btn" data-md-file="${att.path || 'docs/screenshots/emerald-matrix-arch.svg'}">${escapeHtml(att.filename)}</button>
+                            ${att.annotated ? `<span class="mono-kbd" style="font-size:8.5px;color:var(--accent);">MARKED</span>` : ''}
+                            <span>· ${escapeHtml(att.dims)}</span>
+                          </div>
+                        `
+                          )
+                          .join('')}
+                      </div>
+                    </div>
+                    ${
+                      msgAgentReply
+                        ? `
+                      <div class="transmission-block">
+                        <div class="transmission-header" style="color:var(--accent);">
+                          <span style="width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);"></span>
+                          <span>[J.O.S.H.U.A. // LIVE REPLY]</span>
+                          <div class="transmission-rule"></div>
+                        </div>
+                        <div class="transmission-body-agent">
+                          <div class="spoken-brief-card" style="font-size:${state.termFontSize}px;">
+                            <span style="color:var(--accent-secondary);margin-top:2px;">${ICONS.volume}</span>
+                            <div>${escapeHtml(msgAgentReply)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    `
+                        : ''
+                    }
+                  `;
+                    })
+                    .join('')}
                 </div>
-              `
-                  : ''
-              }
+                `
+                }
+
+                ${
+                  !state.showHistory && !state.showScrollCopy && sess.isAgent !== false && state.chatScrolledUp
+                    ? `
+                  <button
+                    type="button"
+                    class="hop-bottom-fab ${state.chatUnseenBelow ? 'has-unseen' : ''}"
+                    data-act="hop-to-bottom"
+                    title="${state.chatUnseenBelow ? 'New reply below — hop to bottom' : 'Hop to bottom of session'}"
+                  >
+                    ${ICONS.arrowDown}
+                    ${state.chatUnseenBelow ? '<span>NEW</span>' : ''}
+                  </button>
+                `
+                    : ''
+                }
+              </div>
 
               ${
                 sess.isAgent !== false || state.showHistory || state.showScrollCopy
                   ? `
-              <!-- LeadDeeds Signature Composer + Lightning Bolt Quick-Actions -->
+              <!-- LeadDeeds Signature Composer + Docked Keybar (#263) + Visual Markup Chips (#273/#276) -->
               <div class="ld-composer-shell">
                 ${
                   state.popover === 'bolt'
@@ -4517,8 +5572,28 @@ function render() {
 
                     <button type="button" class="macro-manage-footer-btn" data-act="open-macro-mgr">
                       ${ICONS.settings}
-                      <span>MACRO SETTINGS // CREATE, EDIT &amp; SYNC (${state.macros.length})</span>
+                      <span>MACRO STUDIO // CREATE, EDIT &amp; SYNC (${state.macros.length})</span>
                     </button>
+                  </div>
+                `
+                    : ''
+                }
+
+                ${
+                  state.showTouchKeys && !state.showOnScreenKeyboard
+                    ? `
+                  <div class="composer-keybar" title="Right-click any macro chip to unpin">
+                    ${state.macros
+                      .filter((m) => m.pinned)
+                      .map(
+                        (m) => `
+                      <button type="button" class="fav-chip" data-macro="${escapeHtml(m.cmd)}" data-rclick-unpin="${m.id}">
+                        ${m.isServer ? '☁ ' : ''}${escapeHtml(m.label)}
+                      </button>
+                    `
+                      )
+                      .join('')}
+                    <button type="button" class="fav-chip" data-act="open-macro-mgr" title="Open Macro Studio">${ICONS.settings}</button>
                   </div>
                 `
                     : ''
@@ -4531,10 +5606,13 @@ function render() {
                     ${(state.stagedAttachments[sess.name] || [])
                       .map(
                         (att) => `
-                      <span class="staged-shot-chip">
+                      <span class="staged-shot-chip" title="Click filename to preview in Files · Click pencil to annotate in Visual Markup Studio">
                         <span style="color:var(--accent);display:inline-flex;">${ICONS.camera}</span>
-                        <span>${escapeHtml(att.filename)}</span>
+                        <button type="button" class="shot-link-btn" data-md-file="${att.path || 'docs/screenshots/emerald-matrix-arch.svg'}">${escapeHtml(att.filename)}</button>
+                        ${att.annotated ? `<span class="mono-kbd" style="font-size:8.5px;color:var(--accent);">MARKED</span>` : ''}
                         <span style="color:var(--text-muted);">${escapeHtml(att.dims)}</span>
+                        <button type="button" class="shot-chip-icon-btn" data-edit-shot="${sess.name}|${att.id}" title="Open Visual Markup Studio (drop ① ② ③ pins, circles, or arrows)">${ICONS.edit}</button>
+                        <button type="button" class="shot-chip-icon-btn" data-dl-shot="${sess.name}|${att.id}" title="Download screenshot PNG">${ICONS.downloadSm}</button>
                         <button type="button" class="ghost-btn" style="height:18px;padding:0 4px;" data-rm-shot="${sess.name}|${att.id}" title="Remove attached screenshot">×</button>
                       </span>
                     `
@@ -4562,7 +5640,7 @@ function render() {
                       placeholder="${
                         state.micEnabled
                           ? `Listening on mic — speak directive for ${sess.name}...`
-                          : `Transmit directive to ${sess.name}...`
+                          : `Transmit directive to ${sess.name}... (Paste screenshot with Ctrl+V)`
                       }"
                       autocomplete="off"
                     />
@@ -4611,7 +5689,7 @@ function render() {
                   ? renderFilesView(isFull)
                   : `
                 <div class="copilot-top-bar">
-                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;">
+                  <div class="copilot-top-left">
                     <span class="pulse-led" style="${!state.browserDaemon ? 'background:#6b7280;box-shadow:none;' : ''}"></span>
                     <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.1em;">CO-PILOT // :9222</span>
                     <button class="fav-chip" data-act="toggle-control" style="display:inline-flex;align-items:center;gap:5px;${state.controlMode ? 'border-color:var(--accent);color:var(--accent);' : ''}">
@@ -4635,9 +5713,18 @@ function render() {
                       type="button"
                       class="cp-action-icon-btn ${state.shotFlash ? 'flash-ok' : ''}"
                       data-act="shot-to-chat"
-                      title="Add Screenshot to Conversation (${escapeHtml(sess && sess.isAgent !== false && state.activeSession ? sess.name : bTab.agentKey || 'aim-connect')})"
+                      title="Add ${state.shotFullPage ? 'Full-Page' : 'Visible Pane'} Screenshot to Conversation (${escapeHtml(sess && sess.isAgent !== false && state.activeSession ? sess.name : bTab.agentKey || 'aim-connect')})"
                     >
                       ${state.shotFlash ? ICONS.check : ICONS.cameraPlus}
+                    </button>
+                    <button
+                      type="button"
+                      class="fav-chip ${state.shotFullPage ? 'active' : ''}"
+                      style="height:24px;padding:0 6px;font-size:9px;"
+                      data-act="toggle-shot-scope"
+                      title="Toggle Screenshot Scope: Visible Split-Pane Viewport vs Full Scrolling Page"
+                    >
+                      ${state.shotFullPage ? 'FULL' : 'PANE'}
                     </button>
                     <button
                       type="button"
@@ -4652,9 +5739,9 @@ function render() {
                           : ''
                       }
                     </button>
-                    <span style="opacity:0.22;margin:0 1px;">|</span>
+                    <span class="desktop-only desktop-split-only" style="opacity:0.22;margin:0 1px;">|</span>
                     <button
-                      class="pane-full-upgrade-btn desktop-only ${isFull ? 'is-full' : ''}"
+                      class="pane-full-upgrade-btn desktop-only desktop-split-only ${isFull ? 'is-full' : ''}"
                       data-act="toggle-full"
                       title="${isFull ? 'Return Browser to Split Screen' : 'Upgrade Browser to Full View'}"
                     >
@@ -4711,7 +5798,7 @@ function render() {
                       })
                       .join('')}
                     <div style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-muted);padding-top:2px;">
-                      DIR: ~/Downloads/aim-browser (CDP Page.setDownloadBehavior)
+                      DIR: ~/Downloads/aim-browser (--headless=new CDP)
                     </div>
                   </div>
                 `
@@ -4733,15 +5820,18 @@ function render() {
                   ${state.browserTabs
                     .map((t) => {
                       const active = t.id === state.activeBrowserTab;
+                      const isWaitingHuman = Boolean(t.waitingForHuman);
                       const st = t.color ? `--agent-color:${t.color.hex};--agent-rgb:${t.color.rgb};` : '';
                       return `
                         <div
-                          class="cp-tab ${active ? 'active' : ''} ${t.color ? 'agent-tab' : ''}"
+                          class="cp-tab ${active ? 'active' : ''} ${t.color ? 'agent-tab' : ''} ${isWaitingHuman ? 'waiting-human-tab' : ''}"
                           style="${st}"
                           data-btab="${t.id}"
                         >
                           ${
-                            t.color
+                            isWaitingHuman
+                              ? `<span title="Waiting for Operator sign-in / 2FA">✋</span>`
+                              : t.color
                               ? `<span class="project-pill-dot" style="background:${t.color.hex};box-shadow:0 0 8px ${t.color.hex};"></span>`
                               : ICONS.globe
                           }
@@ -4757,6 +5847,53 @@ function render() {
                     .join('')}
                   <button type="button" class="fav-chip" data-act="new-btab" title="Open new isolated browser tab">+ TAB</button>
                 </div>
+
+                ${
+                  waitingBrowserTab
+                    ? (() => {
+                        const takeoverActive =
+                          waitingBrowserTab.id === state.activeBrowserTab &&
+                          state.controlMode &&
+                          state.showBrowser2faBar;
+                        return `
+                  <div class="browser-human-gate-banner" role="alert">
+                    <div style="display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 auto;">
+                      <span>✋</span>
+                      <span style="font-weight:700;letter-spacing:0.05em;">${escapeHtml((waitingBrowserTab.agentKey || 'AGENT').toUpperCase())} NEEDS LOGIN / 2FA:</span>
+                      <span style="color:var(--text-primary);overflow-wrap:anywhere;">${escapeHtml(waitingBrowserTab.waitingForHuman.reason)}</span>
+                    </div>
+                    <div class="browser-human-gate-actions">
+                      <button
+                        type="button"
+                        class="browser-takeover-cta ${takeoverActive ? 'active' : ''}"
+                        data-act="takeover-2fa"
+                        title="Focus blocked tab, enable interactive pointer/keyboard Control ON, and open the 2FA injection bar"
+                      >
+                        ${ICONS.gamepad}
+                        <span>${takeoverActive ? 'IN CONTROL · 2FA READY' : 'TAKE CONTROL & 2FA'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="fav-chip ${state.sendContinueOnResume ? 'active' : ''}"
+                        data-act="toggle-autocontinue"
+                      >
+                        ${state.sendContinueOnResume ? 'AUTO-CONTINUE: ON' : 'AUTO-CONTINUE: OFF'}
+                      </button>
+                      <button
+                        type="button"
+                        class="browser-resume-cta"
+                        data-act="resume-2fa"
+                        title="Clear waitingForHuman hold, restore Watch-Only mode, and resume the agent"
+                      >
+                        ${ICONS.check}
+                        <span>RESUME AGENT</span>
+                      </button>
+                    </div>
+                  </div>
+                `;
+                      })()
+                    : ''
+                }
 
                 <form class="cp-url-bar" id="browser-url-form">
                   <button type="button" class="fav-chip" title="Back">←</button>
@@ -4807,7 +5944,7 @@ function render() {
                         <span class="project-pill-dot" style="background:${bTab.color.hex};"></span>
                         <span>LEASED TAB // ${bTab.agentKey.toUpperCase()}</span>
                       </span>
-                      <span style="color:${bTab.color.hex};">${escapeHtml(bTab.hudBadge || (bTab.isWorking ? 'WORKING' : 'IDLE'))}</span>
+                      <span style="color:${bTab.color.hex};">${escapeHtml(bTab.waitingForHuman ? 'WAITING FOR HUMAN 2FA' : bTab.hudBadge || (bTab.isWorking ? 'WORKING' : 'IDLE'))}</span>
                     </div>
                   `
                       : ''
@@ -4824,11 +5961,12 @@ function render() {
 
         ${renderSovereignKeyboard()}
 
-        <!-- Mobile Frosted Glass Bottom Dock (Android / iPhone 1-Tap Browser!) -->
+        <!-- Mobile Frosted Glass Bottom Dock (100% Full-View Tabs + Unread Dot — #280) -->
         <nav class="ld-mobile-dock">
           <button class="m-dock-tab ${state.showSidebar ? 'active' : ''}" data-act="toggle-sidebar">
             ${ICONS.cpu}
             <span>FLEET</span>
+            ${unreadList.length ? `<span class="fleet-header-unread-dot">${unreadList.length}</span>` : ''}
           </button>
           <button class="m-dock-tab ${state.activeTool === 'none' && !state.showSidebar ? 'active' : ''}" data-mnav="none">
             ${ICONS.terminal}
@@ -4857,6 +5995,7 @@ function render() {
         ${state.modal === 'forensics' ? renderForensicsModal(sess) : ''}
         ${state.modal === 'grab' ? renderTokenGrabberModal(sess) : ''}
         ${state.modal === 'cmdk' ? renderCommandPalette() : ''}
+        ${state.modal === 'shot-markup' ? renderShotMarkupModal() : ''}
 
         <!-- Spawn New Isolated Session Modal -->
         ${
@@ -5352,7 +6491,153 @@ function bindInteractions() {
   });
 
   document.querySelectorAll('[data-file]').forEach((b) => {
-    b.onclick = () => { state.activeFile = b.dataset.file; render(); };
+    b.onclick = () => {
+      openShowcaseFile(b.dataset.file);
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-doc-hub]').forEach((b) => {
+    b.onclick = (e) => {
+      openShowcaseFile(b.dataset.docHub, { viaDocsHub: !(e.ctrlKey || e.metaKey) });
+      render();
+    };
+  });
+
+  const wikiSel = document.getElementById('wiki-hub-sel');
+  if (wikiSel) {
+    wikiSel.onchange = (e) => {
+      if (e.target.value) {
+        openShowcaseFile(e.target.value, { viaDocsHub: true });
+        render();
+      }
+    };
+  }
+
+  document.querySelectorAll('[data-close-ftab]').forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const id = b.dataset.closeFtab;
+      state.fileTabs = state.fileTabs.filter((t) => t.id !== id);
+      if (!state.fileTabs.some((t) => t.path === state.activeFile) && state.fileTabs[0]) {
+        state.activeFile = state.fileTabs[0].path;
+      }
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-toggle-dir]').forEach((b) => {
+    b.onclick = () => {
+      const dir = b.dataset.toggleDir;
+      state.expandedDirs[dir] = state.expandedDirs[dir] === false;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-md-file]').forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      openShowcaseFile(b.dataset.mdFile, { openPane: true, viaDocsHub: state.docsSingleTabMode });
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-audio-rate]').forEach((b) => {
+    b.onclick = () => {
+      const rate = Number(b.dataset.audioRate) || 1;
+      state.audioPlaybackRate = rate;
+      render();
+      const aud = document.getElementById('showcase-audio-el');
+      if (aud) aud.playbackRate = rate;
+    };
+  });
+
+  const audEl = document.getElementById('showcase-audio-el');
+  if (audEl) audEl.playbackRate = state.audioPlaybackRate || 1;
+
+  const codeEd = document.getElementById('showcase-code-editor');
+  if (codeEd) {
+    codeEd.oninput = (e) => {
+      if (FILES_DB[state.activeFile]) {
+        FILES_DB[state.activeFile].code = e.target.value;
+        FILES_DB[state.activeFile].status = 'M';
+      }
+    };
+  }
+
+  document.querySelectorAll('[data-tree-side]').forEach((b) => {
+    b.onclick = () => {
+      state.filesTreeSide = b.dataset.treeSide;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-stage-mode]').forEach((b) => {
+    b.onclick = () => {
+      state.agentStageMode = b.dataset.stageMode;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-split-preset]').forEach((b) => {
+    b.onclick = () => {
+      state.splitPct = Number(b.dataset.splitPreset) || 48;
+      render();
+    };
+  });
+
+  const edFontRange = document.getElementById('editor-fontsize-range');
+  if (edFontRange) {
+    edFontRange.oninput = (e) => {
+      state.editorFontSize = Number(e.target.value) || 13;
+      render();
+    };
+  }
+
+  document.querySelectorAll('[data-edit-shot]').forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const [sKey, shotId] = b.dataset.editShot.split('|');
+      const found = (state.stagedAttachments[sKey] || []).find((a) => a.id === shotId);
+      if (!found) return;
+      state.editingShot = { sessionKey: sKey, shotId };
+      state.markupAnns = [...(found.annotations || [])];
+      state.modal = 'shot-markup';
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-dl-shot]').forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const [sKey, shotId] = b.dataset.dlShot.split('|');
+      const found = (state.stagedAttachments[sKey] || []).find((a) => a.id === shotId);
+      if (!found) return;
+      const off = document.createElement('canvas');
+      off.width = 920;
+      off.height = 420;
+      const ctx = off.getContext('2d');
+      paintMarkupBaseScene(ctx, 920, 420, found);
+      (found.annotations || []).forEach((ann) => drawMarkupAnn(ctx, ann, 920));
+      const a = document.createElement('a');
+      a.href = off.toDataURL('image/png');
+      a.download = found.filename;
+      a.click();
+    };
+  });
+
+  document.querySelectorAll('[data-mtool]').forEach((b) => {
+    b.onclick = () => {
+      state.markupTool = b.dataset.mtool;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-mcol]').forEach((b) => {
+    b.onclick = () => {
+      state.markupColor = b.dataset.mcol;
+      render();
+    };
   });
 
   document.querySelectorAll('[data-macro]').forEach((b) => {
@@ -5467,6 +6752,195 @@ function bindInteractions() {
       else if (act === 'toggle-lock-e2ee') state.lockE2eeVisible = !state.lockE2eeVisible;
       else if (act === 'toggle-history') { state.showHistory = !state.showHistory; state.showScrollCopy = false; }
       else if (act === 'toggle-tmux-grid') { state.tmuxGridMode = !state.tmuxGridMode; }
+      else if (act === 'toggle-stage-mode') {
+        state.agentStageMode = state.agentStageMode === 'chat' ? 'pty' : 'chat';
+        state.lastScrolledSession = '';
+      }
+      else if (act === 'toggle-autoscroll') {
+        state.sessionAutoScroll = !state.sessionAutoScroll;
+      }
+      else if (act === 'hop-to-bottom') {
+        const sc = document.getElementById('live-stream-scroll');
+        if (sc) sc.scrollTop = sc.scrollHeight;
+        state.chatScrolledUp = false;
+        state.chatUnseenBelow = false;
+      }
+      else if (act === 'flip-files-tree') {
+        state.filesTreeSide = state.filesTreeSide === 'right' ? 'left' : 'right';
+      }
+      else if (act === 'collapse-files-tree') {
+        if (state.device === 'phone' || window.innerWidth <= 768) {
+          state.filesShowMobileTree = !state.filesShowMobileTree;
+        } else {
+          state.filesTreeCollapsed = !state.filesTreeCollapsed;
+        }
+      }
+      else if (act === 'toggle-mobile-tree') {
+        state.filesShowMobileTree = !state.filesShowMobileTree;
+      }
+      else if (act === 'toggle-dotfiles') {
+        state.filesHideDotfiles = !state.filesHideDotfiles;
+      }
+      else if (act === 'toggle-docs-1tab') {
+        state.docsSingleTabMode = !state.docsSingleTabMode;
+        if (state.docsSingleTabMode && FILES_DB[state.activeFile]?.isDoc) {
+          openShowcaseFile(state.activeFile, { viaDocsHub: true });
+        }
+      }
+      else if (act === 'docs-back') {
+        if (state.docsHistory.index > 0) {
+          state.docsHistory.index -= 1;
+          openShowcaseFile(state.docsHistory.entries[state.docsHistory.index], { viaDocsHub: true, skipHistory: true });
+        }
+      }
+      else if (act === 'docs-fwd') {
+        if (state.docsHistory.index < state.docsHistory.entries.length - 1) {
+          state.docsHistory.index += 1;
+          openShowcaseFile(state.docsHistory.entries[state.docsHistory.index], { viaDocsHub: true, skipHistory: true });
+        }
+      }
+      else if (act === 'pin-docs-tab') {
+        state.fileTabs = state.fileTabs.map((t) =>
+          t.isDocsReader ? { ...t, id: `pinned-${Date.now()}`, isDocsReader: false } : t
+        );
+      }
+      else if (act === 'toggle-md-mode') {
+        state.mdViewMode = state.mdViewMode === 'preview' ? 'code' : 'preview';
+      }
+      else if (act === 'toggle-img-zoom') {
+        state.imageZoomMode = state.imageZoomMode === 'fit' ? 'actual' : 'fit';
+      }
+      else if (act === 'toggle-file-select') {
+        state.fileSelectMode = !state.fileSelectMode;
+      }
+      else if (act === 'dl-active-file') {
+        const entry = FILES_DB[state.activeFile];
+        if (entry?.type === 'audio') {
+          const a = document.createElement('a');
+          a.href = getSyntheticWavUrl();
+          a.download = state.activeFile.split('/').pop();
+          a.click();
+        } else {
+          const blob = new Blob([entry?.code || `AIM Sovereign Artifact: ${state.activeFile}\n`], { type: 'application/octet-stream' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = state.activeFile.split('/').pop();
+          a.click();
+        }
+        return;
+      }
+      else if (act === 'open-markup-demo') {
+        const target = state.activeSession && state.sessions.find((s) => s.name === state.activeSession)?.isAgent !== false
+          ? state.activeSession
+          : 'aim-connect';
+        state.activeSession = target;
+        let list = state.stagedAttachments[target] || [];
+        if (!list.length) {
+          const seed = {
+            id: `shot-${Date.now()}`,
+            filename: 'screenshot-leaddeeds-v4.png',
+            path: 'docs/screenshots/emerald-matrix-arch.svg',
+            dims: '1440×900 PNG',
+            url: 'https://www.leaddeeds.com',
+            annotated: false,
+            annotations: [],
+          };
+          list = [seed];
+          state.stagedAttachments[target] = list;
+        }
+        state.editingShot = { sessionKey: target, shotId: list[0].id };
+        state.markupAnns = [...(list[0].annotations || [])];
+        state.modal = 'shot-markup';
+      }
+      else if (act === 'markup-undo') {
+        state.markupAnns = state.markupAnns.slice(0, -1);
+      }
+      else if (act === 'markup-clear') {
+        state.markupAnns = [];
+      }
+      else if (act === 'markup-download') {
+        const cv = document.getElementById('shot-markup-canvas');
+        if (cv) {
+          const a = document.createElement('a');
+          a.href = cv.toDataURL('image/png');
+          a.download = 'marked-screenshot.png';
+          a.click();
+        }
+        return;
+      }
+      else if (act === 'markup-apply') {
+        if (state.editingShot) {
+          const { sessionKey, shotId } = state.editingShot;
+          state.stagedAttachments[sessionKey] = (state.stagedAttachments[sessionKey] || []).map((att) =>
+            att.id === shotId
+              ? {
+                  ...att,
+                  annotated: state.markupAnns.length > 0,
+                  annotations: [...state.markupAnns],
+                  filename: att.filename.startsWith('marked-') || state.markupAnns.length === 0 ? att.filename : `marked-${att.filename}`,
+                }
+              : att
+          );
+        }
+        state.modal = null;
+        state.editingShot = null;
+      }
+      else if (act === 'toggle-shot-scope') {
+        state.shotFullPage = !state.shotFullPage;
+      }
+      else if (act === 'sim-2fa-gate') {
+        state.activeTool = 'browser';
+        const existingWait = state.browserTabs.find((t) => Boolean(t.waitingForHuman));
+        if (existingWait) {
+          state.activeBrowserTab = existingWait.id;
+        } else {
+          const targetTab = state.browserTabs.find((t) => t.id === 'tab-tb') || state.browserTabs[0];
+          if (targetTab) {
+            targetTab.waitingForHuman = {
+              reason: 'Complete Cloudflare Access 2FA code before promoting fix/issue-231',
+              requestedAt: Date.now(),
+            };
+            state.activeBrowserTab = targetTab.id;
+          }
+        }
+      }
+      else if (act === 'takeover-2fa') {
+        const wTab = state.browserTabs.find((t) => Boolean(t.waitingForHuman));
+        if (wTab) state.activeBrowserTab = wTab.id;
+        state.controlMode = true;
+        state.showBrowser2faBar = true;
+        render();
+        document.getElementById('b2fa-inp')?.focus();
+        return;
+      }
+      else if (act === 'toggle-autocontinue') {
+        state.sendContinueOnResume = !state.sendContinueOnResume;
+      }
+      else if (act === 'resume-2fa') {
+        const wTab = state.browserTabs.find((t) => Boolean(t.waitingForHuman));
+        if (wTab) {
+          const owner = wTab.agentKey || 'aim-tbsoftwash';
+          wTab.waitingForHuman = null;
+          wTab.hudBadge = 'RESUMED · SESSION AUTHENTICATED';
+          const sessObj = state.sessions.find((s) => s.name === owner);
+          if (sessObj) {
+            sessObj.status = 'IDLE';
+            sessObj.taskKind = 'mapping';
+            sessObj.taskLabel = '2FA VERIFIED ✓';
+          }
+          if (state.sendContinueOnResume) {
+            state.sentMessages[owner] = [
+              ...(state.sentMessages[owner] || []),
+              {
+                text: 'continue',
+                agentReply: '2FA cookie session verified on the leased tab. Resuming deployment pipeline cleanly.',
+              },
+            ];
+          }
+        }
+        state.controlMode = false;
+        state.showBrowser2faBar = false;
+      }
       else if (act === 'toggle-os-kb') state.showOnScreenKeyboard = !state.showOnScreenKeyboard;
       else if (act === 'kb-shift') state.kbShift = (state.kbShift + 1) % 3;
       else if (act === 'kb-ctrl') state.kbCtrl = !state.kbCtrl;
@@ -5576,9 +7050,11 @@ function bindInteractions() {
       }
       else if (act === 'copy-file') {
         const entry = FILES_DB[state.activeFile];
-        if (entry) navigator.clipboard?.writeText(entry.code).catch(() => {});
-        state.fileSavedBadge = 'COPIED ✓';
-        setTimeout(() => { state.fileSavedBadge = ''; render(); }, 1400);
+        const isMedia = entry && ['image', 'audio', 'video', 'binary'].includes(entry.type);
+        const payload = isMedia ? state.activeFile : entry?.code || state.activeFile;
+        navigator.clipboard?.writeText(payload).catch(() => {});
+        state.fileCopyBadge = 'COPIED ✓';
+        setTimeout(() => { state.fileCopyBadge = ''; render(); }, 1400);
       }
       else if (act === 'toggle-conflict') state.fileConflictBanner = !state.fileConflictBanner;
       else if (act === 'new-btab') {
@@ -5591,7 +7067,8 @@ function bindInteractions() {
           sublabel: '',
           color: null,
           isWorking: false,
-          kind: 'ld',
+          waitingForHuman: null,
+          kind: 'leaddeeds',
         });
         state.activeBrowserTab = id;
       }
@@ -5628,8 +7105,11 @@ function bindInteractions() {
         const shot = {
           id: `shot-${Date.now()}`,
           filename: `screenshot-${host}-${stamp}.png`,
-          dims: '1440×900 PNG',
+          path: 'docs/screenshots/emerald-matrix-arch.svg',
+          dims: state.shotFullPage ? '1440×2680 FULL PNG' : '1440×900 PANE PNG',
           url: cur?.url || '',
+          annotated: false,
+          annotations: [],
         };
         state.stagedAttachments[target] = [...(state.stagedAttachments[target] || []), shot];
         state.shotFlash = true;
@@ -5872,6 +7352,33 @@ function bindInteractions() {
     };
   }
 
+  const promptInp = document.getElementById('node-input');
+  if (promptInp) {
+    promptInp.onpaste = (ev) => {
+      const items = ev.clipboardData?.items || [];
+      for (const it of items) {
+        if (it.type && it.type.startsWith('image/')) {
+          ev.preventDefault();
+          const target = state.activeSession || 'aim-connect';
+          const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+          const pasted = {
+            id: `paste-${Date.now()}`,
+            filename: `clipboard-${stamp}.png`,
+            path: 'docs/screenshots/emerald-matrix-arch.svg',
+            dims: 'CLIPBOARD PNG',
+            url: 'clipboard',
+            annotated: false,
+            annotations: [],
+          };
+          state.stagedAttachments[target] = [...(state.stagedAttachments[target] || []), pasted];
+          render();
+          document.getElementById('node-input')?.focus();
+          return;
+        }
+      }
+    };
+  }
+
   const form = document.getElementById('node-composer');
   if (form) {
     form.onsubmit = (e) => {
@@ -5883,10 +7390,19 @@ function bindInteractions() {
       if (txt || staged.length) {
         state.sentMessages[target] = [
           ...(state.sentMessages[target] || []),
-          staged.length ? { text: txt, attachments: staged } : txt,
+          {
+            text: txt,
+            attachments: staged,
+            agentReply: `Acknowledged directive${staged.length ? ` with ${staged.length} screenshot attachment(s)` : ''}. Executing inside isolated GitOps worktree.`,
+          },
         ];
         state.stagedAttachments[target] = [];
-        state.lastScrolledSession = '';
+        if (state.sessionAutoScroll || !state.chatScrolledUp) {
+          state.lastScrolledSession = '';
+          state.chatUnseenBelow = false;
+        } else {
+          state.chatUnseenBelow = true;
+        }
         render();
         document.getElementById('node-input')?.focus();
       }
@@ -5903,7 +7419,7 @@ function bindInteractions() {
         const key = `${state.activeSession}:${state.tmuxActivePane}`;
         const reply =
           cmd.includes('lsof')
-            ? 'python3 629630 kingb 6u IPv4 TCP *:8000 (LISTEN) · python3 3316 TCP *:8001 (LISTEN)'
+            ? 'python3 629630 operator 6u IPv4 TCP *:8000 (LISTEN) · python3 3316 TCP *:8001 (LISTEN)'
             : cmd.includes('startup')
             ? '[startup.sh] :8000 OK · :8001 OK · cloudflared QUIC OK · 0 services needed restart'
             : `[ok] executed '${cmd}' (exit=0)`;
@@ -5914,11 +7430,112 @@ function bindInteractions() {
     };
   }
 
-  // Keep live multi-turn stream scrolled to active bottom turn on session switch while allowing full upward scroll!
+  // Keep live multi-turn stream scrolled to active bottom turn on session switch, and track Discord Hop-to-Bottom (#277)!
   const streamEl = document.getElementById('live-stream-scroll');
-  if (streamEl && state.lastScrolledSession !== state.activeSession) {
-    streamEl.scrollTop = streamEl.scrollHeight;
-    state.lastScrolledSession = state.activeSession;
+  if (streamEl) {
+    if (state.lastScrolledSession !== state.activeSession) {
+      streamEl.scrollTop = streamEl.scrollHeight;
+      state.lastScrolledSession = state.activeSession;
+      state.chatScrolledUp = false;
+      state.chatUnseenBelow = false;
+    }
+    streamEl.onscroll = () => {
+      const dist = streamEl.scrollHeight - streamEl.scrollTop - streamEl.clientHeight;
+      const isUp = dist > 60;
+      if (!isUp && state.chatUnseenBelow) state.chatUnseenBelow = false;
+      if (isUp !== state.chatScrolledUp) {
+        state.chatScrolledUp = isUp;
+        render();
+      }
+    };
+  }
+
+  // Draggable 2-Column Files Folder Tree Resizer (#266, #267)
+  const treeResizer = document.getElementById('files-tree-resizer');
+  const filesSplitBody = document.getElementById('files-split-body');
+  if (treeResizer && filesSplitBody) {
+    treeResizer.onpointerdown = (ev) => {
+      ev.preventDefault();
+      treeResizer.classList.add('dragging');
+      filesSplitBody.classList.add('is-resizing-tree');
+      const onMove = (mv) => {
+        const rect = filesSplitBody.getBoundingClientRect();
+        const raw = state.filesTreeSide === 'right' ? rect.right - mv.clientX : mv.clientX - rect.left;
+        const clamped = Math.max(150, Math.min(440, Math.round(raw)));
+        state.filesTreeWidth = clamped;
+        filesSplitBody.style.setProperty('--files-tree-width', `${clamped}px`);
+      };
+      const onUp = () => {
+        treeResizer.classList.remove('dragging');
+        filesSplitBody.classList.remove('is-resizing-tree');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    };
+    treeResizer.ondblclick = () => {
+      state.filesTreeWidth = 226;
+      render();
+    };
+  }
+
+  // Interactive <canvas> Visual Markup Studio (#273, #276)
+  const markupCv = document.getElementById('shot-markup-canvas');
+  if (markupCv && state.editingShot) {
+    const list = state.stagedAttachments[state.editingShot.sessionKey] || [];
+    const att = list.find((a) => a.id === state.editingShot.shotId);
+    const ctx = markupCv.getContext('2d');
+    let draft = null;
+    const repaint = () => {
+      if (!ctx) return;
+      paintMarkupBaseScene(ctx, markupCv.width, markupCv.height, att);
+      state.markupAnns.forEach((ann) => drawMarkupAnn(ctx, ann, markupCv.width));
+      if (draft) drawMarkupAnn(ctx, draft, markupCv.width);
+    };
+    repaint();
+
+    const toPt = (ev) => {
+      const r = markupCv.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(markupCv.width, ((ev.clientX - r.left) * markupCv.width) / Math.max(1, r.width))),
+        y: Math.max(0, Math.min(markupCv.height, ((ev.clientY - r.top) * markupCv.height) / Math.max(1, r.height))),
+      };
+    };
+
+    markupCv.onpointerdown = (ev) => {
+      ev.preventDefault();
+      const pt = toPt(ev);
+      if (state.markupTool === 'pin') {
+        const nextNum = state.markupAnns.reduce((mx, a) => (a.type === 'pin' && a.num > mx ? a.num : mx), 0) + 1;
+        draft = { type: 'pin', num: nextNum, color: state.markupColor, x: pt.x, y: pt.y, x2: pt.x, y2: pt.y };
+      } else if (state.markupTool === 'pen') {
+        draft = { type: 'pen', color: state.markupColor, points: [pt] };
+      } else {
+        draft = { type: state.markupTool, color: state.markupColor, x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y };
+      }
+      repaint();
+    };
+
+    markupCv.onpointermove = (ev) => {
+      if (!draft) return;
+      const pt = toPt(ev);
+      if (draft.type === 'pen') draft.points.push(pt);
+      else {
+        draft.x2 = pt.x;
+        draft.y2 = pt.y;
+      }
+      repaint();
+    };
+
+    const finishStroke = () => {
+      if (!draft) return;
+      state.markupAnns = [...state.markupAnns, draft];
+      draft = null;
+      render();
+    };
+    markupCv.onpointerup = finishStroke;
+    markupCv.onpointerleave = finishStroke;
   }
 
   const divider = document.getElementById('laser-divider');
