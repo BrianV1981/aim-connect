@@ -14,6 +14,10 @@ import {
   getSelectionWithinNode,
   shouldPreserveSelectionOnMouseDown,
 } from '../scrollbackSelection';
+import {
+  pickPreferredWorkspaceFile,
+  sanitizeFilesSnapshot,
+} from '../sessionLayoutUtils';
 
 const MAX_TABS = 20;
 
@@ -144,6 +148,8 @@ export default function FileExplorer({
   onToggleSplitMode,
   onClose,
   editorRef,
+  savedFilesState = null,
+  onFilesStateChange = null,
 }) {
   const [navMode, setNavMode] = useState('files'); // files | git
   const [rootPath, setRootPath] = useState('');
@@ -181,10 +187,22 @@ export default function FileExplorer({
   const requestedFileRef = useRef(requestedFile);
   const docsSingleTabModeRef = useRef(docsSingleTabMode);
   const blobUrlsRef = useRef(new Set());
+  const savedFilesStateRef = useRef(savedFilesState);
+  const onFilesStateChangeRef = useRef(onFilesStateChange);
+  const activeSessionPropRef = useRef(activeSession);
+  const mediaPositionsRef = useRef({});
+  const lastMediaSaveTsRef = useRef(0);
+  const lastRenderedSessionRef = useRef('');
+  const lastOpenDocLabelRef = useRef('');
+  const workspaceLoadSeqRef = useRef(0);
+  const suppressSnapshotEmitRef = useRef(false);
 
   requestedFileRef.current = requestedFile;
   tabsCountRef.current = tabs.length;
   docsSingleTabModeRef.current = docsSingleTabMode;
+  savedFilesStateRef.current = savedFilesState;
+  onFilesStateChangeRef.current = onFilesStateChange;
+  activeSessionPropRef.current = activeSession;
 
   const isSelectMode = onToggleSelectMode ? selectMode : localSelectMode;
   const toggleSelectMode = () => {
@@ -253,17 +271,76 @@ export default function FileExplorer({
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
-  useEffect(() => {
+  const revokeTrackedBlobUrls = useCallback(() => {
     const urls = blobUrlsRef.current;
+    urls.forEach((u) => {
+      try {
+        URL.revokeObjectURL(u);
+      } catch {}
+    });
+    urls.clear();
+  }, []);
+
+  useEffect(() => {
     return () => {
-      urls.forEach((u) => {
-        try {
-          URL.revokeObjectURL(u);
-        } catch {}
-      });
-      urls.clear();
+      revokeTrackedBlobUrls();
+    };
+  }, [revokeTrackedBlobUrls]);
+
+  const recordMediaPosition = useCallback((filePath, currentSec, force = false) => {
+    if (!filePath || typeof currentSec !== 'number' || !Number.isFinite(currentSec) || currentSec <= 0) {
+      return;
+    }
+    const now = Date.now();
+    if (!force && now - lastMediaSaveTsRef.current < 1000) return;
+    lastMediaSaveTsRef.current = now;
+    mediaPositionsRef.current = {
+      ...mediaPositionsRef.current,
+      [filePath]: Math.round(currentSec * 100) / 100,
     };
   }, []);
+
+  const buildCurrentSnapshot = useCallback(() => {
+    if (
+      activeTab &&
+      (activeTab.type === 'audio' || activeTab.type === 'video') &&
+      mediaPlayerRef.current &&
+      Number.isFinite(mediaPlayerRef.current.currentTime) &&
+      mediaPlayerRef.current.currentTime > 0
+    ) {
+      mediaPositionsRef.current = {
+        ...mediaPositionsRef.current,
+        [activeTab.path]: Math.round(mediaPlayerRef.current.currentTime * 100) / 100,
+      };
+    }
+    return sanitizeFilesSnapshot({
+      openFiles: tabs.map((t) => ({
+        path: t.path,
+        label: t.label,
+        isDocsReader: Boolean(t.isDocsReader),
+        playbackRate: t.playbackRate || 1,
+      })),
+      activePath: activeTab?.path || '',
+      activeIsDocsReader: Boolean(activeTab?.isDocsReader),
+      currentDir: currentPath || rootPath || '',
+      navMode,
+      mdViewMode,
+      mediaPositions: mediaPositionsRef.current,
+    });
+  }, [tabs, activeTab, currentPath, rootPath, navMode, mdViewMode]);
+
+  const clearVolatileMemory = useCallback(() => {
+    revokeTrackedBlobUrls();
+    setTabs([]);
+    setActiveTabId('');
+    setDirChildrenMap({});
+    setExpandedDirs({});
+    setSelectedFileText('');
+    setGitStatus({ branch: '', files: [], repo_path: '' });
+    setWorkspaceCtx(null);
+    setDocsHistory({ entries: [], index: -1 });
+    autoOpenedSessionRef.current = '';
+  }, [revokeTrackedBlobUrls]);
 
   useEffect(() => {
     if (!isSelectMode) {
@@ -426,8 +503,13 @@ export default function FileExplorer({
         } catch {}
         blobUrlsRef.current.delete(prevMatch.blobUrl);
       }
-      const filtered = prev.filter((t) => t.id !== newTab.id);
-      const next = [...filtered, newTab];
+      const existingIdx = prev.findIndex((t) => t.id === newTab.id);
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = newTab;
+        return copy;
+      }
+      const next = [...prev, newTab];
       return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
     });
     setActiveTabId(newTab.id);
@@ -445,30 +527,32 @@ export default function FileExplorer({
       setMdViewMode('code');
     }
 
-    if (useDocsReader) {
-      const existingReader = tabs.find((t) => t.id === DOCS_READER_TAB_ID);
-      if (existingReader && existingReader.path === path) {
-        setActiveTabId(DOCS_READER_TAB_ID);
-        if (!opts.skipHistoryPush) {
-          setDocsHistory((prev) =>
-            pushDocsHistory(prev, { path, label: customLabel || existingReader.label })
-          );
+    if (!opts.forceReloadStub) {
+      if (useDocsReader) {
+        const existingReader = tabs.find((t) => t.id === DOCS_READER_TAB_ID);
+        if (existingReader && existingReader.path === path && !existingReader.lazyPending) {
+          setActiveTabId(DOCS_READER_TAB_ID);
+          if (!opts.skipHistoryPush) {
+            setDocsHistory((prev) =>
+              pushDocsHistory(prev, { path, label: customLabel || existingReader.label })
+            );
+          }
+          if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+            setShowMobileTree(false);
+          }
+          expandAncestorsToFile(existingReader.path, rootPath);
+          return;
         }
-        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-          setShowMobileTree(false);
+      } else {
+        const existing = tabs.find((t) => t.id === tabId);
+        if (existing && !existing.lazyPending) {
+          setActiveTabId(tabId);
+          if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+            setShowMobileTree(false);
+          }
+          expandAncestorsToFile(existing.path, rootPath);
+          return;
         }
-        expandAncestorsToFile(existingReader.path, rootPath);
-        return;
-      }
-    } else {
-      const existing = tabs.find((t) => t.id === tabId);
-      if (existing) {
-        setActiveTabId(tabId);
-        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-          setShowMobileTree(false);
-        }
-        expandAncestorsToFile(existing.path, rootPath);
-        return;
       }
     }
 
@@ -509,6 +593,11 @@ export default function FileExplorer({
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
         blobUrlsRef.current.add(blobUrl);
+        const existingStub = tabs.find((t) => t.id === `file:${path}`);
+        const savedResumeTime =
+          typeof opts.resumeTime === 'number' && opts.resumeTime > 0
+            ? opts.resumeTime
+            : mediaPositionsRef.current[path] || 0;
         const newTab = {
           id: `file:${path}`,
           type: mediaType,
@@ -519,7 +608,8 @@ export default function FileExplorer({
           mimeType: blob.type || '',
           dims: '',
           durationSec: null,
-          playbackRate: 1,
+          playbackRate: existingStub?.playbackRate || 1,
+          resumeTime: savedResumeTime,
           content: '',
           savedContent: '',
           conflict: null,
@@ -656,18 +746,32 @@ export default function FileExplorer({
     }
   };
 
+  const buildCurrentSnapshotRef = useRef(buildCurrentSnapshot);
+  buildCurrentSnapshotRef.current = buildCurrentSnapshot;
+
   const loadWorkspaceContext = async (sessionName, explicitPath = '') => {
+    const loadSeq = ++workspaceLoadSeqRef.current;
     try {
       const params = new URLSearchParams();
       if (sessionName) params.set('session', sessionName);
       if (explicitPath) params.set('path', explicitPath);
       const res = await fetch(`/api/workspace/context?${params.toString()}`);
       const data = await res.json();
+      if (loadSeq !== workspaceLoadSeqRef.current) return;
       if (data && !data.error) {
         setWorkspaceCtx(data);
         const startRoot = data.repo_root || data.pane_path;
-        if (startRoot) {
+        const saved = savedFilesStateRef.current;
+        const desiredDir = saved?.currentDir || '';
+        if (desiredDir && startRoot && desiredDir.startsWith(startRoot) && desiredDir !== startRoot) {
           await loadFiles(startRoot, true);
+          if (loadSeq !== workspaceLoadSeqRef.current) return;
+          await loadFiles(desiredDir, false);
+        } else if (startRoot) {
+          await loadFiles(startRoot, true);
+        }
+        if (loadSeq !== workspaceLoadSeqRef.current) return;
+        if (startRoot) {
           loadGitStatus(sessionName, startRoot);
         }
         const repoSig = data.main_repo_root || startRoot || '';
@@ -676,36 +780,98 @@ export default function FileExplorer({
         }
         lastDocsRepoSigRef.current = repoSig;
 
-        const sigKey = `${sessionName || 'default'}:${repoSig}`;
-        if (
-          tabsCountRef.current === 0 &&
-          !requestedFileRef.current?.path &&
-          autoOpenedSessionRef.current !== sigKey
-        ) {
-          autoOpenedSessionRef.current = sigKey;
-          const preferred = (data.brain_files || []).find(
-            (bf) =>
-              bf.exists &&
-              (bf.label === 'README.md' || bf.label === 'HANDOFF.md' || bf.label === 'AGENTS.md')
-          );
-          if (preferred?.path) {
-            const cleanLbl = formatBrainChipLabel(preferred.label) || preferred.label;
-            openFileTab(preferred.path, cleanLbl, {
-              docsReader: Boolean(docsSingleTabModeRef.current),
-            });
+        if (!requestedFileRef.current?.path) {
+          if (saved && Array.isArray(saved.openFiles) && saved.openFiles.length > 0) {
+            setNavMode(saved.navMode === 'git' ? 'git' : 'files');
+            setMdViewMode(saved.mdViewMode === 'code' ? 'code' : 'preview');
+            mediaPositionsRef.current = { ...(saved.mediaPositions || {}) };
+            const stubTabs = saved.openFiles.map((item) => ({
+              id: item.isDocsReader ? DOCS_READER_TAB_ID : `file:${item.path}`,
+              type: 'file',
+              path: item.path,
+              label: item.label || item.path.split('/').pop(),
+              isDocsReader: Boolean(item.isDocsReader),
+              playbackRate: item.playbackRate || 1,
+              lazyPending: true,
+              content: '',
+              savedContent: '',
+              conflict: null,
+            }));
+            setTabs(stubTabs);
+            const activeItem =
+              saved.openFiles.find((f) => f.path === saved.activePath) ||
+              saved.openFiles[saved.openFiles.length - 1];
+            if (activeItem?.path) {
+              const targetTabId = activeItem.isDocsReader
+                ? DOCS_READER_TAB_ID
+                : `file:${activeItem.path}`;
+              setActiveTabId(targetTabId);
+              await openFileTab(activeItem.path, activeItem.label, {
+                docsReader: Boolean(activeItem.isDocsReader),
+                forceReloadStub: true,
+                resumeTime: mediaPositionsRef.current[activeItem.path] || 0,
+              });
+            }
+          } else {
+            setNavMode('files');
+            const sigKey = `${sessionName || 'default'}:${repoSig}`;
+            if (tabsCountRef.current === 0 && autoOpenedSessionRef.current !== sigKey) {
+              autoOpenedSessionRef.current = sigKey;
+              const preferred = pickPreferredWorkspaceFile(
+                data.brain_files,
+                lastOpenDocLabelRef.current ? [lastOpenDocLabelRef.current] : []
+              );
+              if (preferred?.path) {
+                const cleanLbl = formatBrainChipLabel(preferred.label) || preferred.label;
+                await openFileTab(preferred.path, cleanLbl, {
+                  docsReader: Boolean(docsSingleTabModeRef.current),
+                });
+              }
+            }
           }
         }
       }
     } catch (e) {
       console.error('Failed to load workspace context', e);
+    } finally {
+      if (loadSeq === workspaceLoadSeqRef.current) {
+        suppressSnapshotEmitRef.current = false;
+      }
     }
   };
 
   useEffect(() => {
-    if (isOpen) {
-      loadWorkspaceContext(activeSession);
+    const prevSess = lastRenderedSessionRef.current;
+    if (!isOpen) {
+      workspaceLoadSeqRef.current += 1;
+      if (prevSess) {
+        onFilesStateChangeRef.current?.(prevSess, buildCurrentSnapshotRef.current());
+      }
+      suppressSnapshotEmitRef.current = true;
+      clearVolatileMemory();
+      lastRenderedSessionRef.current = '';
+      mediaPositionsRef.current = {};
+      return;
     }
+
+    if (prevSess && prevSess !== activeSession) {
+      onFilesStateChangeRef.current?.(prevSess, buildCurrentSnapshotRef.current());
+      lastOpenDocLabelRef.current = activeTab?.label || '';
+      suppressSnapshotEmitRef.current = true;
+      clearVolatileMemory();
+    } else if (!prevSess) {
+      suppressSnapshotEmitRef.current = true;
+    }
+
+    lastRenderedSessionRef.current = activeSession || '';
+    mediaPositionsRef.current = { ...(savedFilesStateRef.current?.mediaPositions || {}) };
+    loadWorkspaceContext(activeSession);
   }, [isOpen, activeSession]);
+
+  useEffect(() => {
+    if (!isOpen || suppressSnapshotEmitRef.current || !activeSessionPropRef.current) return;
+    onFilesStateChangeRef.current?.(activeSessionPropRef.current, buildCurrentSnapshot());
+  }, [isOpen, tabs, activeTabId, currentPath, navMode, mdViewMode, buildCurrentSnapshot]);
 
   // Open file:// links clicked inside Chat View / History directly in FileExplorer and reveal target line (#264, #266)
   useEffect(() => {
@@ -1520,7 +1686,17 @@ export default function FileExplorer({
                   <div
                     key={t.id}
                     className={`cp-tab ${isSelected ? 'active' : ''}`}
-                    onClick={() => setActiveTabId(t.id)}
+                    onClick={() => {
+                      if (t.lazyPending) {
+                        openFileTab(t.path, t.label, {
+                          docsReader: Boolean(t.isDocsReader),
+                          forceReloadStub: true,
+                          resumeTime: mediaPositionsRef.current[t.path] || 0,
+                        });
+                      } else {
+                        setActiveTabId(t.id);
+                      }
+                    }}
                     title={t.path}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1758,9 +1934,22 @@ export default function FileExplorer({
                     preload="metadata"
                     src={activeTab.blobUrl}
                     onLoadedMetadata={(ev) => {
-                      const dur = ev.currentTarget?.duration;
+                      const el = ev.currentTarget;
+                      const dur = el?.duration;
                       if (activeTab.playbackRate && activeTab.playbackRate !== 1) {
-                        ev.currentTarget.playbackRate = activeTab.playbackRate;
+                        el.playbackRate = activeTab.playbackRate;
+                      }
+                      if (
+                        activeTab.resumeTime > 0 &&
+                        el.dataset.resumedForUrl !== activeTab.blobUrl
+                      ) {
+                        el.dataset.resumedForUrl = activeTab.blobUrl;
+                        try {
+                          el.currentTime = Math.min(
+                            activeTab.resumeTime,
+                            Number.isFinite(dur) && dur > 0.2 ? dur - 0.1 : activeTab.resumeTime
+                          );
+                        } catch {}
                       }
                       if (Number.isFinite(dur) && dur > 0 && !activeTab.durationSec) {
                         setTabs((prev) =>
@@ -1768,6 +1957,9 @@ export default function FileExplorer({
                         );
                       }
                     }}
+                    onTimeUpdate={(ev) => recordMediaPosition(activeTab.path, ev.currentTarget.currentTime)}
+                    onPause={(ev) => recordMediaPosition(activeTab.path, ev.currentTarget.currentTime, true)}
+                    onSeeked={(ev) => recordMediaPosition(activeTab.path, ev.currentTarget.currentTime, true)}
                   />
 
                   <div className="files-media-meta-row">
@@ -1818,6 +2010,18 @@ export default function FileExplorer({
                       if (activeTab.playbackRate && activeTab.playbackRate !== 1) {
                         el.playbackRate = activeTab.playbackRate;
                       }
+                      if (
+                        activeTab.resumeTime > 0 &&
+                        el.dataset.resumedForUrl !== activeTab.blobUrl
+                      ) {
+                        el.dataset.resumedForUrl = activeTab.blobUrl;
+                        try {
+                          el.currentTime = Math.min(
+                            activeTab.resumeTime,
+                            Number.isFinite(dur) && dur > 0.2 ? dur - 0.1 : activeTab.resumeTime
+                          );
+                        } catch {}
+                      }
                       setTabs((prev) =>
                         prev.map((t) =>
                           t.id === activeTab.id
@@ -1830,6 +2034,9 @@ export default function FileExplorer({
                         )
                       );
                     }}
+                    onTimeUpdate={(ev) => recordMediaPosition(activeTab.path, ev.currentTarget.currentTime)}
+                    onPause={(ev) => recordMediaPosition(activeTab.path, ev.currentTarget.currentTime, true)}
+                    onSeeked={(ev) => recordMediaPosition(activeTab.path, ev.currentTarget.currentTime, true)}
                   />
                   <div className="files-video-bar">
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>

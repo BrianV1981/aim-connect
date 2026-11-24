@@ -29,6 +29,14 @@ import { normalizeWindowsPathsInText } from './shotMarkupUtils';
 import { E2EESocketWrapper } from './e2ee';
 import { getAgentColor } from './agentColors';
 import { useMatrixScramble, useStandaloneButtonScrambles } from './scramble';
+import {
+  SESSION_LAYOUT_MODE_KEY,
+  loadSessionLayoutMap,
+  normalizeLayoutMode,
+  resolveSessionLayoutOnSwitch,
+  saveSessionLayoutMap,
+  upsertSessionLayout,
+} from './sessionLayoutUtils';
 
 const THEME_META_COLORS = {
   emerald: '#050505',
@@ -210,6 +218,34 @@ function App() {
   const [requestedExplorerFile, setRequestedExplorerFile] = useState(null);
   const [showBrowser, setShowBrowser] = useState(false);
   const [preferredBrowserTargetId, setPreferredBrowserTargetId] = useState('');
+  const [sessionLayoutMode, setSessionLayoutMode] = useState(() =>
+    normalizeLayoutMode(
+      typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_LAYOUT_MODE_KEY) : 'per-session'
+    )
+  );
+  const sessionLayoutModeRef = useRef(sessionLayoutMode);
+  sessionLayoutModeRef.current = sessionLayoutMode;
+  const sessionLayoutMapRef = useRef(loadSessionLayoutMap());
+  const persistSessionLayout = useCallback((sessionName, patch) => {
+    const key = typeof sessionName === 'string' ? sessionName.trim() : '';
+    if (!key) return;
+    const nextMap = upsertSessionLayout(sessionLayoutMapRef.current, key, patch);
+    sessionLayoutMapRef.current = saveSessionLayoutMap(nextMap);
+  }, []);
+  const handleFilesStateChange = useCallback(
+    (sessionName, snapshot) => {
+      persistSessionLayout(sessionName, { files: snapshot });
+    },
+    [persistSessionLayout]
+  );
+  const handleBrowserTargetChange = useCallback(
+    (targetId, sessionName) => {
+      persistSessionLayout(sessionName || activeSessionRef.current, {
+        browserTargetId: targetId || '',
+      });
+    },
+    [persistSessionLayout]
+  );
   const [agentStageMode, setAgentStageModeState] = useState(() =>
     localStorage.getItem('aim-agent-stage-mode') === 'chat' ? 'chat' : 'pty'
   );
@@ -1105,21 +1141,33 @@ function App() {
     }
   };
 
+  const applyWorkspacePaneState = useCallback((pane, nextSplit) => {
+    setShowFiles(pane === 'files');
+    setShowBrowser(pane === 'browser');
+    if (typeof nextSplit === 'boolean') {
+      setSplitMode(nextSplit);
+    }
+  }, []);
+
   const switchToSession = (newSession) => {
     if (!newSession) {
       setActiveSession('');
-      setShowFiles(false);
+      applyWorkspacePaneState('terminal', undefined);
+      setPreferredBrowserTargetId('');
       setShowHistory(false);
       setFileSelectMode(false);
+      setRequestedExplorerFile(null);
       closeNativeScrollMode();
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
         setShowFleetSidebar(false);
       }
       return;
     }
-    if (newSession !== activeSessionRef.current) {
+    const prevSession = activeSessionRef.current;
+    if (newSession !== prevSession) {
       closeNativeScrollMode();
       setShowHistory(false);
+      setRequestedExplorerFile(null);
     }
     setActiveSession(newSession);
     setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
@@ -1133,14 +1181,20 @@ function App() {
       if (isRawTarget) {
         setTmuxStageMode((matchedFleet.window_count || matchedFleet.pane_count || 1) > 1 ? 'grid' : 'pty');
       }
-      // Keep Co-Pilot Browser open/closed state persistent across session switches;
-      // update preferredBrowserTargetId so an open Browser auto-switches to this session's tab (#261).
-      setPreferredBrowserTargetId(
-        matchedFleet.has_browser_lease ? matchedFleet.browser_tab_id || '' : ''
-      );
-    } else {
-      setPreferredBrowserTargetId('');
     }
+    const desktopSplit = typeof window !== 'undefined' ? window.innerWidth > 900 : true;
+    const currentPane = showBrowser ? 'browser' : showFiles ? 'files' : 'terminal';
+    const resolved = resolveSessionLayoutOnSwitch({
+      layoutMode: sessionLayoutModeRef.current,
+      layoutMap: sessionLayoutMapRef.current,
+      targetSession: newSession,
+      currentPane,
+      currentSplitMode: splitMode,
+      defaultSplit: desktopSplit,
+      matchedFleet,
+    });
+    applyWorkspacePaneState(resolved.pane, resolved.splitMode);
+    setPreferredBrowserTargetId(resolved.browserTargetId);
     pendingSessionBottomScrollRef.current = true;
     if (term.current) {
       try {
@@ -2161,6 +2215,10 @@ function App() {
     setShowFiles(true);
     setShowBrowser(false);
     setSplitMode(desktopSplit);
+    persistSessionLayout(activeSessionRef.current, {
+      pane: 'files',
+      splitMode: desktopSplit,
+    });
     setRequestedExplorerFile({
       path: filePath,
       line: line || null,
@@ -2172,30 +2230,42 @@ function App() {
         fitAddon.current?.fit();
       } catch {}
     }, 80);
-  }, []);
+  }, [persistSessionLayout]);
 
   const selectWorkspaceTool = (tool) => {
     const desktopSplit = typeof window !== 'undefined' ? window.innerWidth > 900 : true;
+    let nextPane = 'terminal';
+    let nextSplit = desktopSplit;
     if (tool === 'none') {
       setShowBrowser(false);
       setShowFiles(false);
       setSplitMode(desktopSplit);
     } else if (tool === 'browser') {
+      nextPane = 'browser';
       if (showBrowser) {
-        setSplitMode((prev) => !prev);
+        nextSplit = !splitMode;
+        setSplitMode(nextSplit);
       } else {
         setShowBrowser(true);
         setShowFiles(false);
         setSplitMode(desktopSplit);
       }
     } else if (tool === 'files') {
+      nextPane = 'files';
       if (showFiles) {
-        setSplitMode((prev) => !prev);
+        nextSplit = !splitMode;
+        setSplitMode(nextSplit);
       } else {
         setShowFiles(true);
         setShowBrowser(false);
         setSplitMode(desktopSplit);
       }
+    }
+    if (activeSessionRef.current) {
+      persistSessionLayout(activeSessionRef.current, {
+        pane: nextPane,
+        splitMode: nextSplit,
+      });
     }
     setTimeout(() => {
       try {
@@ -2296,9 +2366,14 @@ function App() {
                 if (wf?.browser_waiting_for_human) {
                   setShowBrowser(true);
                   setShowFiles(false);
-                  if (wf.browser_waiting_for_human.targetId) {
-                    setPreferredBrowserTargetId(wf.browser_waiting_for_human.targetId);
+                  const wTarget = wf.browser_waiting_for_human.targetId || '';
+                  if (wTarget) {
+                    setPreferredBrowserTargetId(wTarget);
                   }
+                  persistSessionLayout(targetSess, {
+                    pane: 'browser',
+                    ...(wTarget ? { browserTargetId: wTarget } : {}),
+                  });
                 }
               }}
               title={`Agent waiting for permission or input: ${waitingSessions.join(', ')}`}
@@ -3190,7 +3265,9 @@ function App() {
           selectMode={fileSelectMode}
           onToggleSelectMode={() => setFileSelectMode((prev) => !prev)}
           onToggleSplitMode={() => {
-            setSplitMode((prev) => !prev);
+            const nextSplit = !splitMode;
+            setSplitMode(nextSplit);
+            persistSessionLayout(activeSessionRef.current, { pane: 'files', splitMode: nextSplit });
             setTimeout(() => {
               try {
                 fitAddon.current?.fit();
@@ -3200,6 +3277,7 @@ function App() {
           onClose={() => {
             setShowFiles(false);
             setFileSelectMode(false);
+            persistSessionLayout(activeSessionRef.current, { pane: 'terminal' });
             setTimeout(() => {
               try {
                 fitAddon.current?.fit();
@@ -3207,6 +3285,8 @@ function App() {
             }, 80);
           }}
           editorRef={editorRef}
+          savedFilesState={activeSession ? sessionLayoutMapRef.current[activeSession]?.files || null : null}
+          onFilesStateChange={handleFilesStateChange}
         />
 
         <BrowserPane
@@ -3218,8 +3298,11 @@ function App() {
           fleet={fleet}
           onAttachToComposer={attachToActiveComposer}
           onSendSessionCommand={sendSessionCommand}
+          onActiveTargetChange={handleBrowserTargetChange}
           onToggleSplitMode={() => {
-            setSplitMode((prev) => !prev);
+            const nextSplit = !splitMode;
+            setSplitMode(nextSplit);
+            persistSessionLayout(activeSessionRef.current, { pane: 'browser', splitMode: nextSplit });
             setTimeout(() => {
               try {
                 fitAddon.current?.fit();
@@ -3228,6 +3311,7 @@ function App() {
           }}
           onClose={() => {
             setShowBrowser(false);
+            persistSessionLayout(activeSessionRef.current, { pane: 'terminal' });
             setTimeout(() => {
               try {
                 fitAddon.current?.fit();
@@ -3271,6 +3355,7 @@ function App() {
             setShowFleetSidebar(false);
             setShowBrowser(true);
             setShowFiles(false);
+            persistSessionLayout(activeSessionRef.current, { pane: 'browser' });
           }}
         >
           <Icon name="globe" size={15} />
@@ -3283,6 +3368,7 @@ function App() {
             setShowFleetSidebar(false);
             setShowFiles(true);
             setShowBrowser(false);
+            persistSessionLayout(activeSessionRef.current, { pane: 'files' });
           }}
         >
           <Icon name="files" size={15} />
@@ -3436,6 +3522,17 @@ function App() {
           setDocsSingleTabMode={setDocsSingleTabMode}
           sessionAutoScroll={sessionAutoScroll}
           setSessionAutoScroll={setSessionAutoScroll}
+          sessionLayoutMode={sessionLayoutMode}
+          setSessionLayoutMode={(nextMode) => {
+            const norm = normalizeLayoutMode(nextMode);
+            setSessionLayoutMode(norm);
+            if (norm === 'per-session' && activeSessionRef.current) {
+              persistSessionLayout(activeSessionRef.current, {
+                pane: showBrowser ? 'browser' : showFiles ? 'files' : 'terminal',
+                splitMode,
+              });
+            }
+          }}
           editorFontSize={editorFontSize}
           setEditorFontSize={setEditorFontSize}
           editorWordWrap={editorWordWrap}

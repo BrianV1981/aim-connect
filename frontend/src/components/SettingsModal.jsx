@@ -48,6 +48,8 @@ export default function SettingsModal({
   setDocsSingleTabMode,
   sessionAutoScroll = false,
   setSessionAutoScroll,
+  sessionLayoutMode = 'per-session',
+  setSessionLayoutMode,
   editorFontSize = 13,
   setEditorFontSize,
   editorWordWrap = true,
@@ -612,6 +614,30 @@ export default function SettingsModal({
                       }}
                     />
                   </label>
+                </div>
+
+                <div style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
+                    <div>
+                      <div>Workspace Pane Memory Across Sessions</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Per-Session remembers Terminal / Files / Browser &amp; active file per project with zero background mounts.
+                      </div>
+                    </div>
+                    <select
+                      className="ld-select"
+                      style={{ width: 'auto', minWidth: '175px' }}
+                      value={sessionLayoutMode}
+                      onChange={(e) => {
+                        const next = e.target.value === 'global' ? 'global' : 'per-session';
+                        setSessionLayoutMode?.(next);
+                        localStorage.setItem('aim-session-layout-mode', next);
+                      }}
+                    >
+                      <option value="per-session">Per-Session Memory</option>
+                      <option value="global">Global (Follow Me)</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </>

@@ -17,6 +17,7 @@ export default function BrowserPane({
   fleet = [],
   onAttachToComposer,
   onSendSessionCommand,
+  onActiveTargetChange,
   onToggleSplitMode,
   onClose,
 }) {
@@ -54,6 +55,8 @@ export default function BrowserPane({
   const preferredTargetIdRef = useRef(preferredTargetId);
   const activeSessionPropRef = useRef(activeSession);
   const fleetPropRef = useRef(fleet);
+  const onActiveTargetChangeRef = useRef(onActiveTargetChange);
+  onActiveTargetChangeRef.current = onActiveTargetChange;
 
   useEffect(() => {
     preferredTargetIdRef.current = preferredTargetId;
@@ -225,11 +228,14 @@ export default function BrowserPane({
   };
 
   const handleSelectTab = useCallback(
-    (tab) => {
+    (tab, opts = {}) => {
       if (!tab?.id) return;
       setActiveTargetId(tab.id);
       activeTargetRef.current = tab.id;
       setAddressInput(tab.url || '');
+      if (opts.persist !== false) {
+        onActiveTargetChangeRef.current?.(tab.id, activeSessionPropRef.current);
+      }
       const dims = measureStageSize();
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(
@@ -260,7 +266,7 @@ export default function BrowserPane({
 
     lastAutoSyncedSessionRef.current = syncKey;
     if (byOwner && byOwner.id !== activeTargetRef.current) {
-      handleSelectTab(byOwner);
+      handleSelectTab(byOwner, { persist: false });
     }
   }, [isOpen, tabs, activeSession, preferredTargetId, hudByTarget, fleet, handleSelectTab]);
 
