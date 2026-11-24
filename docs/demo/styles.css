@@ -776,6 +776,7 @@ svg.lucide {
   height: 24px;
   padding: 0 3px;
   white-space: nowrap;
+  overflow: hidden;
   border-radius: 6px;
   background: transparent;
   border: 1px solid var(--border-hairline);

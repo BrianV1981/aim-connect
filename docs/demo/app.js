@@ -1092,8 +1092,8 @@ const PORTAL_TYPE_PHRASES = [
 ];
 
 const SCRAMBLE_CHARS = '01ABCDEF/>_#$%&*+=?AIM';
-const MATRIX_SCRAMBLE_TICK_MS = 28;
-const MATRIX_SCRAMBLE_STEP = 0.38;
+const MATRIX_SCRAMBLE_TICK_MS = 22;
+const MATRIX_SCRAMBLE_STEP = 0.62;
 const ACTIVE_SCRAMBLE_TIMERS = new Set();
 const MARKUP_IMAGE_CACHE = new Map();
 
@@ -2215,7 +2215,8 @@ function clearActiveScrambles() {
 }
 
 function attachScramble(el, originalText, triggerEl = el) {
-  if (!el || !triggerEl || !originalText || triggerEl.dataset.scrambleBound === '1') return;
+  if (!el || !triggerEl || !originalText || el.dataset.scrambleElBound === '1') return;
+  el.dataset.scrambleElBound = '1';
   triggerEl.dataset.scrambleBound = '1';
   let timer = null;
   triggerEl.addEventListener('mouseenter', () => {
@@ -2281,7 +2282,8 @@ function pickScrambleTargetSpan(btn) {
 
 function bindStandaloneButtonScrambles() {
   const excludedSelectors = [
-    '.fleet-rail',
+    '.spotlight-card',
+    '.fleet-del-btn',
     '.totp-keypad',
     '.kb-grid',
     '.ctrl-key-grid',
@@ -4462,6 +4464,10 @@ function render() {
   const root = document.getElementById('proto-root');
   if (!root) return;
 
+  const prevTabsLeft = document.querySelector('.copilot-tabs-row')?.scrollLeft || 0;
+  const prevFavLeft = document.querySelector('.cp-fav-bar')?.scrollLeft || 0;
+  const prevFleetTop = document.querySelector('.fleet-scroll-list')?.scrollTop || 0;
+
   const isHome = !state.activeSession;
   const sess = state.sessions.find((s) => s.name === state.activeSession) || state.sessions[0];
 
@@ -5572,6 +5578,13 @@ function render() {
       </div>
     </div>
   `;
+
+  const nextTabsRow = document.querySelector('.copilot-tabs-row');
+  if (nextTabsRow && prevTabsLeft) nextTabsRow.scrollLeft = prevTabsLeft;
+  const nextFavBar = document.querySelector('.cp-fav-bar');
+  if (nextFavBar && prevFavLeft) nextFavBar.scrollLeft = prevFavLeft;
+  const nextFleetList = document.querySelector('.fleet-scroll-list');
+  if (nextFleetList && prevFleetTop) nextFleetList.scrollTop = prevFleetTop;
 
   bindInteractions();
 }
