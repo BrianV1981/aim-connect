@@ -61,6 +61,7 @@ from routes_sessions import (
     extract_spoken_summary,
 )
 from sandbox_smtp import get_gateway_signing_secret, smtp_configured, smtp_values
+import tickets_bridge
 from ws_handler import resolve_workspace_id_for_email
 
 router = APIRouter()
@@ -1261,6 +1262,91 @@ JOSHUA_TOOLS_SCHEMA: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_ticket",
+            "description": "Open a support or territory-request ticket strictly under the authenticated subscriber's email (visible immediately in Dashboard -> Tickets).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "enum": ["bug", "feature_request", "enhancement", "data_request", "question"]},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "module_context": {"type": "string"},
+                },
+                "required": ["category", "title", "description"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tickets",
+            "description": "List support tickets opened under the authenticated subscriber's email.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["OPEN", "CLOSED", "ALL"]},
+                    "limit": {"type": "integer"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ticket",
+            "description": "Retrieve a single support ticket and its full comment thread for the authenticated subscriber.",
+            "parameters": {
+                "type": "object",
+                "properties": {"ticket_number": {"type": "integer"}},
+                "required": ["ticket_number"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reply_ticket",
+            "description": "Post a follow-up comment on one of the authenticated subscriber's support tickets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticket_number": {"type": "integer"},
+                    "body": {"type": "string"},
+                },
+                "required": ["ticket_number", "body"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_ticket_comment",
+            "description": "Edit an existing comment posted by the authenticated subscriber.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "comment_id": {"type": "string"},
+                    "body": {"type": "string"},
+                },
+                "required": ["comment_id", "body"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_ticket",
+            "description": "Close an open support ticket belonging to the authenticated subscriber.",
+            "parameters": {
+                "type": "object",
+                "properties": {"ticket_number": {"type": "integer"}},
+                "required": ["ticket_number"],
+            },
+        },
+    },
 ]
 
 
@@ -1745,6 +1831,89 @@ async def dispatch_joshua_tool(
                 "summary": "SMTP delivery failed",
             }
 
+    if tool_name in {
+        "create_ticket",
+        "list_tickets",
+        "get_ticket",
+        "reply_ticket",
+        "edit_ticket_comment",
+        "close_ticket",
+    }:
+        try:
+            if tool_name == "create_ticket":
+                res = await tickets_bridge.create_ticket(
+                    seat_email,
+                    operator_id=operator_id,
+                    category=str(args.get("category") or "question"),
+                    title=str(args.get("title") or ""),
+                    description=str(args.get("description") or ""),
+                    module_context=str(args.get("module_context") or "general"),
+                    source="joshua_analyst",
+                )
+                return json.dumps({"ok": True, "ticket": res}), {
+                    "tool": tool_name,
+                    "summary": f"Opened ticket #{res.get('ticket_number')}",
+                }
+            if tool_name == "list_tickets":
+                res = await tickets_bridge.list_tickets(
+                    seat_email,
+                    status=str(args.get("status") or "OPEN"),
+                    limit=int(args.get("limit") or 25),
+                )
+                return json.dumps({"ok": True, "tickets": res}), {
+                    "tool": tool_name,
+                    "summary": f"Listed {len(res)} ticket(s)",
+                }
+            if tool_name == "get_ticket":
+                res = await tickets_bridge.get_ticket_thread(
+                    seat_email,
+                    int(args.get("ticket_number")),
+                )
+                if not res:
+                    return json.dumps({"ok": False, "error": "Ticket not found"}), {
+                        "tool": tool_name,
+                        "summary": "Ticket not found",
+                    }
+                return json.dumps({"ok": True, **res}), {
+                    "tool": tool_name,
+                    "summary": f"Loaded ticket #{res['ticket'].get('ticket_number')}",
+                }
+            if tool_name == "reply_ticket":
+                res = await tickets_bridge.reply_ticket(
+                    seat_email,
+                    ticket_number=int(args.get("ticket_number")),
+                    body=str(args.get("body") or ""),
+                    source="joshua_analyst",
+                )
+                return json.dumps({"ok": True, "comment": res}), {
+                    "tool": tool_name,
+                    "summary": f"Replied to ticket #{args.get('ticket_number')}",
+                }
+            if tool_name == "edit_ticket_comment":
+                res = await tickets_bridge.edit_ticket_comment(
+                    seat_email,
+                    comment_id=str(args.get("comment_id") or ""),
+                    body=str(args.get("body") or ""),
+                )
+                return json.dumps({"ok": True, "comment": res}), {
+                    "tool": tool_name,
+                    "summary": "Updated ticket comment",
+                }
+            if tool_name == "close_ticket":
+                res = await tickets_bridge.close_ticket(
+                    seat_email,
+                    ticket_number=int(args.get("ticket_number")),
+                )
+                return json.dumps({"ok": True, "ticket": res}), {
+                    "tool": tool_name,
+                    "summary": f"Closed ticket #{args.get('ticket_number')}",
+                }
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}), {
+                "tool": tool_name,
+                "summary": f"Ticket action failed: {exc}"[:80],
+            }
+
     return json.dumps({"ok": False, "error": f"Unknown tool: {tool_name}"}), {
         "tool": tool_name,
         "summary": f"Unknown tool {tool_name}",
@@ -1775,7 +1944,7 @@ def _build_joshua_system_prompt(ws_dir: Path, seat_email: str, operator_id: str)
         f"{persona}\n\n"
         "## NATIVE ENGINE EXECUTION RULES (OPTION 1A)\n"
         f"- Authenticated Subscriber Email: `{seat_email}` (Workspace ID: `{operator_id}`, Edition: `{pipeline_type}`).\n"
-        "- Use your native function-calling tools (`search_leads`, `query_leads_sql`, `get_daily_dossier`, `describe_workspace_data`, `read_rep_profile`, `save_rep_profile`, `search_memory_wiki`, `update_memory_wiki`, `web_recon`, `export_lead_table`, `email_lead_report`) directly instead of writing shell commands.\n"
+        "- Use your native function-calling tools (`search_leads`, `query_leads_sql`, `get_daily_dossier`, `describe_workspace_data`, `read_rep_profile`, `save_rep_profile`, `search_memory_wiki`, `update_memory_wiki`, `web_recon`, `export_lead_table`, `email_lead_report`, `create_ticket`, `list_tickets`, `get_ticket`, `reply_ticket`, `edit_ticket_comment`, `close_ticket`) directly instead of writing shell commands.\n"
         "- Never expose internal pipeline architecture, scraper names, or raw internal column names; present clean business names, addresses, decision-makers, phones, emails, capacities/seats, and tailored outreach angles.\n"
         "- Whenever the user tells you what they sell, their company name, target counties/ZIPs, or pitch rules, call `save_rep_profile` (and `update_memory_wiki` for detailed notes) so you remember across every future session.\n"
         "- Always end your final response with a plain conversational English `🔊 <1-2 sentence spoken summary>` line (no markdown symbols, file paths, or code inside the `🔊` line).\n"
