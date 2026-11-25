@@ -55,6 +55,7 @@ import {
   resolveComposerTextareaLayout,
   saveComposerCustomHeight,
 } from './composerUtils';
+import { computeMobileViewportState, isTextInputElement } from './mobileViewportUtils';
 
 const THEME_META_COLORS = {
   emerald: '#050505',
@@ -814,38 +815,99 @@ function App() {
   }, []);
 
   useEffect(() => {
-    let viewportTimeout;
-    const setHeight = () => {
-      clearTimeout(viewportTimeout);
-      viewportTimeout = setTimeout(() => {
-        const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        document.documentElement.style.setProperty('--vh', `${vh * 0.01}px`);
-        if (window.visualViewport) {
-          document.body.style.height = `${window.visualViewport.height}px`;
-        }
+    let fitTimeout;
+    let focusSyncTimers = [];
+    let lastWidth = window.innerWidth;
+    let baselineHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+    const clearFocusTimers = () => {
+      focusSyncTimers.forEach((id) => clearTimeout(id));
+      focusSyncTimers = [];
+    };
+
+    const syncViewport = () => {
+      const activeIsInput = isTextInputElement(document.activeElement);
+      const curW = window.innerWidth;
+      const curVvH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      if (Math.abs(curW - lastWidth) > 20 || !activeIsInput) {
+        baselineHeight = Math.max(curW !== lastWidth ? curVvH : baselineHeight, curVvH, window.innerHeight);
+        lastWidth = curW;
+      }
+
+      const vpState = computeMobileViewportState({
+        innerWidth: curW,
+        innerHeight: window.innerHeight,
+        baselineHeight,
+        visualViewport: window.visualViewport,
+        activeElementIsInput: activeIsInput,
+      });
+
+      const rootStyle = document.documentElement.style;
+      rootStyle.setProperty('--vh', `${vpState.vhPx}px`);
+      rootStyle.setProperty('--vv-height', `${vpState.vvHeight}px`);
+      rootStyle.setProperty('--vv-top', `${vpState.vvTop}px`);
+      rootStyle.setProperty('--vv-left', `${vpState.vvLeft}px`);
+      document.documentElement.dataset.kbOpen = vpState.keyboardOpen ? 'true' : 'false';
+      document.body.style.height = `${vpState.vvHeight}px`;
+
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
+
+      clearTimeout(fitTimeout);
+      fitTimeout = setTimeout(() => {
         if (fitAddon.current) {
           try {
             fitAddon.current.fit();
           } catch {}
         }
-      }, 150);
+      }, 120);
     };
+
     const handleOrientation = () => {
-      setTimeout(setHeight, 350);
+      baselineHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      setTimeout(syncViewport, 120);
+      setTimeout(syncViewport, 350);
     };
-    setHeight();
-    window.addEventListener('resize', setHeight);
+
+    const handleWindowScroll = () => {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
+      syncViewport();
+    };
+
+    const handleFocusShift = () => {
+      clearFocusTimers();
+      syncViewport();
+      focusSyncTimers.push(setTimeout(syncViewport, 80));
+      focusSyncTimers.push(setTimeout(syncViewport, 260));
+    };
+
+    syncViewport();
+    window.addEventListener('resize', syncViewport);
     window.addEventListener('orientationchange', handleOrientation);
+    window.addEventListener('scroll', handleWindowScroll);
+    document.addEventListener('focusin', handleFocusShift);
+    document.addEventListener('focusout', handleFocusShift);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', setHeight);
+      window.visualViewport.addEventListener('resize', syncViewport);
+      window.visualViewport.addEventListener('scroll', syncViewport);
     }
     return () => {
-      clearTimeout(viewportTimeout);
-      window.removeEventListener('resize', setHeight);
+      clearTimeout(fitTimeout);
+      clearFocusTimers();
+      window.removeEventListener('resize', syncViewport);
       window.removeEventListener('orientationchange', handleOrientation);
+      window.removeEventListener('scroll', handleWindowScroll);
+      document.removeEventListener('focusin', handleFocusShift);
+      document.removeEventListener('focusout', handleFocusShift);
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', setHeight);
+        window.visualViewport.removeEventListener('resize', syncViewport);
+        window.visualViewport.removeEventListener('scroll', syncViewport);
       }
+      document.body.style.height = '';
+      delete document.documentElement.dataset.kbOpen;
     };
   }, []);
 
@@ -1801,17 +1863,6 @@ function App() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
 
-    const handleResize = () => {
-      if (window.visualViewport) {
-        document.body.style.height = `${window.visualViewport.height}px`;
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
-    }
-
     let lastSentCols = 0;
     let lastSentRows = 0;
     const resizeObserver = new ResizeObserver(() => {
@@ -1892,23 +1943,10 @@ function App() {
       termEl.addEventListener('touchmove', handleTouchMove, { passive: false });
     }
 
-    const handleScroll = () => {
-      if (window.scrollY > 0 || window.scrollX > 0) {
-        window.scrollTo(0, 0);
-      }
-    };
-    window.addEventListener('scroll', handleScroll);
-
     return () => {
       if (touchFlushTimer) clearTimeout(touchFlushTimer);
       resizeObserver.disconnect();
       window.removeEventListener('keydown', handleGlobalKeyDown);
-      window.removeEventListener('resize', handleResize);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleResize);
-        document.body.style.height = '';
-      }
-      window.removeEventListener('scroll', handleScroll);
       if (termEl) {
         termEl.removeEventListener('touchstart', handleTouchStart);
         termEl.removeEventListener('touchmove', handleTouchMove);

@@ -173,8 +173,10 @@
 }
 
 html {
-  height: 100dvh;
-  height: calc(var(--vh, 1vh) * 100);
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -183,11 +185,12 @@ body {
   font-family: var(--font-sans);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
-  height: 100dvh;
-  height: calc(var(--vh, 1vh) * 100);
-  min-height: calc(var(--vh, 1vh) * 100);
-  width: 100vw;
+  position: fixed;
+  inset: 0;
+  height: var(--vv-height, 100dvh);
+  width: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 #root {
@@ -213,11 +216,13 @@ svg.lucide {
 .app-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  position: fixed;
+  top: var(--vv-top, 0px);
+  left: var(--vv-left, 0px);
   width: 100%;
+  height: var(--vv-height, 100dvh);
   min-height: 0;
   background: var(--bg-canvas);
-  position: relative;
   overflow: hidden;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -3873,6 +3878,19 @@ mark.find-hit-mark.active-hit {
   .m-dock-tab.active {
     color: var(--accent);
     background: rgba(var(--accent-rgb), 0.08);
+  }
+
+  .ld-prompt-field {
+    font-size: 16px;
+    line-height: 1.35;
+  }
+
+  html[data-kb-open="true"] .ld-mobile-dock {
+    display: none;
+  }
+
+  html[data-kb-open="true"] .ld-composer-shell {
+    padding: 5px 10px;
   }
 }
 
