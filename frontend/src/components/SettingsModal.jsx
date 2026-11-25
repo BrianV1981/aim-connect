@@ -872,10 +872,57 @@ export default function SettingsModal({
               <div className="settings-group-card">
                 <div className="settings-group-title">3. HEADLESS WSL2 KEEPALIVE &amp; LINUX SYSTEMD BOOT UNIT</div>
                 <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  Keep WSL2 and <code>tmux</code> awake with zero open Windows Terminal windows, or pause keepalive on battery power so WSL2 can release RAM when idle.
+                  Keep WSL2 and <code>tmux</code> awake with zero open Windows Terminal windows—or revert 100% back to default Windows idle shutdown in 1 click or via CLI.
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px',
+                      flexWrap: 'wrap',
+                      padding: '10px 12px',
+                      borderRadius: '9px',
+                      background: hostBootStatus?.wsl_always_on_enabled
+                        ? 'rgba(var(--accent-rgb), 0.07)'
+                        : 'var(--bg-input)',
+                      border: hostBootStatus?.wsl_always_on_enabled
+                        ? '1px solid rgba(var(--accent-rgb), 0.35)'
+                        : '1px solid var(--border-hairline)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 700 }}>
+                        WSL2 Always-On Mode (Survive Closing Windows Terminal)
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
+                        Mode: {hostBootStatus?.wsl_always_on_enabled ? 'ENABLED ✓' : 'OFF (Windows Default)'} · Startup VBS:{' '}
+                        {hostBootStatus?.windows_startup_installed ? 'INSTALLED ✓' : 'OFF'} · .wslconfig vmIdleTimeout=-1:{' '}
+                        {hostBootStatus?.wsl_idle_timeout_configured ? 'SET ✓' : 'OFF'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className={hostBootStatus?.wsl_always_on_enabled ? 'subbar-util-btn active' : 'neon-cta-btn'}
+                      style={{ height: '30px', padding: '0 11px', fontSize: '10.5px' }}
+                      disabled={hostActionBusy}
+                      onClick={() =>
+                        handleHostControl(
+                          hostBootStatus?.wsl_always_on_enabled ? 'disable_wsl_always_on' : 'enable_wsl_always_on'
+                        )
+                      }
+                      title={
+                        hostBootStatus?.wsl_always_on_enabled
+                          ? 'Stop keepalive handle, remove Windows Startup VBS, and strip vmIdleTimeout=-1 from .wslconfig'
+                          : 'Configure .wslconfig vmIdleTimeout=-1, install hidden Windows Startup VBS, and launch wscript keepalive handle'
+                      }
+                    >
+                      {hostBootStatus?.wsl_always_on_enabled ? 'TURN OFF & REVERT ALWAYS-ON' : 'ENABLE WSL ALWAYS-ON'}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingTop: '4px' }}>
                     <div>
                       <div style={{ fontSize: '12px', fontWeight: 600 }}>Linux Cold-Boot Recovery Unit (aim-connect-boot.service)</div>
                       <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
@@ -898,7 +945,7 @@ export default function SettingsModal({
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
                     <div>
-                      <div style={{ fontSize: '12px', fontWeight: 600 }}>Background Keepalive Handle (sleep infinity)</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>Background Keepalive Handle (Temporary Battery Pause)</div>
                       <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                         Handle: {hostBootStatus?.wsl_keepalive_running ? 'ACTIVE ✓' : 'PAUSED'} · .wslconfig vmIdleTimeout=-1:{' '}
                         {hostBootStatus?.wsl_idle_timeout_configured ? 'SET ✓' : 'NOT SET'}
@@ -915,6 +962,38 @@ export default function SettingsModal({
                       }
                     >
                       {hostBootStatus?.wsl_keepalive_running ? 'PAUSE KEEPALIVE' : 'START KEEPALIVE'}
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px',
+                      flexWrap: 'wrap',
+                      paddingTop: '6px',
+                      borderTop: '1px solid var(--border-hairline)',
+                      fontSize: '10.5px',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <span>
+                      CLI Toggle: <code>./scripts/wsl-keepalive.sh on</code> · Revert:{' '}
+                      <code>{hostBootStatus?.cli_disable_cmd || './scripts/wsl-keepalive.sh off'}</code>
+                    </span>
+                    <button
+                      type="button"
+                      className="subbar-util-btn"
+                      onClick={() => {
+                        const cmd = hostBootStatus?.cli_disable_cmd || './scripts/wsl-keepalive.sh off';
+                        navigator.clipboard?.writeText?.(cmd);
+                        setTmuxCfgStatus('COPIED OFF CMD ✓');
+                        setTimeout(() => setTmuxCfgStatus(''), 2200);
+                      }}
+                    >
+                      <span>COPY OFF CMD</span>
                     </button>
                   </div>
                 </div>

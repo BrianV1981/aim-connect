@@ -257,7 +257,13 @@ def get_host_boot_and_wsl_status(home_dir: str | None = None) -> dict:
 
     wsl_idle_configured = False
     wsl_cfg_env = os.environ.get("AIM_WSLCONFIG_PATH", "").strip()
-    candidate_cfgs = [Path(wsl_cfg_env)] if wsl_cfg_env else [Path(p) for p in glob.glob("/mnt/c/Users/*/.wslconfig")]
+    win_home_env = os.environ.get("AIM_WIN_HOME", "").strip()
+    if wsl_cfg_env:
+        candidate_cfgs = [Path(wsl_cfg_env)]
+    elif win_home_env:
+        candidate_cfgs = [Path(win_home_env) / ".wslconfig"]
+    else:
+        candidate_cfgs = [Path(p) for p in glob.glob("/mnt/c/Users/*/.wslconfig")]
     for cfg in candidate_cfgs:
         if cfg.is_file():
             try:
@@ -267,6 +273,21 @@ def get_host_boot_and_wsl_status(home_dir: str | None = None) -> dict:
                     break
             except OSError:
                 pass
+
+    startup_dir_env = os.environ.get("AIM_WIN_STARTUP_DIR", "").strip()
+    if startup_dir_env:
+        candidate_vbs = [Path(startup_dir_env) / "aim-wsl-keepalive.vbs"]
+    elif win_home_env:
+        candidate_vbs = [
+            Path(win_home_env) / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "aim-wsl-keepalive.vbs",
+            Path(win_home_env) / "AppData" / "Local" / "AIM-Connect" / "wsl-keepalive.vbs",
+        ]
+    else:
+        candidate_vbs = [
+            *(Path(p) for p in glob.glob("/mnt/c/Users/*/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/aim-wsl-keepalive.vbs")),
+            *(Path(p) for p in glob.glob("/mnt/c/Users/*/AppData/Local/AIM-Connect/wsl-keepalive.vbs")),
+        ]
+    windows_startup_installed = any(v.is_file() for v in candidate_vbs)
 
     keepalive_proc = subprocess.run(
         ["pgrep", "-f", "aim_wsl_keepalive_sleep|sleep infinity"],
@@ -278,19 +299,25 @@ def get_host_boot_and_wsl_status(home_dir: str | None = None) -> dict:
     xdg_cfg = Path(os.environ.get("XDG_CONFIG_HOME", str(base_home / ".config")))
     unit_file = xdg_cfg / "systemd" / "user" / "aim-connect-boot.service"
     unit_installed = unit_file.is_file()
+    always_on_enabled = bool(wsl_idle_configured and (windows_startup_installed or keepalive_running))
 
     return {
         "is_wsl": is_wsl,
         "wsl_idle_timeout_configured": wsl_idle_configured,
+        "windows_startup_installed": windows_startup_installed,
         "wsl_keepalive_running": keepalive_running,
+        "wsl_always_on_enabled": always_on_enabled,
         "systemd_boot_unit_installed": unit_installed,
+        "cli_enable_cmd": "./scripts/wsl-keepalive.sh on",
+        "cli_disable_cmd": "./scripts/wsl-keepalive.sh off",
     }
 
 
 def execute_host_boot_control(action: str, repo_root: Path, home_dir: str | None = None) -> dict:
-    """Toggle Linux systemd cold-boot unit or background WSL keepalive handle safely."""
+    """Toggle Linux systemd cold-boot unit or reversible WSL2 Always-On keepalive safely (#299, #300, #305)."""
     act = (action or "").strip().lower()
     installer = repo_root / "scripts" / "install-headless-boot.sh"
+    keepalive_cli = repo_root / "scripts" / "wsl-keepalive.sh"
     env = os.environ.copy()
     if home_dir:
         env["HOME"] = str(home_dir)
@@ -303,6 +330,14 @@ def execute_host_boot_control(action: str, repo_root: Path, home_dir: str | None
         res = subprocess.run(["bash", str(installer), "--uninstall"], cwd=str(repo_root), env=env, capture_output=True, text=True)
         if res.returncode != 0:
             raise RuntimeError(res.stderr.strip() or "Failed to remove boot unit")
+    elif act == "enable_wsl_always_on":
+        res = subprocess.run(["bash", str(keepalive_cli), "on"], cwd=str(repo_root), env=env, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(res.stderr.strip() or "Failed to enable WSL2 Always-On mode")
+    elif act == "disable_wsl_always_on":
+        res = subprocess.run(["bash", str(keepalive_cli), "off"], cwd=str(repo_root), env=env, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(res.stderr.strip() or "Failed to revert WSL2 Always-On mode")
     elif act == "start_keepalive":
         subprocess.Popen(
             ["bash", "-c", "pgrep -f 'aim_wsl_keepalive_sleep' >/dev/null 2>&1 || exec -a aim_wsl_keepalive_sleep sleep infinity"],

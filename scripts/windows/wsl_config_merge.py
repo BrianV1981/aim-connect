@@ -85,14 +85,73 @@ def ensure_wslconfig_file(path: Path, force: bool = False) -> bool:
     return False
 
 
+def remove_wslconfig_idle_timeout_text(existing_text: str) -> tuple[str, bool]:
+    """Remove vmIdleTimeout=-1 under [wsl2] while preserving all other keys and line endings (#305)."""
+    if not existing_text:
+        return "", False
+
+    newline = "\r\n" if "\r\n" in existing_text else "\n"
+    raw_lines = existing_text.splitlines()
+    out_lines: list[str] = []
+    in_wsl2 = False
+    changed = False
+
+    for line in raw_lines:
+        sec_match = SECTION_RE.match(line)
+        if sec_match:
+            sec_name = sec_match.group(1).strip().lower()
+            in_wsl2 = sec_name == "wsl2"
+            out_lines.append(line)
+            continue
+
+        if in_wsl2 and not line.lstrip().startswith(("#", ";")):
+            key_match = KEY_RE.match(line)
+            if key_match and key_match.group(1).strip().lower() == "vmidletimeout":
+                current_val = key_match.group(2).split("#", 1)[0].split(";", 1)[0].strip()
+                if current_val == "-1":
+                    changed = True
+                    continue
+
+        out_lines.append(line)
+
+    if not changed:
+        return existing_text, False
+
+    rendered = (newline.join(out_lines) + newline) if out_lines else ""
+    return rendered, True
+
+
+def remove_wslconfig_idle_timeout_file(path: Path) -> bool:
+    """Remove vmIdleTimeout=-1 from .wslconfig on disk if present (#305). Returns True if modified."""
+    if not path.exists():
+        return False
+    existing = path.read_text(encoding="utf-8", errors="replace")
+    updated, changed = remove_wslconfig_idle_timeout_text(existing)
+    if changed:
+        backup = path.with_suffix(path.suffix + ".bak")
+        backup.write_text(existing, encoding="utf-8")
+        path.write_text(updated, encoding="utf-8")
+        return True
+    return False
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Merge vmIdleTimeout=-1 into .wslconfig")
+    parser = argparse.ArgumentParser(description="Merge or remove vmIdleTimeout=-1 in .wslconfig")
     parser.add_argument("path", help="Path to .wslconfig")
     parser.add_argument("--force", action="store_true", help="Overwrite existing vmIdleTimeout value")
+    parser.add_argument("--remove", action="store_true", help="Remove vmIdleTimeout=-1 from [wsl2]")
     parser.add_argument("--check", action="store_true", help="Check only without modifying file")
     args = parser.parse_args()
 
     target = Path(args.path).expanduser()
+    if args.remove:
+        removed = remove_wslconfig_idle_timeout_file(target)
+        if removed:
+            print(f"[wslconfig] Removed vmIdleTimeout=-1 from {target} (backup at {target}.bak).")
+        else:
+            print(f"[wslconfig] vmIdleTimeout=-1 already absent in {target}.")
+        return 0
+
     existing = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
     _, would_change = merge_wslconfig_text(existing, force=args.force)
     if args.check:

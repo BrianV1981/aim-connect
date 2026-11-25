@@ -47,7 +47,19 @@ if ($Uninstall) {
     if (Test-Path $VbsPath) {
         Remove-Item -Path $VbsPath -Force
     }
-    Write-Host "[wsl-keepalive] Removed Scheduled Task '$TaskName' and launcher script."
+    $StartupVbs = Join-Path ([Environment]::GetFolderPath("Startup")) "aim-wsl-keepalive.vbs"
+    if (Test-Path $StartupVbs) {
+        Remove-Item -Path $StartupVbs -Force
+    }
+    if (Test-Path $WslConfigPath) {
+        $RawCfg = Get-Content -Path $WslConfigPath -Raw
+        if ($RawCfg -match '(?im)^\s*vmIdleTimeout\s*=\s*-1\s*$') {
+            Copy-Item -Path $WslConfigPath -Destination "$WslConfigPath.bak" -Force
+            $CleanedCfg = [regex]::Replace($RawCfg, '(?im)^\s*vmIdleTimeout\s*=\s*-1\s*\r?\n?', '')
+            Set-Content -Path $WslConfigPath -Value $CleanedCfg -Encoding UTF8
+        }
+    }
+    Write-Host "[wsl-keepalive] Removed Scheduled Task '$TaskName', Startup launcher, and vmIdleTimeout=-1."
     exit 0
 }
 
