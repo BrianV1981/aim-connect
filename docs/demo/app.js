@@ -1926,6 +1926,17 @@ const state = {
   bootUnitInstalled: true,
   wslKeepaliveRunning: true,
   wslIdleConfigured: true,
+  wslAlwaysOnEnabled: true,
+  wslStartupVbsInstalled: true,
+  activeBundleId: 'index-B9T_UA9z.js',
+  activeServerId: 'srv-ws',
+  showLockAddServer: false,
+  nodeIdentityToast: '',
+  servers: [
+    { id: 'srv-ws', label: 'PRIMARY WORKSTATION', monogram: 'WS', url: 'https://aim.example.com', host: 'aim.example.com', color: '#00FFA3' },
+    { id: 'srv-vps', label: 'CLOUD VPS-01', monogram: 'VPS', url: 'https://vps.example.com', host: 'vps.example.com', color: '#38BDF8' },
+    { id: 'srv-lab', label: 'EDGE LAB NODE', monogram: 'LAB', url: 'https://lab.example.com', host: 'lab.example.com', color: '#A855F7' },
+  ],
   savedSnapshotCount: 14,
   repoScanPaths: '~/aim-agents\n/mnt/d/projects',
   tmuxSettingsToast: '',
@@ -2326,11 +2337,16 @@ function bindStandaloneButtonScrambles() {
     });
 }
 
+function getActiveShowcaseServer() {
+  return state.servers.find((s) => s.id === state.activeServerId) || state.servers[0];
+}
+
 function renderLockScreen() {
+  const activeSrv = getActiveShowcaseServer();
   return `
     <div class="auth-lock-stage">
       <div class="auth-card ld-mask-glass">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;">
           <div style="display:flex;align-items:center;gap:10px;">
             <div class="ld-brand-box">${ICONS.aimMark}</div>
             <div>
@@ -2338,7 +2354,61 @@ function renderLockScreen() {
               <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.12em;">ZERO-TRUST TOTP · WEBAUTHN · E2EE</div>
             </div>
           </div>
-          <button class="subbar-util-btn active" data-act="unlock-cockpit" title="Return to Unlocked Cockpit">UNLOCK</button>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button type="button" class="ghost-btn" style="height:28px;padding:0 8px;font-size:10px;" data-act="hard-refresh-app" title="Reload latest frontend bundle (mobile PWA equivalent to Ctrl+Shift+R)">
+              ${ICONS.refresh} <span>REFRESH</span>
+            </button>
+            <button class="subbar-util-btn active" data-act="unlock-cockpit" title="Return to Unlocked Cockpit">UNLOCK</button>
+          </div>
+        </div>
+
+        <div style="width:100%;padding:9px 11px;border-radius:10px;background:rgba(255,255,255,0.025);border:1px solid ${activeSrv.color};display:flex;flex-direction:column;gap:7px;text-align:left;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0;">
+              <span style="width:8px;height:8px;border-radius:50%;background:${activeSrv.color};box-shadow:0 0 8px ${activeSrv.color};flex-shrink:0;"></span>
+              <span style="font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--text-primary);">${escapeHtml(activeSrv.label)}</span>
+              <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">· ${escapeHtml(activeSrv.host)}</span>
+            </div>
+            <button type="button" class="ghost-btn" style="height:23px;padding:0 7px;font-size:9.5px;" data-act="toggle-lock-add-srv">
+              ${state.showLockAddServer ? ICONS.close : ICONS.plus} <span>${state.showLockAddServer ? 'CANCEL' : 'SERVERS'}</span>
+            </button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;">
+            ${state.servers
+              .map((srv) => {
+                const isCurr = srv.id === activeSrv.id;
+                return `
+                  <button
+                    type="button"
+                    data-switch-srv="${srv.id}"
+                    ${isCurr ? 'disabled' : ''}
+                    style="border-radius:7px;border:${isCurr ? `1px solid ${srv.color}` : '1px solid var(--border-hairline)'};background:${isCurr ? 'rgba(255,255,255,0.07)' : 'var(--bg-input)'};color:${isCurr ? 'var(--text-primary)' : 'var(--text-secondary)'};font-family:var(--font-mono);font-size:10px;font-weight:${isCurr ? 700 : 500};padding:4px 8px;display:inline-flex;align-items:center;gap:5px;cursor:${isCurr ? 'default' : 'pointer'};"
+                    title="${isCurr ? `Active node: ${srv.url}` : `Switch login screen to ${srv.label} (${srv.url})`}"
+                  >
+                    <span style="width:6px;height:6px;border-radius:50%;background:${srv.color};"></span>
+                    <span>${escapeHtml(srv.label)}</span>
+                    ${!isCurr ? ICONS.externalLink : ''}
+                  </button>
+                `;
+              })
+              .join('')}
+          </div>
+          ${
+            state.showLockAddServer
+              ? `
+            <div style="display:flex;flex-direction:column;gap:6px;padding-top:4px;border-top:1px solid var(--border-hairline);">
+              <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <input id="lock-new-srv-label" class="ld-text-input" style="flex:1 1 100px;height:30px;font-size:11.5px;" placeholder="Label (e.g. GPU Box)" />
+                <input id="lock-new-srv-url" class="ld-text-input" style="flex:2 1 160px;height:30px;font-size:11.5px;" placeholder="https://gpu.example.com" />
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:6px;">
+                <button type="button" class="subbar-util-btn" data-act="lock-save-srv"><span>SAVE TO LIST</span></button>
+                <button type="button" class="neon-cta-btn" style="height:26px;padding:0 10px;font-size:10px;" data-act="lock-save-switch-srv"><span>SAVE &amp; SWITCH</span></button>
+              </div>
+            </div>
+          `
+              : ''
+          }
         </div>
 
         <div style="display:flex;flex-direction:column;gap:8px;">
@@ -3484,16 +3554,98 @@ function renderSettingsModal(sess) {
             state.settingsTab === 'appearance'
               ? `
             <div style="padding:14px;border-radius:12px;background:rgba(var(--accent-rgb),0.06);border:1px solid rgba(var(--accent-rgb),0.32);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-              <div>
+              <div style="flex:1;min-width:220px;">
                 <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;">STANDALONE APP MODE (POP-OUT WINDOW)</div>
                 <div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px;">
-                  Pop AIM Connect out of the browser into a chromeless desktop/mobile app window like LeadDeeds.
+                  Pop AIM Connect out of the browser into a chromeless desktop/mobile app window with pass-through network-only Service Worker.
+                </div>
+                <div style="font-size:10.5px;color:var(--text-muted);margin-top:5px;font-family:var(--font-mono);">
+                  Active Bundle: ${escapeHtml(state.activeBundleId)} (piggybacked zero-poll freshness check)
                 </div>
               </div>
-              <button class="neon-cta-btn" id="confirm-pwa-btn" style="height:34px;padding:0 14px;">
-                ${ICONS.download}
-                <span>${state.deferredPrompt ? 'INSTALL APP NOW' : 'INSTALL APP'}</span>
-              </button>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="subbar-util-btn" style="height:34px;padding:0 13px;font-size:11px;" data-act="hard-refresh-app" title="Clear PWA caches and reload the latest server bundle (mobile equivalent to Ctrl+Shift+R)">
+                  ${ICONS.refresh}
+                  <span>REFRESH APP</span>
+                </button>
+                <button class="neon-cta-btn" id="confirm-pwa-btn" style="height:34px;padding:0 14px;">
+                  ${ICONS.download}
+                  <span>${state.deferredPrompt ? 'INSTALL APP NOW' : 'INSTALL APP'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-group-card">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                <div>
+                  <div class="settings-group-title">SERVER IDENTITY &amp; MULTI-SERVER SWITCHER</div>
+                  <div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px;">
+                    Customize this machine's badge/Home-Screen icon monogram so phone apps are unmistakable, and switch between AIM-Connect servers in 1 tap.
+                  </div>
+                </div>
+                ${state.nodeIdentityToast ? `<span class="e2ee-status-chip">${escapeHtml(state.nodeIdentityToast)}</span>` : ''}
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                ${state.servers
+                  .map((srv) => {
+                    const isCurr = srv.id === state.activeServerId;
+                    return `
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 11px;border-radius:9px;background:${isCurr ? 'rgba(var(--accent-rgb),0.08)' : 'var(--bg-input)'};border:${isCurr ? `1px solid ${srv.color}` : '1px solid var(--border-hairline)'};">
+                        <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                          <span style="width:9px;height:9px;border-radius:50%;background:${srv.color};box-shadow:0 0 8px ${srv.color};flex-shrink:0;"></span>
+                          <div>
+                            <div style="font-size:12px;font-weight:700;font-family:var(--font-mono);">
+                              ${escapeHtml(srv.label)} <span style="color:var(--text-muted);font-weight:500;">[${escapeHtml(srv.monogram)}]</span>
+                              ${isCurr ? '<span style="color:var(--accent);font-size:10px;">· ACTIVE SERVER</span>' : ''}
+                            </div>
+                            <div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);">${escapeHtml(srv.url)}</div>
+                          </div>
+                        </div>
+                        ${
+                          !isCurr
+                            ? `
+                          <div style="display:flex;gap:6px;align-items:center;">
+                            <button type="button" class="neon-cta-btn" style="height:28px;padding:0 10px;font-size:10.5px;" data-logout-switch-srv="${srv.id}">
+                              ${ICONS.externalLink} <span>LOGOUT &amp; SWITCH</span>
+                            </button>
+                            ${state.servers.length > 1 ? `<button type="button" class="ghost-btn" style="height:28px;padding:0 7px;" data-del-srv="${srv.id}" title="Remove server">${ICONS.trash}</button>` : ''}
+                          </div>
+                        `
+                            : ''
+                        }
+                      </div>
+                    `;
+                  })
+                  .join('')}
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:4px;border-top:1px solid var(--border-hairline);">
+                <input id="peer-srv-label-inp" class="ld-text-input" style="flex:1 1 120px;height:32px;" placeholder="Peer Label (e.g. GPU Server)" />
+                <input id="peer-srv-url-inp" class="ld-text-input" style="flex:2 1 190px;height:32px;" placeholder="https://gpu.example.com" />
+                <button type="button" class="subbar-util-btn active" style="height:32px;padding:0 11px;" data-act="settings-add-srv">
+                  ${ICONS.plus} <span>ADD SERVER</span>
+                </button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;padding-top:8px;border-top:1px solid var(--border-hairline);">
+                <div style="font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);">
+                  THIS SERVER'S BADGE &amp; PHONE HOME-SCREEN ICON MONOGRAM
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                  <input id="curr-srv-label-inp" class="ld-text-input" style="flex:2 1 150px;height:32px;" value="${escapeHtml(getActiveShowcaseServer().label)}" />
+                  <input id="curr-srv-mono-inp" class="ld-text-input" style="flex:0 1 92px;height:32px;font-family:var(--font-mono);text-transform:uppercase;" maxlength="4" value="${escapeHtml(getActiveShowcaseServer().monogram)}" />
+                  <div style="display:inline-flex;gap:4px;align-items:center;">
+                    ${['#00FFA3', '#38BDF8', '#F59E0B', '#A855F7', '#F43F5E', '#FF5722']
+                      .map(
+                        (hex) => `
+                      <button type="button" data-srv-color="${hex}" style="width:22px;height:22px;border-radius:6px;background:${hex};border:${getActiveShowcaseServer().color.toUpperCase() === hex ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.2)'};cursor:pointer;"></button>
+                    `
+                      )
+                      .join('')}
+                  </div>
+                  <button type="button" class="subbar-util-btn" style="height:32px;padding:0 12px;" data-act="save-node-identity">
+                    <span>SAVE SERVER IDENTITY</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div class="settings-group-card">
@@ -3696,7 +3848,18 @@ function renderSettingsModal(sess) {
             <div class="settings-group-card">
               <div class="settings-group-title">3. HEADLESS WSL2 KEEPALIVE &amp; LINUX SYSTEMD BOOT UNIT</div>
               <div style="font-size:11.5px;color:var(--text-secondary);">
-                Keep WSL2 and <code>tmux</code> awake with zero open Windows Terminal windows, or pause keepalive on battery power so WSL2 can release RAM when idle.
+                Keep WSL2 and <code>tmux</code> awake with zero open Windows Terminal windows—or revert 100% back to default Windows idle shutdown in 1 click or via CLI.
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border-radius:9px;background:${state.wslAlwaysOnEnabled ? 'rgba(var(--accent-rgb),0.07)' : 'var(--bg-input)'};border:${state.wslAlwaysOnEnabled ? '1px solid rgba(var(--accent-rgb),0.35)' : '1px solid var(--border-hairline)'};">
+                <div>
+                  <div style="font-size:12px;font-weight:700;">WSL2 Always-On Mode (Survive Closing Windows Terminal)</div>
+                  <div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);margin-top:2px;">
+                    Mode: ${state.wslAlwaysOnEnabled ? 'ENABLED ✓' : 'OFF (Windows Default)'} · Startup VBS: ${state.wslStartupVbsInstalled ? 'INSTALLED ✓' : 'OFF'} · .wslconfig vmIdleTimeout=-1: ${state.wslIdleConfigured ? 'SET ✓' : 'OFF'}
+                  </div>
+                </div>
+                <button type="button" class="${state.wslAlwaysOnEnabled ? 'subbar-util-btn active' : 'neon-cta-btn'}" style="height:30px;padding:0 11px;font-size:10.5px;" data-act="toggle-wsl-always-on">
+                  ${state.wslAlwaysOnEnabled ? 'TURN OFF & REVERT ALWAYS-ON' : 'ENABLE WSL ALWAYS-ON'}
+                </button>
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-top:4px;">
                 <div>
@@ -3709,12 +3872,16 @@ function renderSettingsModal(sess) {
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--border-hairline);">
                 <div>
-                  <div style="font-size:12px;font-weight:600;">Background Keepalive Handle (sleep infinity)</div>
+                  <div style="font-size:12px;font-weight:600;">Background Keepalive Handle (Temporary Battery Pause)</div>
                   <div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);">Handle: ${state.wslKeepaliveRunning ? 'ACTIVE ✓' : 'PAUSED'} · .wslconfig vmIdleTimeout=-1: ${state.wslIdleConfigured ? 'SET ✓' : 'NOT SET'}</div>
                 </div>
                 <button type="button" class="subbar-util-btn" data-act="toggle-wsl-keepalive">
                   ${state.wslKeepaliveRunning ? 'PAUSE KEEPALIVE' : 'START KEEPALIVE'}
                 </button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--border-hairline);font-size:10.5px;font-family:var(--font-mono);color:var(--text-muted);">
+                <span>CLI Toggle: <code>./scripts/wsl-keepalive.sh on</code> · Revert: <code>./scripts/wsl-keepalive.sh off</code></span>
+                <button type="button" class="subbar-util-btn" data-act="copy-wsl-off-cmd"><span>COPY OFF CMD</span></button>
               </div>
             </div>
 
@@ -3956,7 +4123,12 @@ function renderSettingsModal(sess) {
 
         <div class="modal-footer-bar">
           <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-muted);">4h sliding active-user session · Zero-cache HTML</span>
-          <button class="neon-cta-btn" data-act="close-modal" style="height:34px;padding:0 18px;">DONE</button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button type="button" class="subbar-util-btn" style="height:34px;padding:0 12px;border-color:rgba(239,68,68,0.45);color:#f87171;" data-act="lock-session">
+              ${ICONS.lock} <span>LOCK / SWITCH SERVER</span>
+            </button>
+            <button class="neon-cta-btn" data-act="close-modal" style="height:34px;padding:0 18px;">DONE</button>
+          </div>
         </div>
       </div>
     </div>
@@ -4326,6 +4498,18 @@ function triggerMockSaveWorkspace(force = false) {
 function renderCommandPalette() {
   const q = state.cmdkQuery.trim().toLowerCase();
   const entries = [
+    ...state.servers
+      .filter((srv) => srv.id !== state.activeServerId)
+      .map((srv) => ({
+        cat: 'SESSIONS',
+        label: `Switch AIM-Connect Server -> ${srv.label} (${srv.host})`,
+        badge: 'SWITCH NODE',
+        run: () => {
+          state.activeServerId = srv.id;
+          state.isLocked = true;
+          showShowcaseToast(`Logged out & switched 3FA Gate -> ${srv.label} (${srv.url})`);
+        },
+      })),
     ...state.sessions.map((s) => ({
       cat: 'SESSIONS',
       label: `Switch Node // ${s.name}`,
@@ -4358,6 +4542,7 @@ function renderCommandPalette() {
     { cat: 'SETTINGS & SECURITY', label: 'Open Macro Studio (Create / Edit / Sync)', badge: `${state.macros.length} MACROS`, run: () => { state.modal = 'macros'; return true; } },
     { cat: 'SETTINGS & SECURITY', label: 'Open Outbound Email Integrations Vault', badge: 'VAULT', run: () => { state.settingsTab = 'integrations'; state.modal = 'settings'; return true; } },
     { cat: 'SETTINGS & SECURITY', label: 'Open Tmux, Fast-Resume (-c) & WSL Boot Settings', badge: 'TMUX & BOOT', run: () => { state.settingsTab = 'tmux'; state.modal = 'settings'; return true; } },
+    { cat: 'SETTINGS & SECURITY', label: 'App: Hard Refresh & Reload Bundle (PWA Ctrl+Shift+R)', badge: 'REFRESH APP', run: () => { showShowcaseToast(`Cleared PWA cache & reloaded active bundle (${state.activeBundleId})`); } },
     { cat: 'SETTINGS & SECURITY', label: 'Open System Settings (Themes, Voice, Passkeys)', badge: 'CONFIG', run: () => { state.modal = 'settings'; return true; } },
     { cat: 'SETTINGS & SECURITY', label: 'Preview 3FA Lock Screen', badge: '3FA', run: () => { state.isLocked = true; } },
   ].filter((e) => !q || `${e.cat} ${e.label} ${e.badge}`.toLowerCase().includes(q));
@@ -4698,7 +4883,7 @@ function render() {
     <div class="lab-bar">
       <div class="lab-group">
         <span class="pulse-led"></span>
-        <span style="color:#00ffa3;font-weight:700;letter-spacing:0.12em;">EMERALD MATRIX V4 // LIVE #260–#282 PARITY (255/255 PYTEST)</span>
+        <span style="color:#00ffa3;font-weight:700;letter-spacing:0.12em;">EMERALD MATRIX V4 // LIVE #260–#306 PARITY (290+ PYTEST)</span>
       </div>
       <div class="lab-group">
         <button class="lab-pill ${isHome && !state.isLocked ? 'active' : ''}" data-act="reset-home">HOMEPAGE</button>
@@ -4736,6 +4921,17 @@ function render() {
               <div class="ld-brand-box">${ICONS.aimMark}</div>
               <div class="ld-brand-word"><span id="scramble-brand-aim" style="color:var(--text-primary);">AIM</span><span id="scramble-brand-conn">CONNECT</span></div>
             </div>
+
+            <button
+              type="button"
+              class="subbar-util-btn"
+              style="height:24px;padding:0 8px;border-color:${getActiveShowcaseServer().color};color:var(--text-primary);"
+              data-act="open-server-switcher"
+              title="Connected to ${escapeHtml(getActiveShowcaseServer().label)} (${escapeHtml(getActiveShowcaseServer().url)}) — click to manage or switch AIM-Connect servers"
+            >
+              <span style="width:6px;height:6px;border-radius:50%;background:${getActiveShowcaseServer().color};box-shadow:0 0 6px ${getActiveShowcaseServer().color};"></span>
+              <span>${escapeHtml(getActiveShowcaseServer().label)}</span>
+            </button>
 
             ${
               !isHome
@@ -6540,6 +6736,46 @@ function bindInteractions() {
     };
   });
 
+  document.querySelectorAll('[data-switch-srv]').forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.switchSrv;
+      const target = state.servers.find((s) => s.id === id);
+      if (target && target.id !== state.activeServerId) {
+        state.activeServerId = target.id;
+        showShowcaseToast(`Switched 3FA Gate -> ${target.label} (${target.url})`);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-logout-switch-srv]').forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.logoutSwitchSrv;
+      const target = state.servers.find((s) => s.id === id);
+      if (target) {
+        state.activeServerId = target.id;
+        state.modal = null;
+        state.isLocked = true;
+        showShowcaseToast(`Signed out & switched -> ${target.label} (${target.url})`);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-del-srv]').forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.delSrv;
+      state.servers = state.servers.filter((s) => s.id !== id);
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-srv-color]').forEach((b) => {
+    b.onclick = () => {
+      const activeSrv = getActiveShowcaseServer();
+      activeSrv.color = b.dataset.srvColor;
+      render();
+    };
+  });
+
   const fontRange = document.getElementById('term-fontsize-range');
   if (fontRange) {
     fontRange.oninput = (e) => {
@@ -6926,6 +7162,65 @@ function bindInteractions() {
       else if (act === 'restore-tmux-state') { showShowcaseToast('Restoring saved tmux workspace & resuming agents (-c)...'); return; }
       else if (act === 'toggle-boot-unit') { state.bootUnitInstalled = !state.bootUnitInstalled; state.tmuxSettingsToast = 'HOST UPDATED ✓'; setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 1800); }
       else if (act === 'toggle-wsl-keepalive') { state.wslKeepaliveRunning = !state.wslKeepaliveRunning; state.tmuxSettingsToast = 'HOST UPDATED ✓'; setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 1800); }
+      else if (act === 'toggle-wsl-always-on') {
+        const next = !state.wslAlwaysOnEnabled;
+        state.wslAlwaysOnEnabled = next;
+        state.wslStartupVbsInstalled = next;
+        state.wslIdleConfigured = next;
+        state.wslKeepaliveRunning = next;
+        state.tmuxSettingsToast = next ? 'WSL ALWAYS-ON ENABLED ✓' : 'REVERTED TO WINDOWS DEFAULT ✓';
+        setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 2000);
+      }
+      else if (act === 'copy-wsl-off-cmd') {
+        navigator.clipboard?.writeText?.('./scripts/wsl-keepalive.sh off');
+        state.tmuxSettingsToast = 'COPIED OFF CMD ✓';
+        setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 1800);
+      }
+      else if (act === 'hard-refresh-app') {
+        showShowcaseToast(`Cleared PWA Cache & Reloaded Latest Bundle (${state.activeBundleId})`);
+        return;
+      }
+      else if (act === 'open-server-switcher') {
+        state.settingsTab = 'appearance';
+        state.modal = 'settings';
+        state.popover = null;
+      }
+      else if (act === 'toggle-lock-add-srv') {
+        state.showLockAddServer = !state.showLockAddServer;
+      }
+      else if (act === 'lock-save-srv' || act === 'lock-save-switch-srv') {
+        const lbl = document.getElementById('lock-new-srv-label')?.value.trim() || 'NEW NODE';
+        const rawUrl = document.getElementById('lock-new-srv-url')?.value.trim() || 'https://node.example.com';
+        const cleanUrl = rawUrl.includes('://') ? rawUrl : `https://${rawUrl}`;
+        let host = 'node.example.com';
+        try { host = new URL(cleanUrl).host; } catch {}
+        const id = `srv-${Date.now().toString(36)}`;
+        state.servers = [...state.servers, { id, label: lbl.toUpperCase(), monogram: lbl.slice(0, 3).toUpperCase(), url: cleanUrl, host, color: '#F59E0B' }];
+        state.showLockAddServer = false;
+        if (act === 'lock-save-switch-srv') {
+          state.activeServerId = id;
+          showShowcaseToast(`Switched 3FA Gate -> ${lbl.toUpperCase()} (${cleanUrl})`);
+        }
+      }
+      else if (act === 'settings-add-srv') {
+        const lbl = document.getElementById('peer-srv-label-inp')?.value.trim() || 'PEER SERVER';
+        const rawUrl = document.getElementById('peer-srv-url-inp')?.value.trim() || 'https://peer.example.com';
+        const cleanUrl = rawUrl.includes('://') ? rawUrl : `https://${rawUrl}`;
+        let host = 'peer.example.com';
+        try { host = new URL(cleanUrl).host; } catch {}
+        state.servers = [...state.servers, { id: `srv-${Date.now().toString(36)}`, label: lbl.toUpperCase(), monogram: lbl.slice(0, 3).toUpperCase(), url: cleanUrl, host, color: '#38BDF8' }];
+        state.nodeIdentityToast = 'SERVER ADDED ✓';
+        setTimeout(() => { state.nodeIdentityToast = ''; render(); }, 1800);
+      }
+      else if (act === 'save-node-identity') {
+        const activeSrv = getActiveShowcaseServer();
+        const nextLbl = document.getElementById('curr-srv-label-inp')?.value.trim();
+        const nextMono = document.getElementById('curr-srv-mono-inp')?.value.trim().toUpperCase();
+        if (nextLbl) activeSrv.label = nextLbl;
+        if (nextMono) activeSrv.monogram = nextMono.slice(0, 4);
+        state.nodeIdentityToast = 'IDENTITY SAVED ✓';
+        setTimeout(() => { state.nodeIdentityToast = ''; render(); }, 1800);
+      }
       else if (act === 'sync-tmux-conf') { state.tmuxSettingsToast = 'SYNCED TO ~/.TMUX.CONF ✓'; setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 2000); }
       else if (act === 'save-scan-paths') {
         state.repoScanPaths = document.getElementById('repo-scan-paths-inp')?.value || state.repoScanPaths;

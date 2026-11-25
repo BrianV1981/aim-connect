@@ -152,6 +152,18 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     assert 'data-act="save-tmux-state"' in app_js
     assert 'data-act="restore-tmux-state"' in app_js
 
+    # #304 / #305 / #306 / #307: Refresh App, Reversible WSL2 Always-On, & Multi-Server Switcher parity
+    html_text = (DEMO_DIR / "index.html").read_text(encoding="utf-8")
+    assert "?v=307" in html_text
+    assert "REFRESH APP" in app_js
+    assert 'data-act="hard-refresh-app"' in app_js
+    assert "TURN OFF & REVERT ALWAYS-ON" in app_js
+    assert "./scripts/wsl-keepalive.sh off" in app_js
+    assert "SERVER IDENTITY &amp; MULTI-SERVER SWITCHER" in app_js
+    assert "LOGOUT &amp; SWITCH" in app_js
+    assert "SWITCH NODE" in app_js
+    assert "LOCK / SWITCH SERVER" in app_js
+
     proto_dir = DEMO_DIR.parents[1] / "planning-artifacts" / "emerald-matrix-prototype"
     if proto_dir.is_dir():
         for fname in ("index.html", "styles.css", "app.js"):

@@ -9,7 +9,7 @@
 AIM-Connect transforms any web browser on any device into a zero-trust, end-to-end encrypted command center for your Linux/WSL2 server, embedded Chromium Co-Pilot Browser, and autonomous CLI coding agents (`Antigravity`, `Grok`, `OpenCode`, `Codex`, `Claude`). No SSH keys to carry, no terminal apps to download, and no per-seat cloud tax.
 
 > ### 🚀 [Launch the Interactive 12-Node / 40-Session A.I.M. Ecosystem Showcase →](https://brianv1981.github.io/aim-connect/)
-> **Try the live Emerald Matrix V4 Cockpit in your browser (zero backend required):** Click through 12 live-modeled `tmux` & agent workspaces (`aim-auditor`, `aim-calendar`, `aim-connect`, `aim-joshua`, `aim-ld`, `aim-youtube`, raw split-`tmux` servers) with **6-pill `THINKING` / `NEW` Fleet filters**, toggle **`[CHAT VIEW | RAW TERM]`** GFM Markdown & Discord **`↓` Hop-to-Bottom**, expand the **multi-row corner-resizable composer** (`Shift+Enter` newlines, bordered `🎤` / `🔊` controls, adaptive 3-tier button stacking), flip/resize the **2-column `FILES` IDE** (`📖 DOCS` `1-TAB` reader + inline Audio/Video/Image preview), annotate screenshots in the **`<canvas>` Visual Markup Studio**, and test **1-click `TAKE CONTROL & 2FA` / `RESUME AGENT`** browser handoffs on Desktop or `390px` Full-View Mobile.
+> **Try the live Emerald Matrix V4 Cockpit in your browser (zero backend required):** Click through 12 live-modeled `tmux` & agent workspaces (`aim-auditor`, `aim-calendar`, `aim-connect`, `aim-joshua`, `aim-ld`, `aim-youtube`, raw split-`tmux` servers) with **6-pill `THINKING` / `NEW` Fleet filters**, switch between **multi-server AIM-Connect nodes (`PRIMARY WORKSTATION`, `CLOUD VPS-01`, `EDGE LAB NODE`)** right from the 3FA Gate or Settings, toggle **`[CHAT VIEW | RAW TERM]`** GFM Markdown & Discord **`↓` Hop-to-Bottom**, expand the **multi-row corner-resizable composer** (`Shift+Enter` newlines, bordered `🎤` / `🔊` controls, adaptive 3-tier button stacking), flip/resize the **2-column `FILES` IDE** (`📖 DOCS` `1-TAB` reader + inline Audio/Video/Image preview), annotate screenshots in the **`<canvas>` Visual Markup Studio**, and test **1-click `TAKE CONTROL & 2FA` / `RESUME AGENT`** browser handoffs on Desktop or `390px` Full-View Mobile.
 
 <p align="center">
   <a href="https://brianv1981.github.io/aim-connect/">
@@ -36,8 +36,9 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 *   **Embedded `--headless=new` Co-Pilot Browser (`CDP :9222`):** Stream isolated subagent Chromium tabs directly inside a draggable split-pane with deterministic session colors, `<5ms` zero-VLM site-map landmarks, interactive `🎮 Control ON` / `🔑 Type / 2FA` takeover, `0600` server-synced favorites, and 1-click **`↗` External Open**, **`📷+` Screenshot-to-Conversation**, and **`⬇` CDP Downloads**.
 *   **Project Session Notebook (`HISTORY` Baton Relay) & 2,000-Line `Scroll/Copy` Search:** Track multi-generation cross-harness reincarnations (`GEN #01` → `GEN #NN` across `AGY`, `Grok`, `OpenCode`, `Codex`) with `.md` Flight Record exports, and press `Ctrl+F` inside `Scroll/Copy` to search all `2,000+` server-side `tmux` lines across pages.
 *   **Clientless SSH & Immortal `tmux` Streams:** Access your server from Safari, Chrome, or Firefox with zero App Store installs. Close your browser, put your phone in your pocket, and your processes keep running—log back in and instantly re-attach to the live PTY stream.
-*   **Multi-Session AI Fleet Cockpit (`Fleet Sidebar`):** Supervise dozens of concurrent `tmux` workspaces and autonomous CLI coding agents (`Claude`, `Codex`, `OpenCode`, `Grok`, `Antigravity`) from a single sidebar with live status badges (`THINKING`, `✋ Waiting` approval chimes, `ERROR`, `IDLE`), live multi-harness `CHAT VIEW` (`AGY` + `~/.grok/sessions`), 30%-Rule context saturation meters, and sticky-red compaction radar.
-*   **`tmux-resurrect` Workspace Save/Restore, Fast Resume (`-c`), & Git Repo Launcher:** Snapshot and cold-boot resurrect your entire `tmux` fleet from the sidebar or `Cmd+K` (protected by an **Empty-Save Guardrail** confirmation modal), launch local Git repositories (`REPOS`) directly into their folder with `<agent> -c` conversation continuation, and manage default harness, `--dangerously-skip-permissions`, cold-boot auto-restore, and headless WSL2 keepalive handles from the **`TMUX & BOOT`** Settings tab.
+*   **Multi-Session AI Fleet Cockpit (`Fleet Sidebar`):** Supervise dozens of concurrent `tmux` workspaces and autonomous CLI coding agents (`Claude`, `Codex`, `OpenCode`, `Grok`, `Antigravity`) from a single sidebar with live status badges (`THINKING`, `✋ Waiting` approval chimes, `ERROR`, `IDLE`), live multi-harness `CHAT VIEW` (`AGY` JSONL + Grok `~/.grok/sessions` + OpenCode `opencode.db`), per-vessel `/slash-commands` isolation, 30%-Rule context saturation meters, and sticky-red compaction radar.
+*   **Multi-Server Fleet Switcher, Dynamic Monogrammed PWA Icons, & Zero-Poll Bundle Updates:** Manage multiple AIM-Connect machines (workstation, cloud VPS, lab node) from one unified **Server Switcher** on the 3FA Lock Screen, Cockpit Header, Settings, and `Cmd+K` (`LOGOUT & SWITCH`), dynamically stamp custom color rings + `2–4` character monograms onto mobile Home-Screen icons so phone PWAs are unmistakable, and keep standalone mobile PWAs current via a piggybacked `build_id` check + 2-tap **`REFRESH APP`** button.
+*   **`tmux-resurrect` Workspace Save/Restore, Fast Resume (`-c`), & Reversible WSL2 Always-On:** Snapshot and cold-boot resurrect your entire `tmux` fleet from the sidebar or `Cmd+K` (protected by an **Empty-Save Guardrail** confirmation modal), launch local Git repositories (`REPOS`) directly into their folder with `<agent> -c` conversation continuation, and toggle or 100% revert headless WSL2 Always-On mode (`./scripts/wsl-keepalive.sh on | off | status`) right from the **`TMUX & BOOT`** Settings tab.
 *   **Keyboard-First `Cmd+K` Command Palette & Token Grabber:** Teleport across sessions, dispatch slash commands, or extract deduplicated URLs (with automatic secret-query redaction), file paths, IPs, and git SHAs straight from terminal scrollback without touching a mouse.
 *   **Split-Pane Web IDE, Session Brain, & Git Diff (`Monaco Engine`):** Open `📁 Files` side-by-side without unmounting your live terminal. Edit code with VS Code's Monaco engine, inspect session-scoped project docs and active git worktrees, prevent lost edits with `HTTP 409` `mtime` conflict detection, and review working-tree changes in a syntax-highlighted side-by-side Monaco Diff viewer.
 *   **Cross-Fleet FTS5 Forensics & Swarm Feed:** Search structured agent transcripts and tool-call histories across your entire machine via SQLite WAL `FTS5` (`?mode=ro`) and monitor inter-agent dispatches in real time.
@@ -105,18 +106,20 @@ On first launch, AIM-Connect auto-generates three credentials and prints them to
 3. Enter your **Stealth Passphrase** in the "Name" field, your **Admin Password**, then your **6-digit TOTP pin** from your authenticator app.
 4. You are in!
 
-### Step 6: PWA & Multi-Server Theming (Optional)
-AIM-Connect is a Progressive Web App (PWA). You can install it natively on your phone by tapping "Add to Home Screen" in your mobile browser.
+### Step 6: Multi-Server Fleet Switcher & Badged Phone Icons (Optional)
+AIM-Connect is an installable Progressive Web App (PWA) with built-in **Multi-Server Switching** and **Dynamic Monogrammed Home-Screen Icons**.
 
-If you are running multiple servers (e.g. a Raspberry Pi, a Gaming PC, and a Cloud VPS) and want to have multiple AIM-Connect icons on your phone's home screen, you can easily customize the app name and theme color for each server without modifying any code. 
-
-1. Open your `.env` file on the server.
-2. Add the following environment variables:
+If you run AIM-Connect across multiple machines (e.g., a Workstation, a Cloud VPS, and a Lab Server):
+1. **In-App Configuration (Zero Restart):** Open **Settings → Appearance & App → Server Identity & Multi-Server Switcher** to set this server's short label (e.g., `WORKSTATION`), `2–4` character Home-Screen icon monogram (`WS`), neon badge color, and peer server URLs.
+2. **Environment Configuration (Optional `.env`):**
    ```bash
-   AIM_APP_NAME="Gaming Node"
-   AIM_APP_COLOR="#8b0000"
+   AIM_APP_NAME="AIM // Workstation"
+   AIM_NODE_LABEL="WORKSTATION"
+   AIM_APP_MONOGRAM="WS"
+   AIM_APP_COLOR="#00FFA3"
+   AIM_PEER_SERVERS="Workstation|https://aim.yourdomain.com|#00FFA3,Cloud VPS|https://vps.yourdomain.com|#38BDF8"
    ```
-3. Restart the server using `./startup.sh`. The backend will dynamically rewrite the PWA manifest so your phone treats it as a completely unique application!
+3. Re-adding the app to your phone's Home Screen renders a custom color-ringed, monogrammed icon for each server, and you can jump between servers anytime from the **3FA Login Screen**, **Settings (`LOGOUT & SWITCH`)**, or **`Cmd+K` (`SWITCH NODE`)**.
 
 ---
 
@@ -236,11 +239,13 @@ By default, `cloudflared` negotiates `QUIC` (`UDP :7844`). On Linux/WSL2 hosts w
 ### 🔋 Headless WSL2 Keepalive & Cold-Boot Auto-Recovery (`tmux-resurrect`)
 Even with `systemd=true` in `/etc/wsl.conf`, WSL2's default `vmIdleTimeout` (`60000` ms) suspends or terminates the Linux VM shortly after the last Windows Terminal tab closes. To keep `tmux`, AI agents, and AIM-Connect reachable 24/7 with **zero open terminal windows**—and automatically resurrect saved sessions (`-c`) plus `./startup.sh` after an unattended host reboot:
 
-1. **Windows Host Keepalive (Zero-Window Handle + `.wslconfig`):**
-   ```powershell
-   powershell.exe -ExecutionPolicy Bypass -File scripts\windows\install-wsl-keepalive.ps1 -Install
+1. **Reversible WSL2 Always-On Keepalive (Settings Toggle or 1-Command CLI):**
+   ```bash
+   ./scripts/wsl-keepalive.sh on       # Enable (.wslconfig vmIdleTimeout=-1 + hidden Windows Startup wscript handle)
+   ./scripts/wsl-keepalive.sh status   # Inspect live keepalive & Startup status
+   ./scripts/wsl-keepalive.sh off      # Full revert back to default Windows WSL idle shutdown
    ```
-   Merges `vmIdleTimeout=-1` into `%USERPROFILE%\.wslconfig` (preserving existing `[wsl2]` keys without restarting active sessions) and registers a hidden `AtLogOn` `wscript.exe` keepalive handle (`wsl.exe -d Ubuntu --exec sleep infinity`).
+   You can also toggle **`ENABLE WSL ALWAYS-ON`** / **`TURN OFF & REVERT ALWAYS-ON`** directly inside **Settings → TMUX & BOOT → Card 3** (or use `scripts\windows\install-wsl-keepalive.ps1` from Windows PowerShell).
 2. **Linux Cold-Boot Restore & Service Recovery (`systemd` User Unit):**
    ```bash
    ./scripts/install-headless-boot.sh --install --configure-tmux
