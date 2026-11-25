@@ -11,6 +11,7 @@ import {
   computeTurnsSignature,
   shouldShowFreshSessionReset,
 } from '../slashCommandUtils';
+import { resolveGateBannerModel } from '../gatePromptUtils';
 
 export default function LiveTranscriptStage({
   activeSession = '',
@@ -29,6 +30,7 @@ export default function LiveTranscriptStage({
   onDownloadAttachment,
   onSpeakText,
   onSendRawCommand,
+  onGateActionSent,
   onSwitchToTerminal,
 }) {
   const [turnsData, setTurnsData] = useState({
@@ -432,38 +434,60 @@ export default function LiveTranscriptStage({
         </button>
       )}
 
-      {fleetItem?.status === 'WAITING' && (
-        <div className="chat-gate-banner">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Icon name="alert" size={14} />
-            <span>APPROVAL GATE ACTIVE IN TERMINAL ([y/n] OR INTERACTIVE PROMPT)</span>
+      {fleetItem?.status === 'WAITING' && (() => {
+        const gateModel = resolveGateBannerModel(fleetItem);
+        if (!gateModel) return null;
+        return (
+          <div className="chat-gate-banner">
+            <div className="chat-gate-content">
+              <div className="chat-gate-header">
+                <Icon name="alert" size={14} />
+                <span className="chat-gate-kicker">{gateModel.title}</span>
+              </div>
+              <div className="chat-gate-question">{gateModel.question}</div>
+              {gateModel.details.length > 0 && (
+                <div className="chat-gate-details">
+                  {gateModel.details.map((line, i) => (
+                    <div key={`${i}-${line}`} className="chat-gate-detail-line">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="chat-gate-actions">
+              {gateModel.actions.map((act) => (
+                <button
+                  key={act.id}
+                  type="button"
+                  className={
+                    act.variant === 'primary'
+                      ? 'neon-cta-btn'
+                      : act.variant === 'danger'
+                        ? 'subbar-util-btn chat-gate-reject-btn'
+                        : 'subbar-util-btn active'
+                  }
+                  style={{ height: '27px', padding: '0 10px', fontSize: '10.5px' }}
+                  onClick={() => {
+                    onSendRawCommand?.(act.payload);
+                    onGateActionSent?.();
+                  }}
+                >
+                  {act.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="subbar-util-btn"
+                style={{ height: '27px', padding: '0 10px', fontSize: '10.5px' }}
+                onClick={onSwitchToTerminal}
+              >
+                OPEN RAW TERM
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="neon-cta-btn"
-              style={{ height: '26px', padding: '0 10px', fontSize: '10.5px' }}
-              onClick={() => onSendRawCommand?.('y\r')}
-            >
-              APPROVE (y)
-            </button>
-            <button
-              type="button"
-              className="subbar-util-btn"
-              onClick={() => onSendRawCommand?.('n\r')}
-            >
-              DECLINE (n)
-            </button>
-            <button
-              type="button"
-              className="subbar-util-btn active"
-              onClick={onSwitchToTerminal}
-            >
-              OPEN RAW TERM
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

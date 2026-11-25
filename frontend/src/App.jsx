@@ -1154,6 +1154,16 @@ function App() {
     fetchServerMacros();
   }, [isAuthenticated]);
 
+  const fetchSessionsNowRef = useRef(null);
+
+  const scheduleFastFleetRefresh = useCallback(() => {
+    [450, 2150].forEach((ms) => {
+      setTimeout(() => {
+        fetchSessionsNowRef.current?.();
+      }, ms);
+    });
+  }, []);
+
   // Fetch tmux sessions + fleet telemetry (#209)
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1227,9 +1237,15 @@ function App() {
         console.error(err);
       }
     };
+    fetchSessionsNowRef.current = fetchSessions;
     fetchSessions();
     const interval = setInterval(fetchSessions, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (fetchSessionsNowRef.current === fetchSessions) {
+        fetchSessionsNowRef.current = null;
+      }
+    };
   }, [isAuthenticated, activeSession]);
 
   const toggleFleetSidebar = () => {
@@ -3542,6 +3558,7 @@ function App() {
                       onDownloadAttachment={downloadShotFile}
                       onSpeakText={(txt) => speakSummaryText(txt)}
                       onSendRawCommand={sendCommand}
+                      onGateActionSent={scheduleFastFleetRefresh}
                       onSwitchToTerminal={() => {
                         setAgentStageMode('pty');
                         setTimeout(() => {

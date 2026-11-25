@@ -31,7 +31,7 @@ THINKING_TEXT_RE = re.compile(
     re.IGNORECASE,
 )
 WAITING_TEXT_RE = re.compile(
-    r"(?:\[[yY]/[nN]\]|\(y/n\)|\(yes/no\)|Allow once|Allow always|Do you want to proceed|Select an option|Enter to select|Approve\?|Proceed\?)",
+    r"(?:\[[yY]/[nN]\]|\(y/n\)|\(yes/no\)|Allow once|Allow always|Permission required|Confirm\s+Cancel|Tell OpenCode what to do differently|Do you want to proceed|Select an option|Enter to select|Approve\?|Proceed\?)",
     re.IGNORECASE,
 )
 ERROR_TEXT_RE = re.compile(
@@ -232,6 +232,134 @@ def _is_active_tray_task(line: str) -> bool:
     return True
 
 
+_GATE_BORDER_STRIP = "─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬ "
+_OPENCODE_ACTION_BAR_RE = re.compile(
+    r"(?:Allow once\s+Allow always|enter\s+confirm|⇆\s*select|ctrl\+f\s+fullscreen|\bConfirm\s+Cancel\b)",
+    re.IGNORECASE,
+)
+_NUMBERED_OPTION_RE = re.compile(r"^(?:[❯>•*]\s*)?([1-9])[.)]\s+(.+)$")
+
+
+def _strip_gate_line(raw: str) -> str:
+    return (raw or "").strip(_GATE_BORDER_STRIP).strip()
+
+
+def extract_waiting_gate_info(lines: list[str], vessel: str = "") -> dict | None:
+    """Extract structured question, details, and gate kind from a WAITING terminal pane (#308)."""
+    if not lines:
+        return None
+    tail = lines[-24:]
+    tail_joined = "\n".join(tail)
+
+    # 1. OpenCode TUI Permission / Confirmation Modal ("Permission required" / "Allow once  Allow always  Reject")
+    is_oc_modal = bool(
+        re.search(r"Permission required", tail_joined, re.IGNORECASE)
+        or (re.search(r"\bAllow once\b", tail_joined, re.IGNORECASE) and re.search(r"\bReject\b", tail_joined, re.IGNORECASE))
+        or (
+            vessel == "opencode"
+            and (
+                re.search(r"Tell OpenCode what to do differently", tail_joined, re.IGNORECASE)
+                or re.search(r"\bConfirm\s+Cancel\b", tail_joined, re.IGNORECASE)
+            )
+        )
+    )
+    if is_oc_modal:
+        start_idx = None
+        for i in range(len(tail) - 1, -1, -1):
+            if re.search(r"Permission required|Tell OpenCode what to do differently", tail[i], re.IGNORECASE):
+                start_idx = i
+                break
+        if start_idx is None:
+            # Scan upward from bottom while inside the vertical `┃` modal block
+            start_idx = max(0, len(tail) - 8)
+            for i in range(len(tail) - 1, -1, -1):
+                if tail[i].lstrip().startswith("┃") and "▣" not in tail[i]:
+                    start_idx = i
+                elif i < len(tail) - 2:
+                    break
+
+        modal_slice = tail[start_idx:]
+        has_allow_once = any(re.search(r"\bAllow once\b", ln, re.IGNORECASE) for ln in modal_slice)
+        kind = "opencode_permission" if has_allow_once else "opencode_confirm"
+        title = "Permission Required" if has_allow_once else "Confirm Permission Action"
+
+        body_lines: list[str] = []
+        for raw_ln in modal_slice:
+            cleaned = _strip_gate_line(raw_ln)
+            if not cleaned:
+                continue
+            if _OPENCODE_ACTION_BAR_RE.search(cleaned):
+                continue
+            if re.match(r"^(?:△\s*)?Permission required\s*$", cleaned, re.IGNORECASE):
+                continue
+            cleaned = re.sub(r"^(?:△\s*|←\s*)+", "", cleaned).strip()
+            if cleaned:
+                body_lines.append(cleaned[:240])
+
+        question = body_lines[0] if body_lines else ("Approve requested action?" if has_allow_once else "Confirm selected permission action?")
+        details = body_lines[1:7]
+        return {
+            "kind": kind,
+            "title": title,
+            "question": question,
+            "details": details,
+            "options": [],
+        }
+
+    # 2. Numbered interactive choice menu (AGY / Claude / Codex: "1. Yes", "2. Allow always", "3. No")
+    option_Start = None
+    parsed_opts: list[dict] = []
+    for idx in range(max(0, len(tail) - 14), len(tail)):
+        cleaned = _strip_gate_line(tail[idx])
+        if not cleaned or HORIZONTAL_BORDER_RE.match(cleaned):
+            continue
+        m = _NUMBERED_OPTION_RE.match(cleaned)
+        if m:
+            if option_Start is None:
+                option_Start = idx
+            parsed_opts.append({"key": m.group(1), "label": m.group(2).strip()[:90]})
+    if len(parsed_opts) >= 2 and option_Start is not None:
+        above_lines: list[str] = []
+        for idx in range(max(0, option_Start - 6), option_Start):
+            cleaned = _strip_gate_line(tail[idx])
+            if not cleaned or HORIZONTAL_BORDER_RE.match(cleaned) or _is_tui_chrome_line(cleaned):
+                continue
+            above_lines.append(cleaned[:240])
+        question = above_lines[-1] if above_lines else "Select an option to continue:"
+        details = above_lines[:-1][-4:]
+        return {
+            "kind": "numbered_choice",
+            "title": "Approval Required",
+            "question": question,
+            "details": details,
+            "options": parsed_opts[:4],
+        }
+
+    # 3. Standard [y/n] / (yes/no) / Approve? / Proceed? prompt
+    prompt_idx = None
+    for i in range(len(tail) - 1, -1, -1):
+        if WAITING_TEXT_RE.search(tail[i]):
+            prompt_idx = i
+            break
+    if prompt_idx is not None:
+        question = _strip_gate_line(tail[prompt_idx]).lstrip(">❯ ").strip()[:240]
+        ctx_lines: list[str] = []
+        for j in range(max(0, prompt_idx - 4), prompt_idx):
+            cleaned = _strip_gate_line(tail[j])
+            if not cleaned or HORIZONTAL_BORDER_RE.match(cleaned) or _is_tui_chrome_line(cleaned):
+                continue
+            ctx_lines.append(cleaned[:240])
+        return {
+            "kind": "yn_prompt",
+            "title": "Confirmation Prompt",
+            "question": question or "Confirmation required in terminal",
+            "details": ctx_lines[-3:],
+            "options": [],
+        }
+
+    return None
+
+
 def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = "") -> dict:
     """Parse captured tmux pane text and command into vessel, status, and 30%-Rule telemetry."""
     clean_text = ANSI_ESCAPE_RE.sub("", pane_text or "")
@@ -324,13 +452,17 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
         context_pct = round((tokens_used / tokens_limit) * 100.0, 1) if (tokens_used > 0 and tokens_limit > 0) else 0.0
     tier = compute_30pct_rule_tier(context_pct, vessel=vessel, compaction_count=0)
 
-    # 4. Extract concise preview line (skip pure border lines)
+    # 4. Extract structured WAITING gate prompt (#308) & concise preview line
+    gate_info = extract_waiting_gate_info(lines, vessel=vessel) if status == "WAITING" else None
     preview = ""
-    for ln in reversed(lines):
-        stripped_borders = ln.strip("─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬> ")
-        if stripped_borders and len(stripped_borders) > 2:
-            preview = stripped_borders[:100]
-            break
+    if gate_info and gate_info.get("question"):
+        preview = f"GATE: {gate_info['question']}"[:110]
+    else:
+        for ln in reversed(lines):
+            stripped_borders = ln.strip("─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬> ")
+            if stripped_borders and len(stripped_borders) > 2:
+                preview = stripped_borders[:100]
+                break
 
     spoken_summary = extract_spoken_summary(clean_text, fallback=False)
     digest_lines = [
@@ -352,6 +484,7 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
         "compaction_count": 0,
         "tier": tier,
         "preview": preview,
+        "gate_info": gate_info,
         "spoken_summary": spoken_summary,
         "turn_digest": turn_digest,
     }
@@ -881,6 +1014,22 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
                 else ("WAITING" if any_waiting else ("ERROR" if any_error else primary["status"]))
             )
 
+        waiting_pane = next((p for p in sess_panes if p.get("status") == "WAITING"), None)
+        active_gate_info = (
+            waiting_pane.get("gate_info")
+            if waiting_pane
+            else primary.get("gate_info")
+        )
+        effective_preview = (
+            browser_human_hold["reason"]
+            if browser_human_hold
+            else (
+                waiting_pane["preview"]
+                if (waiting_pane and waiting_pane.get("preview"))
+                else primary["preview"]
+            )
+        )
+
         fleet.append({
             "session_name": sess_name,
             "vessel": primary["vessel"],
@@ -895,7 +1044,8 @@ def collect_fleet_telemetry(allowed_sessions: list[str]) -> tuple[list[dict], li
             "context_pct": primary["context_pct"],
             "compaction_count": primary.get("compaction_count", 0),
             "tier": primary["tier"],
-            "preview": browser_human_hold["reason"] if browser_human_hold else primary["preview"],
+            "preview": effective_preview,
+            "gate_info": active_gate_info,
             "spoken_summary": primary.get("spoken_summary", ""),
             "turn_digest": primary.get("turn_digest", ""),
             "has_browser_lease": bool(leased_tid or browser_human_hold),
