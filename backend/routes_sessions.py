@@ -16,7 +16,7 @@ from main import (
     verify_token, require_admin, _get_user_from_token,
     is_direct_local_loopback, is_authorized_local_loopback, verify_token_or_loopback,
     SESSION_NAME_RE, AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT,
-    ENABLE_E2EE, E2EE_SECRET, HOME_DIR
+    ENABLE_E2EE, E2EE_SECRET, HOME_DIR, get_frontend_build_id,
 )
 from ws_handler import is_single_slash_command, pane_still_holds_slash_command
 import tmux_workspace_manager as twm
@@ -974,7 +974,12 @@ def _get_sessions_sync(x_api_token: str = None, is_local_admin: bool = False) ->
     except Exception as e:
         logger.warning(f"Fleet telemetry collection error: {e}")
         fleet, panes = [], []
-    return {"sessions": sessions, "fleet": fleet, "panes": panes}
+    return {
+        "sessions": sessions,
+        "fleet": fleet,
+        "panes": panes,
+        "build_id": get_frontend_build_id(),
+    }
 
 
 @router.get("/api/sessions", dependencies=[Depends(verify_token)])
@@ -991,6 +996,7 @@ async def get_fleet_panes(request: Request, x_api_token: str = Header(None)) -> 
         "sessions": data.get("sessions", []),
         "fleet": data.get("fleet", []),
         "panes": data.get("panes", []),
+        "build_id": data.get("build_id", get_frontend_build_id()),
     }
 
 

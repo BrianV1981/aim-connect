@@ -17,6 +17,7 @@ export default function AuthScreen({
   onBackspace,
   onPasteClick,
   onWebAuthnLogin,
+  onRefreshApp,
 }) {
   const [webAuthnError, setWebAuthnError] = useState('');
   const [isWebAuthnLoading, setIsWebAuthnLoading] = useState(false);
@@ -48,7 +49,7 @@ export default function AuthScreen({
     try {
       const result = await authenticateWebAuthn(passphrase);
       if (result.success) {
-        onWebAuthnLogin(result.token, e2eeSecret);
+        onWebAuthnLogin(result.token, e2eeSecret, result.buildId);
       } else {
         setWebAuthnError(`WebAuthn Error: ${result.error}`);
       }
@@ -79,7 +80,21 @@ export default function AuthScreen({
                 </div>
               </div>
             </div>
-            <span className="pulse-led" title="Zero-Trust 3FA Gate Active" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {onRefreshApp && (
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  style={{ height: '28px', padding: '0 8px', fontSize: '10px' }}
+                  onClick={onRefreshApp}
+                  title="Reload latest frontend bundle (useful in standalone mobile PWA)"
+                >
+                  <Icon name="refresh" size={12} />
+                  <span>REFRESH</span>
+                </button>
+              )}
+              <span className="pulse-led" title="Zero-Trust 3FA Gate Active" />
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>

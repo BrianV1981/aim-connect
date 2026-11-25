@@ -45,6 +45,8 @@ export default function CommandPalette({
   onOpenSettings,
   onOpenTmuxSettings,
   onOpenIntegrations,
+  onRefreshApp,
+  appUpdateAvailable = false,
   onSetUiTheme,
   onSetTermTheme,
   onChangeFontSize,
@@ -383,6 +385,16 @@ export default function CommandPalette({
         action: () => onOpenTmuxSettings?.(),
       },
       {
+        id: 'app:hard-refresh',
+        category: 'SETTINGS & THEME',
+        label: appUpdateAvailable
+          ? 'App: Update & Hard Refresh Latest Bundle'
+          : 'App: Hard Refresh & Reload Bundle (PWA Ctrl+Shift+R)',
+        keywords: 'refresh reload update bundle cache pwa mobile version',
+        badge: appUpdateAvailable ? 'UPDATE READY' : 'REFRESH APP',
+        action: () => onRefreshApp?.(),
+      },
+      {
         id: 'ui:settings',
         category: 'SETTINGS & THEME',
         label: 'Open System Settings (Themes, Voice, Passkeys)',
@@ -423,6 +435,8 @@ export default function CommandPalette({
     onOpenSettings,
     onOpenTmuxSettings,
     onOpenIntegrations,
+    onRefreshApp,
+    appUpdateAvailable,
     onSetUiTheme,
     onSetTermTheme,
     onChangeFontSize,

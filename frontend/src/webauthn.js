@@ -56,7 +56,12 @@ export async function authenticateWebAuthn(username) {
     if (!verifyResp.ok) throw new Error("Authentication failed on server");
     
     const verifyResult = await verifyResp.json();
-    return { success: true, token: verifyResult.token };
+    const headerBuildId = verifyResp.headers?.get?.('x-aim-build') || '';
+    return {
+      success: true,
+      token: verifyResult.token,
+      buildId: verifyResult.build_id || headerBuildId,
+    };
   } catch (error) {
     console.error("WebAuthn Auth Error:", error);
     return { success: false, error: error.message || error.toString() };

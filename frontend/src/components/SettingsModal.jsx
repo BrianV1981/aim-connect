@@ -84,6 +84,10 @@ export default function SettingsModal({
   onTmuxSettingsChange,
   onSaveWorkspaceState,
   onRestoreWorkspaceState,
+  onRefreshApp,
+  appUpdateAvailable = false,
+  currentBuildId = '',
+  latestBuildId = '',
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'appearance');
   const [registerStatus, setRegisterStatus] = useState('');
@@ -359,16 +363,44 @@ export default function SettingsModal({
                   <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                     Pop A.I.M. Connect out of the browser into a chromeless desktop/mobile app window with pass-through network-only Service Worker.
                   </div>
+                  {(currentBuildId || appUpdateAvailable) && (
+                    <div
+                      style={{
+                        fontSize: '10.5px',
+                        color: appUpdateAvailable ? '#fbbf24' : 'var(--text-muted)',
+                        marginTop: '5px',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      {appUpdateAvailable
+                        ? `UPDATE READY: ${latestBuildId || 'newer build'} deployed (running ${currentBuildId || 'cached bundle'})`
+                        : `Active Bundle: ${currentBuildId}`}
+                    </div>
+                  )}
                   {pwaHint && (
                     <div style={{ fontSize: '11px', color: 'var(--accent)', marginTop: '6px', fontFamily: 'var(--font-mono)' }}>
                       {pwaHint}
                     </div>
                   )}
                 </div>
-                <button type="button" className="neon-cta-btn" style={{ height: '34px', padding: '0 14px' }} onClick={handleInstallClick}>
-                  <Icon name="download" />
-                  <span>{deferredInstallPrompt ? 'INSTALL APP NOW' : 'INSTALL APP'}</span>
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  {onRefreshApp && (
+                    <button
+                      type="button"
+                      className={appUpdateAvailable ? 'neon-cta-btn' : 'subbar-util-btn'}
+                      style={{ height: '34px', padding: '0 13px', fontSize: '11px' }}
+                      onClick={onRefreshApp}
+                      title="Clear PWA caches and reload the latest server bundle (mobile equivalent to Ctrl+Shift+R)"
+                    >
+                      <Icon name="refresh" size={13} />
+                      <span>{appUpdateAvailable ? 'UPDATE & REFRESH' : 'REFRESH APP'}</span>
+                    </button>
+                  )}
+                  <button type="button" className="neon-cta-btn" style={{ height: '34px', padding: '0 14px' }} onClick={handleInstallClick}>
+                    <Icon name="download" />
+                    <span>{deferredInstallPrompt ? 'INSTALL APP NOW' : 'INSTALL APP'}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="settings-group-card">

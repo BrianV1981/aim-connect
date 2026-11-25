@@ -22,6 +22,13 @@ import HistoryVault from './components/HistoryVault';
 import SpawnSessionModal from './components/SpawnSessionModal';
 import ResurrectSaveModal from './components/ResurrectSaveModal';
 import { buildSpawnSessionPayload } from './tmuxWorkspaceUtils';
+import {
+  AUTO_RELOAD_BUILD_STORAGE_KEY,
+  evaluateBuildFreshness,
+  extractDomBuildId,
+  normalizeBuildId,
+  performHardAppRefresh,
+} from './appRefreshUtils';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
 import LiveTranscriptStage from './components/LiveTranscriptStage';
 import TmuxServerStage from './components/TmuxServerStage';
@@ -252,6 +259,44 @@ function App() {
   });
   const [resurrectConfirmState, setResurrectConfirmState] = useState(null);
   const [resurrectBusy, setResurrectBusy] = useState(false);
+  const bootBuildIdRef = useRef(
+    extractDomBuildId(typeof document !== 'undefined' ? document : null)
+  );
+  const [currentBuildId, setCurrentBuildId] = useState(() => bootBuildIdRef.current);
+  const [latestBuildId, setLatestBuildId] = useState(() => bootBuildIdRef.current);
+  const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
+
+  const reconcileServerBuildId = useCallback((rawServerBuildId, context = 'poll') => {
+    const srv = normalizeBuildId(rawServerBuildId);
+    if (!srv) return false;
+    if (!bootBuildIdRef.current) {
+      bootBuildIdRef.current = srv;
+      setCurrentBuildId(srv);
+      setLatestBuildId(srv);
+      return false;
+    }
+    let lastReloaded = '';
+    try {
+      lastReloaded = sessionStorage.getItem(AUTO_RELOAD_BUILD_STORAGE_KEY) || '';
+    } catch {}
+    const verdict = evaluateBuildFreshness({
+      bootBuildId: bootBuildIdRef.current,
+      serverBuildId: srv,
+      context,
+      lastAutoReloadBuildId: lastReloaded,
+    });
+    setLatestBuildId(srv);
+    setAppUpdateAvailable(verdict.updateAvailable);
+    if (verdict.shouldAutoReload) {
+      performHardAppRefresh({ targetBuildId: srv });
+      return true;
+    }
+    return false;
+  }, []);
+
+  const handleHardRefreshApp = useCallback(() => {
+    performHardAppRefresh({ targetBuildId: latestBuildId || currentBuildId || '' });
+  }, [latestBuildId, currentBuildId]);
   const [workspaceToast, setWorkspaceToast] = useState('');
   const workspaceToastTimerRef = useRef(null);
   const showWorkspaceToast = useCallback((msg) => {
@@ -1055,6 +1100,7 @@ function App() {
       try {
         const res = await fetch('/api/sessions');
         const data = await res.json();
+        reconcileServerBuildId(data.build_id || res.headers?.get?.('x-aim-build'), 'poll');
         if (Array.isArray(data.sessions)) {
           setSessions((prev) =>
             JSON.stringify(prev) === JSON.stringify(data.sessions) ? prev : data.sessions
@@ -1552,13 +1598,16 @@ function App() {
     }
   };
 
-  const handleWebAuthnLogin = (token, passedE2eeSecret) => {
+  const handleWebAuthnLogin = (token, passedE2eeSecret, serverBuildId = '') => {
     apiTokenRef.current = token;
     localStorage.setItem('aim-token', token);
     if (passedE2eeSecret !== undefined) {
       setE2eeSecret(passedE2eeSecret);
     }
     setAuthError('');
+    if (reconcileServerBuildId(serverBuildId, 'auth')) {
+      return;
+    }
     authenticate(null, null, 'admin');
   };
 
@@ -1586,6 +1635,9 @@ function App() {
         const data = await res.json();
         apiTokenRef.current = data.api_token;
         localStorage.setItem('aim-token', data.api_token);
+        if (reconcileServerBuildId(data.build_id || res.headers?.get?.('x-aim-build'), 'auth')) {
+          return;
+        }
       } catch {
         setAuthError('Connection failed');
         setPin('');
@@ -2757,6 +2809,7 @@ function App() {
         onBackspace={handleBackspace}
         onPasteClick={handlePasteClick}
         onWebAuthnLogin={handleWebAuthnLogin}
+        onRefreshApp={handleHardRefreshApp}
       />
     );
   }
@@ -2924,6 +2977,17 @@ function App() {
         </div>
 
         <div className="hdr-cluster">
+          {appUpdateAvailable && (
+            <button
+              type="button"
+              className="subbar-util-btn active"
+              onClick={handleHardRefreshApp}
+              title={`New frontend bundle ready (${latestBuildId || 'update'}) — tap to reload`}
+            >
+              <Icon name="refresh" size={11} />
+              <span>UPDATE</span>
+            </button>
+          )}
           <button
             type="button"
             className={`ghost-btn desktop-only ${showHistory ? 'active' : ''}`}
@@ -4162,6 +4226,10 @@ function App() {
           onTmuxSettingsChange={setTmuxBootSettings}
           onSaveWorkspaceState={() => saveTmuxWorkspace(false)}
           onRestoreWorkspaceState={restoreTmuxWorkspace}
+          onRefreshApp={handleHardRefreshApp}
+          appUpdateAvailable={appUpdateAvailable}
+          currentBuildId={currentBuildId}
+          latestBuildId={latestBuildId}
         />
       )}
 
@@ -4272,6 +4340,8 @@ function App() {
         onOpenSettings={() => openSettingsModal('appearance')}
         onOpenTmuxSettings={() => openSettingsModal('tmux')}
         onOpenIntegrations={() => openSettingsModal('integrations')}
+        onRefreshApp={handleHardRefreshApp}
+        appUpdateAvailable={appUpdateAvailable}
         onSetUiTheme={setTheme}
         onSetTermTheme={(newTheme) => {
           setTermTheme(newTheme);

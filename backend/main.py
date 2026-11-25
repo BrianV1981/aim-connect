@@ -116,6 +116,8 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.url.path.startswith("/api/"):
+        response.headers["X-AIM-Build"] = get_frontend_build_id()
     return response
 
 
@@ -434,6 +436,50 @@ def require_admin_or_loopback(request: Request, x_api_token: str = Header(None))
     if is_authorized_local_loopback(request):
         return
     require_admin(x_api_token)
+
+
+FRONTEND_DIST_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+_FRONTEND_INDEX_SCRIPT_RE = re.compile(r"/assets/(index-[A-Za-z0-9_-]+\.js)")
+_FRONTEND_BUILD_CACHE: dict[str, object] = {
+    "index_path": "",
+    "mtime_ns": -1,
+    "size": -1,
+    "build_id": "",
+}
+
+
+def get_frontend_build_id(dist_dir: str | None = None) -> str:
+    """Return stat-cached frontend bundle ID from index.html with <1us VFS overhead (#304)."""
+    target_dir = os.path.abspath(dist_dir) if dist_dir else FRONTEND_DIST_PATH
+    index_path = os.path.join(target_dir, "index.html")
+    try:
+        st = os.stat(index_path)
+    except OSError:
+        return "dev"
+
+    if (
+        _FRONTEND_BUILD_CACHE.get("index_path") == index_path
+        and _FRONTEND_BUILD_CACHE.get("mtime_ns") == st.st_mtime_ns
+        and _FRONTEND_BUILD_CACHE.get("size") == st.st_size
+        and _FRONTEND_BUILD_CACHE.get("build_id")
+    ):
+        return str(_FRONTEND_BUILD_CACHE["build_id"])
+
+    build_id = f"mtime-{st.st_mtime_ns}"
+    try:
+        with open(index_path, "r", encoding="utf-8", errors="ignore") as f:
+            html_head = f.read(8192)
+        match = _FRONTEND_INDEX_SCRIPT_RE.search(html_head)
+        if match:
+            build_id = match.group(1)
+    except OSError:
+        pass
+
+    _FRONTEND_BUILD_CACHE["index_path"] = index_path
+    _FRONTEND_BUILD_CACHE["mtime_ns"] = st.st_mtime_ns
+    _FRONTEND_BUILD_CACHE["size"] = st.st_size
+    _FRONTEND_BUILD_CACHE["build_id"] = build_id
+    return build_id
 
 
 from routes_auth import router as auth_router

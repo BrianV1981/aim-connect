@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from main import (
     verify_token, _get_user_from_token, WEBAUTHN_RP_ID, users_db,
-    VALID_API_TOKENS, TOKEN_TTL, save_tokens
+    VALID_API_TOKENS, TOKEN_TTL, save_tokens, get_frontend_build_id,
 )
 from webauthn_manager import webauthn_mgr
 
@@ -86,4 +86,4 @@ def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
         "role": role
     }
     save_tokens()
-    return {"token": new_token, "role": role}
+    return {"token": new_token, "role": role, "build_id": get_frontend_build_id()}

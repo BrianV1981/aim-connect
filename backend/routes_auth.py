@@ -8,7 +8,8 @@ from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from main import (
     ALLOWED_IPS, auth_attempts, MAX_AUTH_ATTEMPTS, LOCKOUT_TIME, 
     users_db, VALID_API_TOKENS, MAX_TOKENS, TOKEN_TTL, save_tokens,
-    totp_instance, admin_password_hash, admin_passphrase_hash, verify_token
+    totp_instance, admin_password_hash, admin_passphrase_hash, verify_token,
+    get_frontend_build_id,
 )
 
 router = APIRouter()
@@ -92,7 +93,12 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
         }
         save_tokens()
         auth_attempts[client_ip] = (0, None)
-        return {"api_token": api_token, "user": matched_username, "role": matched_user.get("role", "user")}
+        return {
+            "api_token": api_token,
+            "user": matched_username,
+            "role": matched_user.get("role", "user"),
+            "build_id": get_frontend_build_id(),
+        }
 
     # --- Single-user auth path (legacy) ---
     # Step 1: Verify Passphrase (stealth "Name" field)
@@ -127,7 +133,7 @@ def auth_api(req: AuthRequest, request: Request) -> dict:
     }
     save_tokens()
     auth_attempts[client_ip] = (0, None)
-    return {"api_token": api_token}
+    return {"api_token": api_token, "build_id": get_frontend_build_id()}
 
 @router.post("/api/logout", dependencies=[Depends(verify_token)])
 def logout(x_api_token: str = Header(None)):
