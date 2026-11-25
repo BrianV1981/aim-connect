@@ -1,0 +1,13 @@
+[Unit]
+Description=AIM-Connect Cold-Boot Tmux Resurrect & Service Health Recovery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__REPO_ROOT__
+ExecStart=/bin/bash __REPO_ROOT__/scripts/boot-restore.sh
+
+[Install]
+WantedBy=default.target

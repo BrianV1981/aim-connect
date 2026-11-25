@@ -232,6 +232,20 @@ This forces WSL to query the public internet directly, instantly resolving the c
 **WebSocket Stream Drops Over QUIC (`protocol: http2`):**
 By default, `cloudflared` negotiates `QUIC` (`UDP :7844`). On Linux/WSL2 hosts with default `208 KB` kernel UDP socket buffers (`net.core.rmem_max = 212992`) or aggressive residential UDP NATs, bursty full-screen terminal redraws can trigger intermittent `1006` WebSocket resets. Add `protocol: http2` to the top of your `cloudflared` `config.yml` (or raise `net.core.rmem_max` / `net.core.wmem_max` to `7500000`) for rock-solid long-lived PTY streams.
 
+### 🔋 Headless WSL2 Keepalive & Cold-Boot Auto-Recovery (`tmux-resurrect`)
+Even with `systemd=true` in `/etc/wsl.conf`, WSL2's default `vmIdleTimeout` (`60000` ms) suspends or terminates the Linux VM shortly after the last Windows Terminal tab closes. To keep `tmux`, AI agents, and AIM-Connect reachable 24/7 with **zero open terminal windows**—and automatically resurrect saved sessions (`-c`) plus `./startup.sh` after an unattended host reboot:
+
+1. **Windows Host Keepalive (Zero-Window Handle + `.wslconfig`):**
+   ```powershell
+   powershell.exe -ExecutionPolicy Bypass -File scripts\windows\install-wsl-keepalive.ps1 -Install
+   ```
+   Merges `vmIdleTimeout=-1` into `%USERPROFILE%\.wslconfig` (preserving existing `[wsl2]` keys without restarting active sessions) and registers a hidden `AtLogOn` `wscript.exe` keepalive handle (`wsl.exe -d Ubuntu --exec sleep infinity`).
+2. **Linux Cold-Boot Restore & Service Recovery (`systemd` User Unit):**
+   ```bash
+   ./scripts/install-headless-boot.sh --install --configure-tmux
+   ```
+   Installs `~/.config/systemd/user/aim-connect-boot.service` (`scripts/boot-restore.sh`), which checks `tmux has-session`, bootstraps a dead `tmux` server via `aim_restore_tmp` + `~/.tmux/plugins/tmux-resurrect/scripts/restore.sh` (resuming `agy -c`, `grok -c`, `opencode -c`, `codex -c`, and background daemons), and idempotently invokes `./startup.sh`.
+
 ### 💡 Pro-Tip: Bypassing the 7-Day Google OAuth Expiration
 When setting up custom Google Cloud credentials for tools like Rclone or personal AI agents connected to AIM, users often hit the "token expires every 7 days" Testing restriction. You do **not** need formal verification to push personal apps to Production!
 1. Go to **APIs & Services > OAuth consent screen > Branding** and explicitly type in the App Name, Support Email, and Developer Contact (beware of the grey ghost text).
