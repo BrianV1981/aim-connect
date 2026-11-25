@@ -150,10 +150,14 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
 
 
 def test_readme_features_interactive_ecosystem_showcase_front_and_center():
-    """#259: Interactive 12-Node / 40-Session A.I.M. Ecosystem Showcase must appear front-and-center at top of README.md."""
+    """#259/#298: Interactive 12-Node / 40-Session A.I.M. Ecosystem Showcase must appear front-and-center at top of README.md without obsolete screenshot tables."""
     readme = README_MD.read_text(encoding="utf-8")
-    top_lines = "\n".join(readme.splitlines()[:40])
+    top_lines = "\n".join(readme.splitlines()[:35])
     assert "https://brianv1981.github.io/aim-connect/" in top_lines
     assert "docs/screenshots/emerald-matrix-showcase.png" in top_lines
+    assert "aim-connect_homepage.png" not in readme
+    assert "aim-joshua-home-android.jpg" not in readme
+    # Historical progression images remain preserved in docs/screenshots/
+    assert (REPO_ROOT / "docs" / "screenshots" / "aim-connect_homepage.png").is_file()
     assert (REPO_ROOT / "docs" / "screenshots" / "emerald-matrix-showcase.png").is_file()
     assert (REPO_ROOT / ".github" / "workflows" / "pages.yml").is_file()

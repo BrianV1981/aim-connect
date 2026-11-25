@@ -9,7 +9,7 @@
 AIM-Connect transforms any web browser on any device into a zero-trust, end-to-end encrypted command center for your Linux/WSL2 server, embedded Chromium Co-Pilot Browser, and autonomous CLI coding agents (`Antigravity`, `Grok`, `OpenCode`, `Codex`, `Claude`). No SSH keys to carry, no terminal apps to download, and no per-seat cloud tax.
 
 > ### 🚀 [Launch the Interactive 12-Node / 40-Session A.I.M. Ecosystem Showcase →](https://brianv1981.github.io/aim-connect/)
-> **Try the live Emerald Matrix V4 Cockpit in your browser (zero backend required):** Click through 12 live-modeled `tmux` & agent workspaces (`aim-auditor`, `aim-calendar`, `aim-connect`, `aim-joshua`, `aim-ld`, `aim-youtube`, raw split-`tmux` servers) with **6-pill `THINKING` / `NEW` Fleet filters**, toggle **`[CHAT VIEW | RAW TERM]`** GFM Markdown & Discord **`↓` Hop-to-Bottom**, flip/resize the **2-column `FILES` IDE** (`📖 DOCS` `1-TAB` reader + inline Audio/Video/Image preview), annotate screenshots in the **`<canvas>` Visual Markup Studio**, and test **1-click `TAKE CONTROL & 2FA` / `RESUME AGENT`** browser handoffs on Desktop or `390px` Full-View Mobile.
+> **Try the live Emerald Matrix V4 Cockpit in your browser (zero backend required):** Click through 12 live-modeled `tmux` & agent workspaces (`aim-auditor`, `aim-calendar`, `aim-connect`, `aim-joshua`, `aim-ld`, `aim-youtube`, raw split-`tmux` servers) with **6-pill `THINKING` / `NEW` Fleet filters**, toggle **`[CHAT VIEW | RAW TERM]`** GFM Markdown & Discord **`↓` Hop-to-Bottom**, expand the **multi-row corner-resizable composer** (`Shift+Enter` newlines, bordered `🎤` / `🔊` controls, adaptive 3-tier button stacking), flip/resize the **2-column `FILES` IDE** (`📖 DOCS` `1-TAB` reader + inline Audio/Video/Image preview), annotate screenshots in the **`<canvas>` Visual Markup Studio**, and test **1-click `TAKE CONTROL & 2FA` / `RESUME AGENT`** browser handoffs on Desktop or `390px` Full-View Mobile.
 
 <p align="center">
   <a href="https://brianv1981.github.io/aim-connect/">
@@ -17,25 +17,9 @@ AIM-Connect transforms any web browser on any device into a zero-trust, end-to-e
   </a>
 </p>
 
-<details>
-<summary><strong>📸 Additional Desktop &amp; Mobile Production Screenshots</strong></summary>
-<br />
-
 <p align="center">
-  <img src="docs/screenshots/aim-connect_homepage.png" alt="AIM-Connect desktop home" width="820" />
+  <sub>Interactive zero-backend UI replica — <a href="https://brianv1981.github.io/aim-connect/">click above to launch live</a>. Historical pre-V4 screenshots remain archived in <a href="docs/screenshots/"><code>docs/screenshots/</code></a>.</sub>
 </p>
-
-### Desktop
-| 3FA + WebAuthn login | Settings | Voice macros | E2EE (ciphertext on the wire) |
-|---|---|---|---|
-| <img src="docs/screenshots/aim-connect_login.png" alt="Desktop login" width="200" /> | <img src="docs/screenshots/aim-connect_settings.png" alt="Settings" width="200" /> | <img src="docs/screenshots/aim-connect_voice-macros.png" alt="Voice macros" width="200" /> | <img src="docs/screenshots/aim-connect_e2ee-protection.png" alt="E2EE ciphertext" width="200" /> |
-
-### Android
-| Login | Home | Settings | Voice |
-|---|---|---|---|
-| <img src="docs/screenshots/aim-joshua-login-android.jpg" alt="Android login" width="160" /> | <img src="docs/screenshots/aim-joshua-home-android.jpg" alt="Android home" width="160" /> | <img src="docs/screenshots/aim-joshua-settings-android.jpg" alt="Android settings" width="160" /> | <img src="docs/screenshots/aim-joshua-voice-settings-android.jpg" alt="Android voice" width="160" /> |
-
-</details>
 
 ---
 
