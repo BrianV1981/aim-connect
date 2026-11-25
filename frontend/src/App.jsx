@@ -29,6 +29,13 @@ import {
   normalizeBuildId,
   performHardAppRefresh,
 } from './appRefreshUtils';
+import {
+  loadLocalServers,
+  mergeServerDirectory,
+  removeLocalServer,
+  sanitizeClientServerUrl,
+  upsertLocalServer,
+} from './serverSwitcherUtils';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
 import LiveTranscriptStage from './components/LiveTranscriptStage';
 import TmuxServerStage from './components/TmuxServerStage';
@@ -265,6 +272,60 @@ function App() {
   const [currentBuildId, setCurrentBuildId] = useState(() => bootBuildIdRef.current);
   const [latestBuildId, setLatestBuildId] = useState(() => bootBuildIdRef.current);
   const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
+  const [nodeInfo, setNodeInfo] = useState(null);
+  const [localServers, setLocalServers] = useState(() =>
+    loadLocalServers(typeof window !== 'undefined' ? window.localStorage : null)
+  );
+
+  const serverDirectory = useMemo(
+    () =>
+      mergeServerDirectory({
+        currentOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+        nodeInfo,
+        localServers,
+      }),
+    [nodeInfo, localServers]
+  );
+
+  const handleAddLocalServer = useCallback((entry) => {
+    const res = upsertLocalServer(
+      typeof window !== 'undefined' ? window.localStorage : null,
+      entry
+    );
+    if (res.ok) {
+      setLocalServers(res.servers);
+    }
+    return res;
+  }, []);
+
+  const handleRemoveLocalServer = useCallback((targetUrl) => {
+    const next = removeLocalServer(
+      typeof window !== 'undefined' ? window.localStorage : null,
+      targetUrl
+    );
+    setLocalServers(next);
+  }, []);
+
+  const handleSwitchServer = useCallback(async (targetUrl, opts = {}) => {
+    const cleanUrl = sanitizeClientServerUrl(targetUrl);
+    if (!cleanUrl) return;
+    if (opts.logoutFirst && apiTokenRef.current) {
+      const tokenToRevoke = apiTokenRef.current;
+      apiTokenRef.current = null;
+      localStorage.removeItem('aim-token');
+      try {
+        await window.fetch('/api/logout', {
+          method: 'POST',
+          keepalive: true,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-token': tokenToRevoke,
+          },
+        });
+      } catch {}
+    }
+    window.location.assign(cleanUrl);
+  }, []);
 
   const reconcileServerBuildId = useCallback((rawServerBuildId, context = 'poll') => {
     const srv = normalizeBuildId(rawServerBuildId);
@@ -1265,6 +1326,18 @@ function App() {
       } catch {}
     }, 60);
   }, []);
+
+  useEffect(() => {
+    fetch('/api/node-info')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          setNodeInfo(d);
+          if (d.build_id) reconcileServerBuildId(d.build_id, 'poll');
+        }
+      })
+      .catch(() => {});
+  }, [reconcileServerBuildId]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -2810,6 +2883,11 @@ function App() {
         onPasteClick={handlePasteClick}
         onWebAuthnLogin={handleWebAuthnLogin}
         onRefreshApp={handleHardRefreshApp}
+        nodeInfo={nodeInfo}
+        serverDirectory={serverDirectory}
+        onSwitchServer={handleSwitchServer}
+        onAddLocalServer={handleAddLocalServer}
+        onRemoveLocalServer={handleRemoveLocalServer}
       />
     );
   }
@@ -2859,6 +2937,32 @@ function App() {
               <span>{brandConnScramble.display}</span>
             </div>
           </div>
+
+          {(nodeInfo?.is_customized || serverDirectory.length > 1) && (
+            <button
+              type="button"
+              className="subbar-util-btn"
+              style={{
+                height: '24px',
+                padding: '0 8px',
+                borderColor: nodeInfo?.app_color || 'var(--border-hairline)',
+                color: 'var(--text-primary)',
+              }}
+              onClick={() => openSettingsModal('appearance')}
+              title={`Connected to ${nodeInfo?.node_label || nodeInfo?.host || 'this server'} — click to manage or switch AIM-Connect servers`}
+            >
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: nodeInfo?.app_color || 'var(--accent)',
+                  boxShadow: `0 0 6px ${nodeInfo?.app_color || 'var(--accent)'}`,
+                }}
+              />
+              <span>{nodeInfo?.node_label || nodeInfo?.monogram || 'SERVER'}</span>
+            </button>
+          )}
 
           {activeSession && (() => {
             const activeColor = getAgentColor(activeSession);
@@ -4230,6 +4334,12 @@ function App() {
           appUpdateAvailable={appUpdateAvailable}
           currentBuildId={currentBuildId}
           latestBuildId={latestBuildId}
+          nodeInfo={nodeInfo}
+          onNodeInfoUpdated={setNodeInfo}
+          serverDirectory={serverDirectory}
+          onSwitchServer={handleSwitchServer}
+          onAddLocalServer={handleAddLocalServer}
+          onRemoveLocalServer={handleRemoveLocalServer}
         />
       )}
 
@@ -4342,6 +4452,8 @@ function App() {
         onOpenIntegrations={() => openSettingsModal('integrations')}
         onRefreshApp={handleHardRefreshApp}
         appUpdateAvailable={appUpdateAvailable}
+        serverDirectory={serverDirectory}
+        onSwitchServer={handleSwitchServer}
         onSetUiTheme={setTheme}
         onSetTermTheme={(newTheme) => {
           setTermTheme(newTheme);

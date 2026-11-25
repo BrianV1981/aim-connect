@@ -31,7 +31,14 @@ from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from node_identity import (
+    DEFAULT_APP_NAME,
+    load_node_identity,
+    render_custom_png_icon,
+    render_custom_svg_icon,
+    save_node_identity,
+)
 import sqlite3
 import csv
 from io import StringIO
@@ -515,8 +522,47 @@ _NO_STORE_HEADERS = {
 }
 
 
+class NodeIdentityPatchRequest(BaseModel):
+    app_name: str | None = None
+    node_label: str | None = None
+    monogram: str | None = None
+    app_color: str | None = None
+    peer_servers: list[dict] | None = None
+
+
+@app.get("/api/node-info")
+def get_node_info(request: Request) -> dict:
+    """Return safe public server identity & peer fleet directory for the 3FA login gate (#306)."""
+    host_hdr = request.headers.get("host") or (request.url.netloc if request.url else "")
+    info = load_node_identity(AUTH_STATE_DIR, request_host=host_hdr)
+    info["build_id"] = get_frontend_build_id()
+    return info
+
+
+@app.put("/api/node-info", dependencies=[Depends(verify_token), Depends(require_admin)])
+def update_node_info(req: NodeIdentityPatchRequest, request: Request) -> dict:
+    """Update this server's display label, icon monogram/color, and peer server list (#306)."""
+    patch = req.model_dump(exclude_none=True)
+    try:
+        save_node_identity(AUTH_STATE_DIR, patch)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    host_hdr = request.headers.get("host") or (request.url.netloc if request.url else "")
+    info = load_node_identity(AUTH_STATE_DIR, request_host=host_hdr)
+    info["build_id"] = get_frontend_build_id()
+    return info
+
+
+_CUSTOMIZABLE_PNG_ICONS = frozenset({
+    "icon-192.png",
+    "icon-512.png",
+    "icon-maskable-512.png",
+    "apple-touch-icon.png",
+})
+
+
 def _render_frontend_file(dist_dir: str, catchall: str):
-    """Resolve and render a SPA static asset, manifest.json, or dynamic-titled index.html (#237)."""
+    """Resolve and render a SPA static asset, manifest.json, badged PWA icon, or dynamic-titled index.html (#237, #306)."""
     import html as _html
     import urllib.parse
     from fastapi.responses import HTMLResponse
@@ -528,36 +574,63 @@ def _render_frontend_file(dist_dir: str, catchall: str):
     elif not os.path.exists(file_path) or not os.path.isfile(file_path):
         file_path = os.path.join(base, "index.html")
 
-    if file_path.endswith("manifest.json"):
+    identity = load_node_identity(AUTH_STATE_DIR)
+    is_custom = bool(identity.get("is_customized"))
+    app_name = identity.get("app_name") or DEFAULT_APP_NAME
+    node_label = identity.get("node_label") or ""
+    app_color = identity.get("app_color") or ""
+    monogram = identity.get("monogram") or "AIM"
+    badge_tag = identity.get("badge_tag") or "4"
+    basename = os.path.basename(file_path)
+
+    if basename == "manifest.json":
         with open(file_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
-        app_name = os.environ.get("AIM_APP_NAME")
-        if app_name:
-            manifest["name"] = app_name
-            manifest["short_name"] = app_name
-            safe_id = urllib.parse.quote(app_name.lower().replace(" ", "-"))
+        if is_custom:
+            display_name = app_name if app_name != DEFAULT_APP_NAME else f"AIM // {node_label}"
+            short_name = node_label or app_name
+            manifest["name"] = display_name
+            manifest["short_name"] = short_name[:24]
+            safe_id = urllib.parse.quote((node_label or app_name).lower().replace(" ", "-"))
             manifest["id"] = f"/?id={safe_id}"
             manifest["start_url"] = f"/?id={safe_id}"
-        app_color = os.environ.get("AIM_APP_COLOR")
-        if app_color:
-            manifest["background_color"] = app_color
-            manifest["theme_color"] = app_color
+            if app_color:
+                manifest["theme_color"] = app_color
+            if isinstance(manifest.get("icons"), list):
+                for icon_item in manifest["icons"]:
+                    if isinstance(icon_item, dict) and isinstance(icon_item.get("src"), str):
+                        base_src = icon_item["src"].split("?")[0]
+                        icon_item["src"] = f"{base_src}?v={badge_tag}"
         return JSONResponse(manifest, headers=_NO_STORE_HEADERS)
 
-    if file_path.endswith("sw.js"):
+    if basename == "sw.js":
         return FileResponse(
             file_path,
             media_type="application/javascript",
             headers={**_NO_STORE_HEADERS, "Service-Worker-Allowed": "/"},
         )
 
-    if file_path.endswith("index.html"):
-        app_name = os.environ.get("AIM_APP_NAME")
-        if app_name:
+    if is_custom and basename == "icon.svg":
+        with open(file_path, "r", encoding="utf-8") as f:
+            raw_svg = f.read()
+        rendered_svg = render_custom_svg_icon(raw_svg, app_color, monogram)
+        return Response(content=rendered_svg, media_type="image/svg+xml", headers=_NO_STORE_HEADERS)
+
+    if is_custom and basename in _CUSTOMIZABLE_PNG_ICONS:
+        png_bytes = render_custom_png_icon(file_path, basename, app_color, monogram)
+        if png_bytes is not None:
+            return Response(content=png_bytes, media_type="image/png", headers=_NO_STORE_HEADERS)
+
+    if basename == "index.html":
+        if is_custom:
             with open(file_path, "r", encoding="utf-8") as f:
                 raw_html = f.read()
-            escaped_name = _html.escape(app_name)
-            rendered = raw_html.replace("<title>A.I.M. Connect</title>", f"<title>{escaped_name}</title>")
+            title_str = app_name if app_name != DEFAULT_APP_NAME else f"AIM Connect — {node_label}"
+            escaped_title = _html.escape(title_str)
+            escaped_short = _html.escape((node_label or app_name)[:24])
+            rendered = raw_html.replace("<title>A.I.M. Connect</title>", f"<title>{escaped_title}</title>")
+            rendered = rendered.replace('content="AIM Connect"', f'content="{escaped_short}"')
+            rendered = rendered.replace("?v=4", f"?v={badge_tag}")
             return HTMLResponse(content=rendered, headers=_NO_STORE_HEADERS)
         return FileResponse(file_path, headers=_NO_STORE_HEADERS)
 

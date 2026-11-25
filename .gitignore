@@ -26,6 +26,8 @@ logs/
 *.bak*
 backend/*.bak*
 backend/macros.json
+node_identity.json
+backend/node_identity.json
 
 # Agent Specific & Operational State
 docs/archive/

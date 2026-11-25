@@ -13,6 +13,8 @@ const TTS_VOICES = [
   { id: 'browser:default', label: 'Browser Native Speech API' },
 ];
 
+const NODE_BADGE_SWATCHES = ['#00FFA3', '#38BDF8', '#F59E0B', '#A855F7', '#F43F5E', '#FF5722'];
+
 export default function SettingsModal({
   onClose,
   initialTab = 'appearance',
@@ -88,6 +90,12 @@ export default function SettingsModal({
   appUpdateAvailable = false,
   currentBuildId = '',
   latestBuildId = '',
+  nodeInfo = null,
+  onNodeInfoUpdated,
+  serverDirectory = [],
+  onSwitchServer,
+  onAddLocalServer,
+  onRemoveLocalServer,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'appearance');
   const [registerStatus, setRegisterStatus] = useState('');
@@ -113,6 +121,89 @@ export default function SettingsModal({
   const [hostBootStatus, setHostBootStatus] = useState(null);
   const [tmuxCfgStatus, setTmuxCfgStatus] = useState('');
   const [hostActionBusy, setHostActionBusy] = useState(false);
+
+  // Multi-Server Node Identity & Peer Switcher (#306)
+  const [nodeLabelInput, setNodeLabelInput] = useState(() => nodeInfo?.node_label || '');
+  const [nodeMonogramInput, setNodeMonogramInput] = useState(() => nodeInfo?.monogram || '');
+  const [nodeColorInput, setNodeColorInput] = useState(() => nodeInfo?.app_color || '#00FFA3');
+  const [peerLabelInput, setPeerLabelInput] = useState('');
+  const [peerUrlInput, setPeerUrlInput] = useState('');
+  const [peerColorInput, setPeerColorInput] = useState('#38BDF8');
+  const [nodeSaveStatus, setNodeSaveStatus] = useState('');
+
+  useEffect(() => {
+    if (!nodeInfo) return;
+    setNodeLabelInput(nodeInfo.node_label || '');
+    setNodeMonogramInput(nodeInfo.monogram || '');
+    setNodeColorInput(nodeInfo.app_color || '#00FFA3');
+  }, [nodeInfo]);
+
+  const handleSaveNodeIdentity = async (overridePeers = null) => {
+    const peersPayload =
+      overridePeers !== null
+        ? overridePeers
+        : Array.isArray(nodeInfo?.peer_servers)
+          ? nodeInfo.peer_servers
+          : [];
+    try {
+      const res = await fetch('/api/node-info', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_label: nodeLabelInput.trim(),
+          monogram: nodeMonogramInput.trim().toUpperCase(),
+          app_color: nodeColorInput.trim(),
+          peer_servers: peersPayload,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onNodeInfoUpdated?.(data);
+        setNodeSaveStatus('IDENTITY SAVED ✓');
+      } else {
+        setNodeSaveStatus(data.detail || 'Save failed');
+      }
+    } catch {
+      setNodeSaveStatus('Network error');
+    }
+    setTimeout(() => setNodeSaveStatus(''), 2800);
+  };
+
+  const handleAddPeerServerInSettings = async () => {
+    if (!peerUrlInput.trim()) return;
+    const localRes = onAddLocalServer?.({
+      label: peerLabelInput,
+      url: peerUrlInput,
+      color: peerColorInput,
+    });
+    if (localRes && !localRes.ok) {
+      setNodeSaveStatus(localRes.error || 'Invalid URL');
+      setTimeout(() => setNodeSaveStatus(''), 2800);
+      return;
+    }
+    const existingPeers = Array.isArray(nodeInfo?.peer_servers) ? nodeInfo.peer_servers : [];
+    const nextEntry = localRes?.entry || {
+      label: peerLabelInput.trim(),
+      url: peerUrlInput.trim(),
+      color: peerColorInput,
+    };
+    const mergedPeers = [
+      ...existingPeers.filter((p) => String(p.url).toLowerCase() !== String(nextEntry.url).toLowerCase()),
+      { label: nextEntry.label, url: nextEntry.url, color: nextEntry.color },
+    ];
+    setPeerLabelInput('');
+    setPeerUrlInput('');
+    await handleSaveNodeIdentity(mergedPeers);
+  };
+
+  const handleRemoveServerFromDirectory = async (srv) => {
+    onRemoveLocalServer?.(srv.url);
+    const existingPeers = Array.isArray(nodeInfo?.peer_servers) ? nodeInfo.peer_servers : [];
+    if (existingPeers.some((p) => String(p.url).toLowerCase() === String(srv.url).toLowerCase())) {
+      const filtered = existingPeers.filter((p) => String(p.url).toLowerCase() !== String(srv.url).toLowerCase());
+      await handleSaveNodeIdentity(filtered);
+    }
+  };
 
   // Integrations Vault state (consolidating IntegrationsModal)
   const targetVaultSession = activeSession || 'aim-connect';
@@ -400,6 +491,173 @@ export default function SettingsModal({
                     <Icon name="download" />
                     <span>{deferredInstallPrompt ? 'INSTALL APP NOW' : 'INSTALL APP'}</span>
                   </button>
+                </div>
+              </div>
+
+              <div className="settings-group-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div>
+                    <div className="settings-group-title">SERVER IDENTITY &amp; MULTI-SERVER SWITCHER</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Customize this machine&apos;s badge/Home-Screen icon monogram so phone apps are unmistakable, and switch between AIM-Connect servers in 1 tap.
+                    </div>
+                  </div>
+                  {nodeSaveStatus && (
+                    <span className="e2ee-status-chip">{nodeSaveStatus}</span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {serverDirectory.map((srv) => (
+                    <div
+                      key={srv.id || srv.url}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                        padding: '8px 11px',
+                        borderRadius: '9px',
+                        background: srv.isCurrent ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--bg-input)',
+                        border: srv.isCurrent ? `1px solid ${srv.color}` : '1px solid var(--border-hairline)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span
+                          style={{
+                            width: '9px',
+                            height: '9px',
+                            borderRadius: '50%',
+                            background: srv.color,
+                            boxShadow: `0 0 8px ${srv.color}`,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                            {srv.label}{' '}
+                            {srv.isCurrent && (
+                              <span style={{ color: 'var(--accent)', fontSize: '10px' }}>· ACTIVE SERVER</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {srv.url}
+                          </div>
+                        </div>
+                      </div>
+                      {!srv.isCurrent && (
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="neon-cta-btn"
+                            style={{ height: '28px', padding: '0 10px', fontSize: '10.5px' }}
+                            onClick={() => onSwitchServer?.(srv.url, { logoutFirst: true })}
+                            title={`Sign out of this server and open ${srv.label} (${srv.url})`}
+                          >
+                            <Icon name="externalLink" size={11} />
+                            <span>LOGOUT &amp; SWITCH</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-btn"
+                            style={{ height: '28px', padding: '0 7px' }}
+                            onClick={() => handleRemoveServerFromDirectory(srv)}
+                            title={`Remove ${srv.label}`}
+                          >
+                            <Icon name="trash" size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <input
+                    type="text"
+                    className="ld-text-input"
+                    style={{ flex: '1 1 120px', height: '32px' }}
+                    placeholder="Peer Label (e.g. Cloud VPS)"
+                    value={peerLabelInput}
+                    onChange={(e) => setPeerLabelInput(e.target.value)}
+                  />
+                  <input
+                    type="url"
+                    className="ld-text-input"
+                    style={{ flex: '2 1 200px', height: '32px' }}
+                    placeholder="https://vps.yourdomain.com"
+                    value={peerUrlInput}
+                    onChange={(e) => setPeerUrlInput(e.target.value)}
+                  />
+                  <input
+                    type="color"
+                    value={peerColorInput}
+                    onChange={(e) => setPeerColorInput(e.target.value)}
+                    title="Peer Server Badge Color"
+                    style={{ width: '34px', height: '32px', padding: '2px', borderRadius: '7px', border: '1px solid var(--border-hairline)', background: 'var(--bg-input)', cursor: 'pointer' }}
+                  />
+                  <button
+                    type="button"
+                    className="subbar-util-btn active"
+                    style={{ height: '32px', padding: '0 11px' }}
+                    onClick={handleAddPeerServerInSettings}
+                  >
+                    <Icon name="plus" size={11} />
+                    <span>ADD SERVER</span>
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <div style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                    THIS SERVER&apos;S BADGE &amp; PHONE HOME-SCREEN ICON MONOGRAM (RE-ADD TO HOME SCREEN AFTER CHANGING ICON)
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      className="ld-text-input"
+                      style={{ flex: '2 1 150px', height: '32px' }}
+                      placeholder="This Server Name (e.g. 9800X3D)"
+                      value={nodeLabelInput}
+                      onChange={(e) => setNodeLabelInput(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="ld-text-input"
+                      style={{ flex: '0 1 92px', height: '32px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
+                      maxLength={4}
+                      placeholder="Icon (98X)"
+                      value={nodeMonogramInput}
+                      onChange={(e) => setNodeMonogramInput(e.target.value.toUpperCase())}
+                      title="2-4 character monogram drawn onto this server's PWA Home Screen icon"
+                    />
+                    <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                      {NODE_BADGE_SWATCHES.map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => setNodeColorInput(hex)}
+                          title={`Select badge color ${hex}`}
+                          style={{
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '6px',
+                            background: hex,
+                            border: nodeColorInput.toUpperCase() === hex ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.2)',
+                            cursor: 'pointer',
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="subbar-util-btn"
+                      style={{ height: '32px', padding: '0 12px' }}
+                      onClick={() => handleSaveNodeIdentity(null)}
+                    >
+                      <span>SAVE SERVER IDENTITY</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1411,9 +1669,26 @@ export default function SettingsModal({
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--text-muted)' }}>
             4h sliding active-user session · Zero-cache HTML
           </span>
-          <button type="button" className="neon-cta-btn" onClick={onClose} style={{ height: '34px', padding: '0 18px' }}>
-            DONE
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onLogout && (
+              <button
+                type="button"
+                className="subbar-util-btn"
+                style={{ height: '34px', padding: '0 12px', borderColor: 'rgba(239, 68, 68, 0.45)', color: '#f87171' }}
+                onClick={() => {
+                  onClose?.();
+                  onLogout?.();
+                }}
+                title="Lock this server and return to the 3FA login & Server Switcher screen"
+              >
+                <Icon name="lock" size={12} />
+                <span>{serverDirectory.length > 1 ? 'LOCK / SWITCH SERVER' : 'LOCK 3FA'}</span>
+              </button>
+            )}
+            <button type="button" className="neon-cta-btn" onClick={onClose} style={{ height: '34px', padding: '0 18px' }}>
+              DONE
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -18,10 +18,43 @@ export default function AuthScreen({
   onPasteClick,
   onWebAuthnLogin,
   onRefreshApp,
+  nodeInfo = null,
+  serverDirectory = [],
+  onSwitchServer,
+  onAddLocalServer,
+  onRemoveLocalServer,
 }) {
   const [webAuthnError, setWebAuthnError] = useState('');
   const [isWebAuthnLoading, setIsWebAuthnLoading] = useState(false);
   const [showE2eeSecret, setShowE2eeSecret] = useState(false);
+  const [showAddServer, setShowAddServer] = useState(false);
+  const [newServerLabel, setNewServerLabel] = useState('');
+  const [newServerUrl, setNewServerUrl] = useState('');
+  const [serverFormError, setServerFormError] = useState('');
+
+  const activeNodeColor = nodeInfo?.app_color || 'var(--accent)';
+  const activeNodeLabel =
+    nodeInfo?.node_label ||
+    (nodeInfo?.app_name && nodeInfo.app_name !== 'A.I.M. Connect' ? nodeInfo.app_name : '') ||
+    (typeof window !== 'undefined' ? window.location.host : 'LOCAL NODE');
+  const activeHostDisplay =
+    nodeInfo?.host || (typeof window !== 'undefined' ? window.location.host : '');
+
+  const handleSaveNewServer = (switchImmediately = false) => {
+    if (!onAddLocalServer) return;
+    const res = onAddLocalServer({ label: newServerLabel, url: newServerUrl });
+    if (!res?.ok) {
+      setServerFormError(res?.error || 'Invalid server URL');
+      return;
+    }
+    setServerFormError('');
+    setNewServerLabel('');
+    setNewServerUrl('');
+    setShowAddServer(false);
+    if (switchImmediately && res.entry?.url) {
+      onSwitchServer?.(res.entry.url);
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -95,6 +128,174 @@ export default function AuthScreen({
               )}
               <span className="pulse-led" title="Zero-Trust 3FA Gate Active" />
             </div>
+          </div>
+
+          <div
+            style={{
+              width: '100%',
+              padding: '9px 11px',
+              borderRadius: '10px',
+              background: 'rgba(255, 255, 255, 0.025)',
+              border: `1px solid ${activeNodeColor}`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '7px',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+                <span
+                  style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    background: activeNodeColor,
+                    boxShadow: `0 0 8px ${activeNodeColor}`,
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {activeNodeLabel}
+                </span>
+                {activeHostDisplay && activeHostDisplay.toLowerCase() !== activeNodeLabel.toLowerCase() && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)' }}>
+                    · {activeHostDisplay}
+                  </span>
+                )}
+              </div>
+              {onAddLocalServer && (
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  style={{ height: '23px', padding: '0 7px', fontSize: '9.5px' }}
+                  onClick={() => {
+                    setShowAddServer((prev) => !prev);
+                    setServerFormError('');
+                  }}
+                  title="Add another AIM-Connect server URL to switch between servers from this login screen"
+                >
+                  <Icon name={showAddServer ? 'close' : 'plus'} size={10} />
+                  <span>{showAddServer ? 'CANCEL' : 'SERVERS'}</span>
+                </button>
+              )}
+            </div>
+
+            {serverDirectory.length > 1 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                {serverDirectory.map((srv) => (
+                  <div
+                    key={srv.id || srv.url}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      borderRadius: '7px',
+                      border: srv.isCurrent ? `1px solid ${srv.color}` : '1px solid var(--border-hairline)',
+                      background: srv.isCurrent ? 'rgba(255, 255, 255, 0.07)' : 'var(--bg-input)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!srv.isCurrent) onSwitchServer?.(srv.url);
+                      }}
+                      disabled={srv.isCurrent}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: srv.isCurrent ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '10px',
+                        fontWeight: srv.isCurrent ? 700 : 500,
+                        padding: '4px 8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        cursor: srv.isCurrent ? 'default' : 'pointer',
+                      }}
+                      title={srv.isCurrent ? `Currently on ${srv.url}` : `Switch to ${srv.label} (${srv.url})`}
+                    >
+                      <span
+                        style={{
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          background: srv.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span>{srv.label}</span>
+                      {!srv.isCurrent && <Icon name="externalLink" size={10} />}
+                    </button>
+                    {!srv.isCurrent && srv.source === 'local' && onRemoveLocalServer && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveLocalServer(srv.url)}
+                        style={{
+                          border: 'none',
+                          borderLeft: '1px solid var(--border-hairline)',
+                          background: 'transparent',
+                          color: 'var(--text-muted)',
+                          padding: '4px 5px',
+                          cursor: 'pointer',
+                          fontSize: '10px',
+                          lineHeight: 1,
+                        }}
+                        title={`Remove ${srv.label} from saved servers`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showAddServer && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '4px', borderTop: '1px solid var(--border-hairline)' }}>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    className="ld-text-input"
+                    style={{ flex: '1 1 100px', height: '30px', fontSize: '11.5px' }}
+                    placeholder="Label (e.g. Cloud VPS)"
+                    value={newServerLabel}
+                    onChange={(e) => setNewServerLabel(e.target.value)}
+                  />
+                  <input
+                    type="url"
+                    className="ld-text-input"
+                    style={{ flex: '2 1 160px', height: '30px', fontSize: '11.5px' }}
+                    placeholder="https://vps.yourdomain.com"
+                    value={newServerUrl}
+                    onChange={(e) => setNewServerUrl(e.target.value)}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="subbar-util-btn"
+                    onClick={() => handleSaveNewServer(false)}
+                  >
+                    <span>SAVE TO LIST</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="neon-cta-btn"
+                    style={{ height: '26px', padding: '0 10px', fontSize: '10px' }}
+                    onClick={() => handleSaveNewServer(true)}
+                  >
+                    <span>SAVE &amp; SWITCH</span>
+                  </button>
+                </div>
+                {serverFormError && (
+                  <div style={{ color: '#f87171', fontSize: '10.5px', fontFamily: 'var(--font-mono)' }}>
+                    {serverFormError}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>

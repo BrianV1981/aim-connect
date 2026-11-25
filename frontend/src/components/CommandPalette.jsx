@@ -47,6 +47,8 @@ export default function CommandPalette({
   onOpenIntegrations,
   onRefreshApp,
   appUpdateAvailable = false,
+  serverDirectory = [],
+  onSwitchServer,
   onSetUiTheme,
   onSetTermTheme,
   onChangeFontSize,
@@ -88,6 +90,19 @@ export default function CommandPalette({
         action: () => onSelectSession?.(s),
       });
     });
+
+    (serverDirectory || [])
+      .filter((srv) => srv && !srv.isCurrent && srv.url)
+      .forEach((srv) => {
+        items.push({
+          id: `server:switch:${srv.url}`,
+          category: 'SESSIONS',
+          label: `Switch AIM-Connect Server -> ${srv.label} (${srv.host || srv.url})`,
+          keywords: `server switch node fleet logout login ${srv.label} ${srv.url}`,
+          badge: 'SWITCH NODE',
+          action: () => onSwitchServer?.(srv.url, { logoutFirst: true }),
+        });
+      });
 
     items.push({
       id: 'session:repo-launcher',
@@ -437,6 +452,8 @@ export default function CommandPalette({
     onOpenIntegrations,
     onRefreshApp,
     appUpdateAvailable,
+    serverDirectory,
+    onSwitchServer,
     onSetUiTheme,
     onSetTermTheme,
     onChangeFontSize,
