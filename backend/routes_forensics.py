@@ -6,6 +6,7 @@ import re
 import sqlite3
 import subprocess
 import time
+import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, Query
 from main import (
     AGENT_WORKSPACES_DIR,
@@ -53,6 +54,9 @@ def _candidate_transcript_files() -> list[str]:
         HOME_DIR, ".gemini", "antigravity-cli", "brain", "*", ".system_generated", "logs", "transcript.jsonl"
     )
     files.extend(glob.glob(agy_brain_glob))
+
+    grok_home = os.environ.get("AIM_GROK_HOME", os.path.join(HOME_DIR, ".grok"))
+    files.extend(glob.glob(os.path.join(grok_home, "sessions", "*", "*", "chat_history.jsonl")))
 
     vault_glob = os.path.join(AIM_CONNECT_ROOT, "joshua_os", "vault", "*.md")
     files.extend(glob.glob(vault_glob))
@@ -142,8 +146,43 @@ def _load_full_transcript_lookup(compact_file_path: str) -> tuple[list[dict | No
     return by_line, by_step
 
 
+def _unwrap_message_content(raw_content: object) -> str:
+    """Unwrap plain strings or Grok/OpenAI structured content-block lists into clean text (#301)."""
+    if raw_content is None:
+        return ""
+    if isinstance(raw_content, str):
+        return raw_content
+    if isinstance(raw_content, dict):
+        return str(raw_content.get("text") or raw_content.get("content") or "")
+    if isinstance(raw_content, list):
+        parts: list[str] = []
+        for item in raw_content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                txt = item.get("text") if "text" in item else item.get("content")
+                if txt:
+                    parts.append(str(txt))
+        return "\n".join(p for p in parts if p)
+    return str(raw_content)
+
+
+def _is_synthetic_system_user_turn(obj: dict, unwrapped_text: str) -> bool:
+    """Return True if a JSONL 'user' message is a synthetic CLI system/skill/workspace injection (#301)."""
+    if obj.get("synthetic_reason"):
+        return True
+    stripped = unwrapped_text.strip()
+    if not stripped:
+        return True
+    if "<user_query>" in stripped.lower() or "<user_request>" in stripped.lower():
+        return False
+    if stripped.startswith(("<user_info>", "<system-reminder>", "<workspace_info>")):
+        return True
+    return False
+
+
 def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
-    """Parse an AGY/Grok JSONL transcript into structured turns with /rewind rollback (#212, #261, #271)."""
+    """Parse an AGY/Grok JSONL transcript into structured turns with /rewind rollback (#212, #261, #271, #301)."""
     turns: list[dict] = []
     if not os.path.isfile(file_path):
         return turns
@@ -154,11 +193,12 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
     except OSError:
         return turns
 
-    window_size = max(800, max_turns * 12)
+    window_size = max(800, max_turns * 16)
     start_offset = max(0, len(lines) - window_size)
     full_loaded = False
     full_by_line: list[dict | None] = []
     full_by_step: dict[int, dict] = {}
+    pending_reasoning = ""
 
     for rel_idx, raw_line in enumerate(lines[start_offset:]):
         abs_line_idx = start_offset + rel_idx
@@ -204,22 +244,34 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
                 obj = {**obj, **full_obj}
 
         step_type = obj.get("type") or obj.get("role") or ""
+        if step_type == "reasoning":
+            summary_list = obj.get("summary")
+            if isinstance(summary_list, list):
+                summary_txt = "\n".join(
+                    str(s.get("text") or "") for s in summary_list if isinstance(s, dict) and s.get("text")
+                ).strip()
+                if summary_txt:
+                    pending_reasoning = summary_txt
+            continue
+
         if step_type in ("USER_INPUT", "user"):
-            content = obj.get("content") or obj.get("text") or ""
-            if isinstance(content, list):
-                content = "\n".join(str(x) for x in content)
+            content = _unwrap_message_content(obj.get("content") or obj.get("text") or "")
+            if _is_synthetic_system_user_turn(obj, content):
+                continue
+            pending_reasoning = ""
             turns.append({
                 "step_index": raw_step_idx if has_int_step else len(turns),
                 "_has_step_index": has_int_step,
                 "role": "user",
-                "created_at": obj.get("created_at", ""),
+                "created_at": obj.get("created_at") or obj.get("ts") or "",
                 "content": str(content)[:MAX_TRANSCRIPT_TURN_CHARS],
                 "thinking": "",
                 "tool_calls": [],
             })
         elif step_type in ("PLANNER_RESPONSE", "assistant", "model"):
-            content = obj.get("content") or obj.get("text") or ""
-            thinking = obj.get("thinking") or ""
+            content = _unwrap_message_content(obj.get("content") or obj.get("text") or "")
+            thinking = _unwrap_message_content(obj.get("thinking") or "") or pending_reasoning
+            pending_reasoning = ""
             raw_tools = obj.get("tool_calls") or []
             parsed_tools = []
             for tc in raw_tools:
@@ -244,7 +296,7 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
                     "step_index": raw_step_idx if has_int_step else len(turns),
                     "_has_step_index": has_int_step,
                     "role": "assistant",
-                    "created_at": obj.get("created_at", ""),
+                    "created_at": obj.get("created_at") or obj.get("ts") or "",
                     "content": str(content)[:MAX_TRANSCRIPT_TURN_CHARS],
                     "thinking": str(thinking)[:MAX_TRANSCRIPT_THINKING_CHARS],
                     "tool_calls": parsed_tools,
@@ -676,9 +728,9 @@ def _count_jsonl_user_turns(fpath: str) -> tuple[int, str]:
                     ]
                 kind = obj.get("type") or obj.get("role") or ""
                 if kind in ("USER_INPUT", "user"):
-                    c = obj.get("content") or obj.get("text") or ""
-                    if isinstance(c, list):
-                        c = " ".join(str(x) for x in c)
+                    c = _unwrap_message_content(obj.get("content") or obj.get("text") or "")
+                    if _is_synthetic_system_user_turn(obj, c):
+                        continue
                     cleaned = re.sub(r"<[^>]+>", "", str(c)).strip()
                     first_line = next((ln.strip("#> ") for ln in cleaned.splitlines() if ln.strip()), "")
                     user_entries.append((raw_step_idx if has_int_step else None, first_line[:96]))
@@ -697,8 +749,132 @@ def _count_jsonl_user_turns(fpath: str) -> tuple[int, str]:
     return len(user_entries), first_prompt
 
 
+def _scan_grok_session_records(seen_paths: set[str]) -> list[dict]:
+    """Scan live & historical Grok CLI session directories (~/.grok/sessions and tenant sandboxes) (#301)."""
+    records: list[dict] = []
+    grok_roots: list[tuple[str, str | None]] = []
+
+    host_grok = os.environ.get("AIM_GROK_HOME", os.path.join(HOME_DIR, ".grok")).strip()
+    if host_grok and os.path.isdir(host_grok):
+        grok_roots.append((host_grok, None))
+
+    if os.path.isdir(AGENT_WORKSPACES_DIR):
+        for entry in sorted(os.listdir(AGENT_WORKSPACES_DIR)):
+            if not entry.startswith("agent-"):
+                continue
+            tenant_grok = os.path.join(AGENT_WORKSPACES_DIR, entry, ".grok")
+            if os.path.isdir(tenant_grok):
+                grok_roots.append((tenant_grok, entry))
+
+    for grok_root, tenant_session in grok_roots:
+        active_ids: set[str] = set()
+        active_file = os.path.join(grok_root, "active_sessions.json")
+        if os.path.isfile(active_file):
+            try:
+                active_list = json.loads(open(active_file, "r", encoding="utf-8").read())
+                if isinstance(active_list, list):
+                    for item in active_list:
+                        if isinstance(item, dict) and item.get("session_id"):
+                            active_ids.add(str(item["session_id"]))
+            except Exception:
+                pass
+
+        sessions_dir = os.path.join(grok_root, "sessions")
+        if not os.path.isdir(sessions_dir):
+            continue
+
+        for chat_path in glob.glob(os.path.join(sessions_dir, "*", "*", "chat_history.jsonl")):
+            abs_chat = os.path.abspath(chat_path)
+            if abs_chat in seen_paths or not os.path.isfile(abs_chat):
+                continue
+            seen_paths.add(abs_chat)
+
+            sess_uuid_dir = os.path.dirname(abs_chat)
+            sess_uuid = os.path.basename(sess_uuid_dir)
+            encoded_cwd_name = os.path.basename(os.path.dirname(sess_uuid_dir))
+            decoded_cwd = urllib.parse.unquote(encoded_cwd_name)
+
+            summary_data: dict = {}
+            summary_path = os.path.join(sess_uuid_dir, "summary.json")
+            if os.path.isfile(summary_path):
+                try:
+                    summary_data = json.loads(open(summary_path, "r", encoding="utf-8").read())
+                except Exception:
+                    summary_data = {}
+
+            info_cwd = (
+                (summary_data.get("info") or {}).get("cwd")
+                if isinstance(summary_data.get("info"), dict)
+                else None
+            )
+            raw_cwd = str(info_cwd or decoded_cwd or "")
+            norm_root = _normalize_workspace_root(raw_cwd) if raw_cwd else ""
+
+            if tenant_session:
+                sess_name = tenant_session
+            else:
+                repo_base = os.path.basename(norm_root) if norm_root else "aim-connect"
+                sess_name = REVERSE_WORKSPACE_ALIASES.get(repo_base, repo_base) or "aim-connect"
+
+            turn_cnt, first_prompt = _count_jsonl_user_turns(abs_chat)
+            if turn_cnt <= 0:
+                num_chat = int(summary_data.get("num_chat_messages") or 0)
+                if num_chat <= 0:
+                    continue
+                turn_cnt = max(1, num_chat // 4)
+
+            try:
+                mtime = os.path.getmtime(abs_chat)
+            except OSError:
+                mtime = 0.0
+
+            # Read latest context token estimate from usage.json if available
+            tok_display = "Grok JSONL"
+            usage_path = os.path.join(sess_uuid_dir, "usage.json")
+            if os.path.isfile(usage_path):
+                try:
+                    usage_obj = json.loads(open(usage_path, "r", encoding="utf-8").read())
+                    turns_usage = usage_obj.get("turns") if isinstance(usage_obj, dict) else None
+                    if isinstance(turns_usage, list) and turns_usage:
+                        last_t = turns_usage[-1]
+                        calls = max(1, int(last_t.get("modelCalls") or 1))
+                        approx_ctx = int(last_t.get("inputTokens") or 0) // calls
+                        if approx_ctx > 0:
+                            tok_display = _format_tok_short(approx_ctx, 256_000)
+                except Exception:
+                    pass
+
+            title = (
+                str(summary_data.get("generated_title") or summary_data.get("session_summary") or "").strip()
+                or first_prompt
+                or f"{sess_name} (Grok session)"
+            )
+            is_live = sess_uuid in active_ids
+            when_str = "ACTIVE NOW" if is_live else (time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime)) if mtime else "Recorded")
+
+            records.append(
+                {
+                    "id": str(sess_uuid),
+                    "session": sess_name,
+                    "vessel": "GROK",
+                    "title": title,
+                    "turns": turn_cnt,
+                    "tokens": tok_display,
+                    "compaction_count": 0,
+                    "seal": "LIVE WORKSPACE" if is_live else "BLACKBOX SEALED",
+                    "when": when_str,
+                    "mtime_epoch": mtime,
+                    "sort_key": f"{mtime:020.6f}",
+                    "log_path": abs_chat,
+                    "workspace_root": norm_root,
+                    "is_live_process": is_live,
+                }
+            )
+    return records
+
+
 def _collect_project_history_records() -> list[dict]:
-    """Index multi-generation session history across AGY conversation_summaries.db and vault JSONL/MD (#257)."""
+    """Index multi-generation session history across AGY conversation_summaries.db, Grok ~/.grok/sessions, and vault JSONL (#257, #301)."""
     raw_records: list[dict] = []
     seen_paths: set[str] = set()
 
@@ -772,12 +948,18 @@ def _collect_project_history_records() -> list[dict]:
                         "compaction_count": comp_cnt,
                         "seal": seal,
                         "when": "ACTIVE NOW" if is_running else when_str,
-                        "sort_key": str(last_mod or "") or f"{sort_ts:020.6f}",
+                        "mtime_epoch": sort_ts,
+                        "sort_key": f"{sort_ts:020.6f}" if sort_ts > 1.0 else str(last_mod or ""),
                         "log_path": tx_path,
+                        "workspace_root": norm_root,
+                        "is_live_process": is_running,
                     }
                 )
         except Exception as exc:
             logger.debug(f"History DB scan skipped: {exc}")
+
+    # Scan live & persisted Grok CLI sessions (#301)
+    raw_records.extend(_scan_grok_session_records(seen_paths))
 
     # Scan additional vault / forensics JSONL transcripts (Grok, OpenCode, Codex, sealed vaults)
     vault_dirs = []
@@ -818,8 +1000,11 @@ def _collect_project_history_records() -> list[dict]:
                     "compaction_count": 0,
                     "seal": "BLACKBOX SEALED",
                     "when": when_str,
-                    "sort_key": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime)) if mtime else "",
+                    "mtime_epoch": mtime,
+                    "sort_key": f"{mtime:020.6f}",
                     "log_path": abs_p,
+                    "workspace_root": "",
+                    "is_live_process": False,
                 }
             )
 
@@ -830,8 +1015,8 @@ def _collect_project_history_records() -> list[dict]:
 
     enriched: list[dict] = []
     for sess_name, items in by_proj.items():
-        # Sort oldest -> newest to number GEN #01 .. GEN #NN
-        items.sort(key=lambda r: (r["sort_key"], r["id"]))
+        # Sort oldest -> newest by true epoch mtime across vessels (#301)
+        items.sort(key=lambda r: (float(r.get("mtime_epoch") or 0.0), r["sort_key"], r["id"]))
         total_gen = len(items)
         for idx, item in enumerate(items):
             gen_num = idx + 1
@@ -842,7 +1027,7 @@ def _collect_project_history_records() -> list[dict]:
             enriched.append(item)
 
     # Return newest-first within any list
-    enriched.sort(key=lambda r: (r["sort_key"], r["gen"]), reverse=True)
+    enriched.sort(key=lambda r: (float(r.get("mtime_epoch") or 0.0), r["sort_key"], r["gen"]), reverse=True)
     return enriched
 
 
@@ -946,20 +1131,24 @@ def get_history_record_turns(record_id: str):
 
 
 USER_REQUEST_BLOCK_RE = re.compile(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", re.DOTALL | re.IGNORECASE)
+USER_QUERY_BLOCK_RE = re.compile(r"<user_query>\s*(.*?)\s*</user_query>", re.DOTALL | re.IGNORECASE)
 STRIP_META_BLOCKS_RE = re.compile(
-    r"<(?:CONTEXT_SUMMARY|ADDITIONAL_METADATA|SYSTEM_MESSAGE)>.*?</(?:CONTEXT_SUMMARY|ADDITIONAL_METADATA|SYSTEM_MESSAGE)>",
+    r"<(?:CONTEXT_SUMMARY|ADDITIONAL_METADATA|SYSTEM_MESSAGE|user_info|system-reminder|workspace_info)>.*?</(?:CONTEXT_SUMMARY|ADDITIONAL_METADATA|SYSTEM_MESSAGE|user_info|system-reminder|workspace_info)>",
     re.DOTALL | re.IGNORECASE,
 )
 
 
 def _clean_user_prompt_for_chat(raw_text: str) -> str:
-    """Extract clean human Operator text from AGY/Grok transcript prompts, stripping XML envelopes (#260)."""
+    """Extract clean human Operator text from AGY/Grok transcript prompts, stripping XML envelopes (#260, #301)."""
     text = str(raw_text or "").strip()
     if not text:
         return ""
     m_req = USER_REQUEST_BLOCK_RE.search(text)
     if m_req:
         return m_req.group(1).strip()
+    m_query = USER_QUERY_BLOCK_RE.search(text)
+    if m_query:
+        return m_query.group(1).strip()
     cleaned = STRIP_META_BLOCKS_RE.sub("", text).strip()
     if not cleaned:
         return ""
@@ -990,7 +1179,19 @@ def _format_concise_tool_pill(tc: dict) -> str:
     try:
         parsed = json.loads(raw_args)
         if isinstance(parsed, dict):
-            for key in ("CommandLine", "Path", "query", "toolSummary", "url", "Target"):
+            for key in (
+                "CommandLine",
+                "command",
+                "Path",
+                "target_file",
+                "file_path",
+                "query",
+                "pattern",
+                "path",
+                "toolSummary",
+                "url",
+                "Target",
+            ):
                 if parsed.get(key):
                     detail = str(parsed[key])
                     break
@@ -998,22 +1199,71 @@ def _format_concise_tool_pill(tc: dict) -> str:
         pass
     detail = re.sub(r"\s+", " ", detail).strip()
     if len(detail) > 92:
-        detail = detail[:89] + "..."
+        if "/" in detail and " " not in detail:
+            detail = "..." + detail[-88:]
+        else:
+            detail = detail[:89] + "..."
     return f"{name}({detail})" if detail else name
+
+
+def _detect_active_session_pane_hint(session_name: str) -> tuple[str | None, str]:
+    """Return (preferred_vessel_or_None, normalized_pane_cwd) from the live tmux pane (#301)."""
+    try:
+        res = subprocess.run(
+            ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_active}\t#{pane_current_command}\t#{pane_current_path}"],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return None, ""
+    if res.returncode != 0:
+        return None, ""
+
+    chosen_cmd = ""
+    chosen_cwd = ""
+    for ln in res.stdout.splitlines():
+        parts = ln.split("\t")
+        if len(parts) != 3:
+            continue
+        is_act, cmd, cwd = parts
+        if is_act == "1" or not chosen_cmd:
+            chosen_cmd = cmd.strip().lower()
+            chosen_cwd = _normalize_workspace_root(cwd.strip()) if cwd.strip() else ""
+            if is_act == "1":
+                break
+
+    if "grok" in chosen_cmd:
+        return "GROK", chosen_cwd
+    if "agy" in chosen_cmd or "antigravity" in chosen_cmd:
+        return "AGY", chosen_cwd
+    return None, chosen_cwd
 
 
 @router.get("/api/sessions/{session_name}/live-turns", dependencies=[Depends(verify_token), Depends(require_admin)])
 def get_session_live_turns(session_name: str, limit: int = Query(24)):
-    """Return structured live Operator + J.O.S.H.U.A. chat turns for the active session (#260)."""
+    """Return structured live Operator + J.O.S.H.U.A. chat turns for the active session (#260, #301)."""
     if not SESSION_NAME_RE.match(session_name):
         raise HTTPException(status_code=400, detail="Invalid session name.")
 
     clamped_limit = max(1, min(80, int(limit)))
     all_records = _collect_project_history_records()
-    matched_rec = next((r for r in all_records if r["session"] == session_name), None)
+    preferred_vessel, active_cwd = _detect_active_session_pane_hint(session_name)
+
+    session_candidates = [
+        r
+        for r in all_records
+        if r["session"] == session_name
+        or (active_cwd and r.get("workspace_root") and r.get("workspace_root") == active_cwd)
+    ]
+
+    matched_rec = None
+    if preferred_vessel:
+        matched_rec = next((r for r in session_candidates if r["vessel"] == preferred_vessel), None)
+    if matched_rec is None:
+        matched_rec = session_candidates[0] if session_candidates else None
 
     log_path = matched_rec["log_path"] if matched_rec else ""
-    vessel = matched_rec["vessel"] if matched_rec else "AGY"
+    vessel = matched_rec["vessel"] if matched_rec else (preferred_vessel or "AGY")
 
     if not log_path and session_name.startswith("agent-") and os.path.isdir(AGENT_WORKSPACES_DIR):
         parts = session_name.split("-")
@@ -1067,10 +1317,15 @@ def get_session_live_turns(session_name: str, limit: int = Query(24)):
                 elif paired:
                     prev = paired[-1]
                     for t_pill in tools:
-                        if t_pill not in prev["tools"] and len(prev["tools"]) < 12:
+                        if t_pill not in prev["tools"]:
                             prev["tools"].append(t_pill)
+                            if len(prev["tools"]) > 16:
+                                prev["tools"] = prev["tools"][-16:]
                     if body:
-                        prev["body"] = body
+                        if vessel == "GROK" and prev["body"] and body not in prev["body"]:
+                            prev["body"] = f"{prev['body']}\n\n{body}"[:MAX_TRANSCRIPT_TURN_CHARS]
+                        else:
+                            prev["body"] = body
                     if spoken:
                         prev["spoken"] = spoken
                 elif body or spoken or tools:
