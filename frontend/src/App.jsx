@@ -57,6 +57,11 @@ import {
   saveComposerCustomHeight,
 } from './composerUtils';
 import { computeMobileViewportState, isTextInputElement } from './mobileViewportUtils';
+import {
+  applyVirtualKeyToComposer,
+  loadKeyboardAutoHide,
+  shouldAutoHideKeyboardOnPointerDown,
+} from './keyboardUtils';
 
 const THEME_META_COLORS = {
   emerald: '#050505',
@@ -779,6 +784,11 @@ function App() {
   const [keyboardFeedback, setKeyboardFeedback] = useState(
     () => localStorage.getItem('aim-kb-feedback') || 'audio'
   );
+  const [keyboardAutoHide, setKeyboardAutoHide] = useState(() =>
+    loadKeyboardAutoHide(typeof window !== 'undefined' ? window.localStorage : null)
+  );
+  const keyboardAutoHideRef = useRef(keyboardAutoHide);
+  keyboardAutoHideRef.current = keyboardAutoHide;
   const terminalRef = useRef(null);
   const term = useRef(null);
   const ws = useRef(null);
@@ -1975,6 +1985,7 @@ function App() {
       if (showKeyboard) {
         const textarea = terminalRef.current?.querySelector('textarea');
         if (textarea) textarea.blur();
+        composerInputRef.current?.blur?.();
       }
 
       setTimeout(() => {
@@ -1988,6 +1999,52 @@ function App() {
       }, 50);
     }
   }, [showKeyboard]);
+
+  useEffect(() => {
+    if (!showKeyboard || !keyboardAutoHide) return;
+    const handleOutsideKbTap = (ev) => {
+      if (
+        shouldAutoHideKeyboardOnPointerDown(ev.target, {
+          showKeyboard: true,
+          keyboardAutoHide: true,
+          agentStageMode: agentStageModeRef.current,
+        })
+      ) {
+        setShowKeyboard(false);
+      }
+    };
+    window.addEventListener('pointerdown', handleOutsideKbTap, true);
+    return () => {
+      window.removeEventListener('pointerdown', handleOutsideKbTap, true);
+    };
+  }, [showKeyboard, keyboardAutoHide]);
+
+  useEffect(() => {
+    if (!showKeyboard || !keyboardAutoHide) return;
+    if (
+      showSettings ||
+      showCommandPalette ||
+      showMacroLibrary ||
+      showForensics ||
+      showTokenGrabber ||
+      showSpawnModal ||
+      deleteTarget ||
+      editingShot
+    ) {
+      setShowKeyboard(false);
+    }
+  }, [
+    showKeyboard,
+    keyboardAutoHide,
+    showSettings,
+    showCommandPalette,
+    showMacroLibrary,
+    showForensics,
+    showTokenGrabber,
+    showSpawnModal,
+    deleteTarget,
+    editingShot,
+  ]);
 
   useEffect(() => {
     if (activeSession && fitAddon.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -2462,6 +2519,9 @@ function App() {
     if (attachments.length > 0) {
       setStagedAttachments((prev) => ({ ...prev, [target]: [] }));
     }
+    if (keyboardAutoHideRef.current) {
+      setShowKeyboard(false);
+    }
   }, [activeSession]);
   submitComposerPromptRef.current = submitComposerPrompt;
 
@@ -2740,6 +2800,7 @@ function App() {
           <button
             type="button"
             className={`ghost-btn ${showKeyboard ? 'active' : ''}`}
+            data-kb-toggle="true"
             data-scramble-manual="1"
             onClick={() => setShowKeyboard((prev) => !prev)}
             onMouseEnter={kbTabScramble.triggerScramble}
@@ -3507,6 +3568,7 @@ function App() {
                     <textarea
                       ref={composerInputRef}
                       rows={1}
+                      inputMode={showKeyboard ? 'none' : undefined}
                       className="ld-prompt-field"
                       placeholder={
                         isListening
@@ -3733,7 +3795,11 @@ function App() {
       </nav>
 
       {showKeyboard && (
-        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div
+          className="sovereign-keyboard-dock"
+          data-kb-dock="true"
+          style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}
+        >
           <div className="commander-toolbar" style={{ borderTop: '1px solid var(--border-hairline)', borderRadius: 0 }}>
             <div className="macro-group">
               {macroLibrary
@@ -3793,6 +3859,35 @@ function App() {
                   editor.trigger('keyboard', 'type', { text: key });
                 }
                 editor.focus();
+              } else if (composerInputRef.current && agentStageModeRef.current === 'chat') {
+                const el = composerInputRef.current;
+                const res = applyVirtualKeyToComposer(composerTextRef.current, key, {
+                  selectionStart: el.selectionStart,
+                  selectionEnd: el.selectionEnd,
+                });
+                if (res.action === 'submit') {
+                  submitComposerPrompt();
+                } else if (res.action === 'edit') {
+                  composerTextRef.current = res.text;
+                  setComposerText(res.text);
+                  setSlashDismissed(false);
+                  setSlashActiveIdx(0);
+                  requestAnimationFrame(() => {
+                    const inp = composerInputRef.current;
+                    if (!inp) return;
+                    inp.focus();
+                    try {
+                      inp.setSelectionRange(res.caret, res.caret);
+                    } catch {}
+                  });
+                } else if (res.action === 'caret') {
+                  el.focus();
+                  try {
+                    el.setSelectionRange(res.caret, res.caret);
+                  } catch {}
+                } else if (res.action === 'passthrough_pty') {
+                  sendCommand(key);
+                }
               } else {
                 sendCommand(key);
               }
@@ -3848,6 +3943,8 @@ function App() {
           setOperatorSide={setOperatorSide}
           keyboardFeedback={keyboardFeedback}
           setKeyboardFeedback={setKeyboardFeedback}
+          keyboardAutoHide={keyboardAutoHide}
+          setKeyboardAutoHide={setKeyboardAutoHide}
           alertChime={alertChime}
           setAlertChime={setAlertChime}
           termFontSize={termFontSize}

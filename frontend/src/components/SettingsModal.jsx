@@ -34,6 +34,8 @@ export default function SettingsModal({
   setOperatorSide,
   keyboardFeedback,
   setKeyboardFeedback,
+  keyboardAutoHide = true,
+  setKeyboardAutoHide,
   alertChime,
   setAlertChime,
   termFontSize,
@@ -689,6 +691,19 @@ export default function SettingsModal({
                     type="checkbox"
                     checked={Boolean(autoCaps)}
                     onChange={(e) => toggleBool(setAutoCaps, 'aim-kb-autocaps', e.target.checked)}
+                  />
+                </label>
+                <label className="setting-check-row">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Auto-Hide In-House Keyboard (Android Mode)</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Hide automatically when tapping outside, pressing Enter to send, or opening modals, and suppress the OS keyboard while KB is active
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(keyboardAutoHide)}
+                    onChange={(e) => toggleBool(setKeyboardAutoHide, 'aim-kb-autohide', e.target.checked)}
                   />
                 </label>
               </div>
