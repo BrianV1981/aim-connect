@@ -23,6 +23,7 @@ import {{
   loadComposerCustomHeight,
   saveComposerCustomHeight,
   classifyComposerKeyAction,
+  resolveComposerActionsLayout,
 }} from {json.dumps(COMPOSER_UTILS_JS.as_uri())};
 
 // 1. Key classification: Enter submits, Shift+Enter inserts newline, slash menu takes precedence without Shift
@@ -56,6 +57,14 @@ const loadedCustom = loadComposerCustomHeight(fakeStorage);
 saveComposerCustomHeight(fakeStorage, null);
 const clearedCustom = loadComposerCustomHeight(fakeStorage);
 
+// 5. Adaptive 3-tier action button layout with hysteresis (#292)
+const actRow = resolveComposerActionsLayout(28, 'row');
+const actTwoTier = resolveComposerActionsLayout(64, 'row');
+const actTwoTierHyst = resolveComposerActionsLayout(56, 'two-tier');
+const actBackToRow = resolveComposerActionsLayout(48, 'two-tier');
+const actStacked = resolveComposerActionsLayout(100, 'two-tier');
+const actStackedHyst = resolveComposerActionsLayout(88, 'stacked');
+
 console.log(JSON.stringify({{
   COMPOSER_MIN_HEIGHT_PX,
   COMPOSER_AUTO_MAX_HEIGHT_PX,
@@ -76,6 +85,12 @@ console.log(JSON.stringify({{
   loadedCustom,
   clearedCustom,
   clampedNull: clampComposerHeight('not-a-num'),
+  actRow,
+  actTwoTier,
+  actTwoTierHyst,
+  actBackToRow,
+  actStacked,
+  actStackedHyst,
 }}));
 """
     proc = subprocess.run(
@@ -105,10 +120,16 @@ console.log(JSON.stringify({{
     assert out["loadedCustom"] == 140
     assert out["clearedCustom"] is None
     assert out["clampedNull"] is None
+    assert out["actRow"] == "row"
+    assert out["actTwoTier"] == "two-tier"
+    assert out["actTwoTierHyst"] == "two-tier"
+    assert out["actBackToRow"] == "row"
+    assert out["actStacked"] == "stacked"
+    assert out["actStackedHyst"] == "stacked"
 
 
 def test_issue_289_multiline_composer_resize_and_bordered_controls_wired():
-    """#289: Verify App.jsx uses textarea + Shift+Enter + resize grip and App.css defines bordered Mic/Speaker buttons."""
+    """#289/#292: Verify App.jsx uses textarea + Shift+Enter + resize grip + adaptive 3-tier action layout."""
     app_jsx = (FRONTEND_SRC / "App.jsx").read_text(encoding="utf-8")
     app_css = (FRONTEND_SRC / "App.css").read_text(encoding="utf-8")
 
@@ -116,6 +137,8 @@ def test_issue_289_multiline_composer_resize_and_bordered_controls_wired():
     assert "<textarea" in app_jsx
     assert "composer-resize-handle" in app_jsx
     assert "classifyComposerKeyAction" in app_jsx
+    assert "resolveComposerActionsLayout" in app_jsx
+    assert "data-actions-layout" in app_jsx
     assert "Shift+Enter" in app_jsx
     assert "composer-mic-btn" in app_jsx
     assert "composer-speak-btn" in app_jsx
@@ -123,6 +146,8 @@ def test_issue_289_multiline_composer_resize_and_bordered_controls_wired():
 
     assert ".composer-resize-handle" in app_css
     assert ".composer-actions-group" in app_css
+    assert 'data-actions-layout="two-tier"' in app_css
+    assert 'data-actions-layout="stacked"' in app_css
     assert ".composer-icon-btn" in app_css
     # Mic & Speaker buttons must have explicit borders (not border: none)
     btn_block = app_css.split(".composer-icon-btn {", 1)[1].split("}", 1)[0]

@@ -84,6 +84,33 @@ export function saveComposerCustomHeight(storage, heightPx) {
   }
 }
 
+export const COMPOSER_ACTIONS_TWO_TIER_ENTER_PX = 62;
+export const COMPOSER_ACTIONS_TWO_TIER_EXIT_PX = 52;
+export const COMPOSER_ACTIONS_STACKED_ENTER_PX = 96;
+export const COMPOSER_ACTIONS_STACKED_EXIT_PX = 86;
+
+export function resolveComposerActionsLayout(heightPx, currentLayout = 'row') {
+  const h = Number(heightPx);
+  if (!Number.isFinite(h) || h <= 0) return 'row';
+
+  if (
+    h >= COMPOSER_ACTIONS_STACKED_ENTER_PX ||
+    (currentLayout === 'stacked' && h >= COMPOSER_ACTIONS_STACKED_EXIT_PX)
+  ) {
+    return 'stacked';
+  }
+
+  if (
+    h >= COMPOSER_ACTIONS_TWO_TIER_ENTER_PX ||
+    ((currentLayout === 'two-tier' || currentLayout === 'stacked') &&
+      h >= COMPOSER_ACTIONS_TWO_TIER_EXIT_PX)
+  ) {
+    return 'two-tier';
+  }
+
+  return 'row';
+}
+
 export function classifyComposerKeyAction(eventLike, { slashMenuOpen = false } = {}) {
   if (!eventLike || typeof eventLike !== 'object') return 'none';
   if (eventLike.isComposing || eventLike.keyCode === 229) return 'none';

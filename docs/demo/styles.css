@@ -1406,7 +1406,9 @@ svg.lucide {
 }
 
 .composer-actions-group {
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px 34px 34px;
+  grid-template-areas: "mic speak send";
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
@@ -1414,7 +1416,37 @@ svg.lucide {
   padding-bottom: 1px;
 }
 
+.composer-actions-group[data-actions-layout="two-tier"] {
+  grid-template-columns: 34px 34px;
+  grid-template-areas:
+    "mic speak"
+    "send send";
+  gap: 6px;
+}
+
+.composer-actions-group[data-actions-layout="two-tier"] .ld-send-btn {
+  width: 100%;
+}
+
+.composer-actions-group[data-actions-layout="stacked"] {
+  grid-template-columns: 34px;
+  grid-template-areas:
+    "mic"
+    "speak"
+    "send";
+  gap: 6px;
+}
+
+.composer-mic-btn {
+  grid-area: mic;
+}
+
+.composer-speak-btn {
+  grid-area: speak;
+}
+
 .ld-send-btn {
+  grid-area: send;
   width: 34px;
   height: 34px;
   border-radius: 10px;

@@ -52,6 +52,7 @@ import {
   classifyComposerKeyAction,
   computeResizedComposerHeight,
   loadComposerCustomHeight,
+  resolveComposerActionsLayout,
   resolveComposerTextareaLayout,
   saveComposerCustomHeight,
 } from './composerUtils';
@@ -724,6 +725,12 @@ function App() {
   const composerInputRef = useRef(null);
   const [composerCustomHeight, setComposerCustomHeight] = useState(() =>
     loadComposerCustomHeight(typeof window !== 'undefined' ? window.localStorage : null)
+  );
+  const [composerActionsLayout, setComposerActionsLayout] = useState(() =>
+    resolveComposerActionsLayout(
+      loadComposerCustomHeight(typeof window !== 'undefined' ? window.localStorage : null),
+      'row'
+    )
   );
   const [isResizingComposer, setIsResizingComposer] = useState(false);
   const composerDragCleanupRef = useRef(null);
@@ -2093,6 +2100,7 @@ function App() {
       });
       el.style.height = `${layout.heightPx}px`;
       el.style.overflowY = layout.overflowY;
+      setComposerActionsLayout((prev) => resolveComposerActionsLayout(layout.heightPx, prev));
       return;
     }
     el.style.height = '0px';
@@ -2103,6 +2111,7 @@ function App() {
     });
     el.style.height = `${layout.heightPx}px`;
     el.style.overflowY = layout.overflowY;
+    setComposerActionsLayout((prev) => resolveComposerActionsLayout(layout.heightPx, prev));
   }, [composerText, voiceInterimText, composerCustomHeight, isListening, agentStageMode]);
 
   useEffect(() => {
@@ -3519,7 +3528,7 @@ function App() {
                       onPaste={handleComposerPaste}
                       autoComplete="off"
                     />
-                    <div className="composer-actions-group">
+                    <div className="composer-actions-group" data-actions-layout={composerActionsLayout}>
                       <button
                         type="button"
                         className={`composer-icon-btn composer-mic-btn ${isListening ? 'mic-on' : ''}`}

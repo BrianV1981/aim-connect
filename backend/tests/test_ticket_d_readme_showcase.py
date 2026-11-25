@@ -137,6 +137,7 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     assert "composer-actions-group" in app_js and ".composer-actions-group" in styles_css
     assert "composer-mic-btn" in app_js and "composer-speak-btn" in app_js
     assert "Shift+Enter" in app_js and "composerCustomHeight" in app_js
+    assert "data-actions-layout" in app_js and 'data-actions-layout="two-tier"' in styles_css and 'data-actions-layout="stacked"' in styles_css
     btn_block = styles_css.split(".composer-icon-btn {", 1)[1].split("}", 1)[0]
     assert "border:" in btn_block and "transparent" not in btn_block
 

@@ -3583,12 +3583,49 @@ mark.find-hit-mark.active-hit {
 }
 
 .composer-actions-group {
-  display: flex;
+  display: grid;
+  grid-template-columns: 30px 30px 32px;
+  grid-template-areas: "mic speak send";
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
   align-self: flex-end;
   padding-bottom: 1px;
+}
+
+.composer-actions-group[data-actions-layout="two-tier"] {
+  grid-template-columns: 30px 30px;
+  grid-template-areas:
+    "mic speak"
+    "send send";
+  gap: 4px;
+}
+
+.composer-actions-group[data-actions-layout="two-tier"] .ld-send-btn {
+  width: 100%;
+}
+
+.composer-actions-group[data-actions-layout="stacked"] {
+  grid-template-columns: 32px;
+  grid-template-areas:
+    "mic"
+    "speak"
+    "send";
+  gap: 4px;
+}
+
+.composer-actions-group[data-actions-layout="stacked"] .composer-icon-btn,
+.composer-actions-group[data-actions-layout="stacked"] .ld-send-btn {
+  grid-area: send;
+  width: 32px;
+}
+
+.composer-mic-btn {
+  grid-area: mic;
+}
+
+.composer-speak-btn {
+  grid-area: speak;
 }
 
 .composer-icon-btn {
@@ -3626,6 +3663,7 @@ mark.find-hit-mark.active-hit {
 }
 
 .ld-send-btn {
+  grid-area: send;
   width: 32px;
   height: 28px;
   border-radius: 7px;

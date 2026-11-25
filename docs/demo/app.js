@@ -1998,6 +1998,7 @@ const state = {
   deferredPrompt: null,
   composerDraft: '',
   composerCustomHeight: null,
+  composerActionsLayout: 'row',
   sentMessages: {},
   stagedAttachments: {
     'aim-connect': [
@@ -5184,7 +5185,11 @@ function render() {
                       }"
                       autocomplete="off"
                     >${escapeHtml(state.composerDraft || '')}</textarea>
-                    <div class="composer-actions-group">
+                    <div
+                      class="composer-actions-group"
+                      id="composer-actions-group"
+                      data-actions-layout="${state.composerActionsLayout || 'row'}"
+                    >
                       <button
                         type="button"
                         class="composer-icon-btn composer-mic-btn ${state.micEnabled ? 'mic-on' : ''}"
@@ -6929,22 +6934,35 @@ function bindInteractions() {
     };
   }
 
+  const resolveMockActionsLayout = (heightPx, cur = 'row') => {
+    if (heightPx >= 116 || (cur === 'stacked' && heightPx >= 104)) return 'stacked';
+    if (heightPx >= 76 || ((cur === 'two-tier' || cur === 'stacked') && heightPx >= 66)) return 'two-tier';
+    return 'row';
+  };
+
   const syncMockComposerHeight = (el) => {
     if (!el) return;
     const minPx = 34;
     const autoMaxPx = 140;
     const maxPx = 260;
+    let appliedHeight = minPx;
     if (typeof state.composerCustomHeight === 'number' && Number.isFinite(state.composerCustomHeight)) {
       const clamped = Math.max(minPx, Math.min(maxPx, Math.round(state.composerCustomHeight)));
       el.style.height = `${clamped}px`;
       el.style.overflowY = 'auto';
-      return;
+      appliedHeight = clamped;
+    } else {
+      el.style.height = '0px';
+      const measured = el.scrollHeight || minPx;
+      const next = Math.max(minPx, Math.min(autoMaxPx, measured));
+      el.style.height = `${next}px`;
+      el.style.overflowY = measured > autoMaxPx ? 'auto' : 'hidden';
+      appliedHeight = next;
     }
-    el.style.height = '0px';
-    const measured = el.scrollHeight || minPx;
-    const next = Math.max(minPx, Math.min(autoMaxPx, measured));
-    el.style.height = `${next}px`;
-    el.style.overflowY = measured > autoMaxPx ? 'auto' : 'hidden';
+    const nextLayout = resolveMockActionsLayout(appliedHeight, state.composerActionsLayout || 'row');
+    state.composerActionsLayout = nextLayout;
+    const actGroup = document.getElementById('composer-actions-group');
+    if (actGroup) actGroup.dataset.actionsLayout = nextLayout;
   };
 
   const promptInp = document.getElementById('node-input');
