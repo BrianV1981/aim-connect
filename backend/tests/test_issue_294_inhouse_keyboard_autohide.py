@@ -106,6 +106,8 @@ def test_issue_294_inputmode_none_routing_and_settings_autohide_wired():
     assert "keyboardAutoHide" in app_jsx
     assert 'data-kb-dock="true"' in app_jsx
     assert 'data-kb-toggle="true"' in app_jsx
+    assert "showSpawnModal" not in app_jsx and "deleteTarget" not in app_jsx
+    assert "isSpawnModalOpen" in app_jsx and "isDeleteSessionModalOpen" in app_jsx
 
     assert "keyboardAutoHide" in settings_jsx
     assert "aim-kb-autohide" in settings_jsx

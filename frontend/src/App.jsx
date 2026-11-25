@@ -2027,8 +2027,8 @@ function App() {
       showMacroLibrary ||
       showForensics ||
       showTokenGrabber ||
-      showSpawnModal ||
-      deleteTarget ||
+      isSpawnModalOpen ||
+      isDeleteSessionModalOpen ||
       editingShot
     ) {
       setShowKeyboard(false);
@@ -2041,8 +2041,8 @@ function App() {
     showMacroLibrary,
     showForensics,
     showTokenGrabber,
-    showSpawnModal,
-    deleteTarget,
+    isSpawnModalOpen,
+    isDeleteSessionModalOpen,
     editingShot,
   ]);
 
