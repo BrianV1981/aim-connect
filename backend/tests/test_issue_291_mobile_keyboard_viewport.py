@@ -117,3 +117,7 @@ def test_issue_291_mobile_keyboard_viewport_lock_wired():
     assert "--vv-height" in app_css and "--vv-top" in app_css
     assert "data-kb-open" in app_css
     assert "font-size: 16px" in app_css
+
+    home_block = app_css.split(".home-stage {", 1)[1].split("}", 1)[0]
+    assert "safe center" in home_block
+    assert "justify-content: flex-start" in app_css
