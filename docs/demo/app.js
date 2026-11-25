@@ -1913,8 +1913,23 @@ const state = {
   chatScrolledUp: false,
   chatUnseenBelow: false,
 
-  // All SettingsModal.jsx + IntegrationsModal.jsx state
-  settingsTab: 'appearance', // 'appearance' | 'keyboard' | 'voice' | 'integrations' | 'security'
+  // All SettingsModal.jsx + IntegrationsModal.jsx + TMUX & BOOT (#299/#300) state
+  settingsTab: 'appearance', // 'appearance' | 'tmux' | 'keyboard' | 'voice' | 'integrations' | 'security'
+  spawnTab: 'repo',          // 'repo' | 'custom'
+  repoSearch: '',
+  defaultAgent: 'agy',       // 'agy' | 'grok' | 'opencode' | 'codex' | 'shell'
+  autoResumeC: true,
+  skipPermissions: true,
+  autoRestoreOnBoot: true,
+  emptySaveGuardrail: true,
+  showSidebarResurrectBar: true,
+  bootUnitInstalled: true,
+  wslKeepaliveRunning: true,
+  wslIdleConfigured: true,
+  savedSnapshotCount: 14,
+  repoScanPaths: '~/aim-agents\n/mnt/d/projects',
+  tmuxSettingsToast: '',
+  workspaceToast: '',
   termFontSize: 13,
   termPalette: 'match',      // 'match' | 'standard' | 'hacker' | 'contrast'
   editorFontSize: 13,
@@ -3448,6 +3463,7 @@ function renderSettingsModal(sess) {
         <div class="modal-tabs-rail">
           ${[
             ['appearance', 'APPEARANCE & APP'],
+            ['tmux', 'TMUX & BOOT'],
             ['keyboard', 'KEYBOARD & ALERTS'],
             ['voice', 'VOICE & NEURAL TTS'],
             ['integrations', 'INTEGRATIONS VAULT'],
@@ -3621,6 +3637,124 @@ function renderSettingsModal(sess) {
                 </div>
                 <input type="checkbox" data-bool-set="sessionAutoScroll" ${state.sessionAutoScroll ? 'checked' : ''} />
               </label>
+            </div>
+          `
+              : state.settingsTab === 'tmux'
+              ? `
+            ${
+              state.tmuxSettingsToast
+                ? `<div style="padding:8px 12px;border-radius:8px;background:rgba(var(--accent-rgb),0.1);border:1px solid var(--accent);font-family:var(--font-mono);font-size:11.5px;color:var(--accent);">${escapeHtml(state.tmuxSettingsToast)}</div>`
+                : ''
+            }
+            <div class="settings-group-card">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                <div class="settings-group-title">1. DEFAULT AGENT HARNESS, AUTO-RESUME (-C) &amp; PERMISSIONS</div>
+                <button type="button" class="subbar-util-btn" data-act="sync-tmux-conf">
+                  ${ICONS.refresh} <span>SYNC TO ~/.TMUX.CONF</span>
+                </button>
+              </div>
+              <div style="font-size:11.5px;color:var(--text-secondary);">
+                Controls which CLI agent launches when opening a repository or invoking Fast Resume, whether it reopens your last folder conversation (<code>-c</code>), and whether Antigravity bypasses tool approval prompts.
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:5px;">Default Spawn / Fast-Resume CLI</div>
+                <select class="ld-select" id="set-default-agent">
+                  <option value="agy" ${state.defaultAgent === 'agy' ? 'selected' : ''}>Antigravity (agy)</option>
+                  <option value="grok" ${state.defaultAgent === 'grok' ? 'selected' : ''}>Grok CLI (grok)</option>
+                  <option value="opencode" ${state.defaultAgent === 'opencode' ? 'selected' : ''}>OpenCode (opencode)</option>
+                  <option value="codex" ${state.defaultAgent === 'codex' ? 'selected' : ''}>Codex CLI (codex)</option>
+                  <option value="shell" ${state.defaultAgent === 'shell' ? 'selected' : ''}>Bash Shell Only (No Auto-Agent)</option>
+                </select>
+              </div>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Auto-Resume Previous Folder Session (-c)</div>
+                  <div style="font-size:11px;color:var(--text-muted);">Turn OFF when you want newly launched or restored sessions to start a blank conversation</div>
+                </div>
+                <input type="checkbox" data-bool-set="autoResumeC" ${state.autoResumeC ? 'checked' : ''} />
+              </label>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Autonomous Skip-Permissions Mode (--dangerously-skip-permissions)</div>
+                  <div style="font-size:11px;color:var(--text-muted);">Appends <code>--dangerously-skip-permissions</code> when launching <code>agy</code>; turn OFF on untrusted repos</div>
+                </div>
+                <input type="checkbox" data-bool-set="skipPermissions" ${state.skipPermissions ? 'checked' : ''} />
+              </label>
+            </div>
+
+            <div class="settings-group-card">
+              <div class="settings-group-title">2. COLD-BOOT AUTO-RESTORE (TMUX-RESURRECT ON REBOOT)</div>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Auto-Restore Saved Tmux Fleet on OS / WSL Reboot</div>
+                  <div style="font-size:11px;color:var(--text-muted);">When ON, <code>boot-restore.sh</code> reloads your saved snapshot and resumes all agents automatically. Turn OFF for a clean boot that starts only AIM-Connect (<code>:8000</code> + tunnel) without relaunching heavy agents.</div>
+                </div>
+                <input type="checkbox" data-bool-set="autoRestoreOnBoot" ${state.autoRestoreOnBoot ? 'checked' : ''} />
+              </label>
+            </div>
+
+            <div class="settings-group-card">
+              <div class="settings-group-title">3. HEADLESS WSL2 KEEPALIVE &amp; LINUX SYSTEMD BOOT UNIT</div>
+              <div style="font-size:11.5px;color:var(--text-secondary);">
+                Keep WSL2 and <code>tmux</code> awake with zero open Windows Terminal windows, or pause keepalive on battery power so WSL2 can release RAM when idle.
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-top:4px;">
+                <div>
+                  <div style="font-size:12px;font-weight:600;">Linux Cold-Boot Recovery Unit (aim-connect-boot.service)</div>
+                  <div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);">Status: ${state.bootUnitInstalled ? 'INSTALLED ✓' : 'NOT INSTALLED'}</div>
+                </div>
+                <button type="button" class="subbar-util-btn" data-act="toggle-boot-unit">
+                  ${state.bootUnitInstalled ? 'DISABLE BOOT UNIT' : 'ENABLE BOOT UNIT'}
+                </button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--border-hairline);">
+                <div>
+                  <div style="font-size:12px;font-weight:600;">Background Keepalive Handle (sleep infinity)</div>
+                  <div style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);">Handle: ${state.wslKeepaliveRunning ? 'ACTIVE ✓' : 'PAUSED'} · .wslconfig vmIdleTimeout=-1: ${state.wslIdleConfigured ? 'SET ✓' : 'NOT SET'}</div>
+                </div>
+                <button type="button" class="subbar-util-btn" data-act="toggle-wsl-keepalive">
+                  ${state.wslKeepaliveRunning ? 'PAUSE KEEPALIVE' : 'START KEEPALIVE'}
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-group-card">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                <div class="settings-group-title">4. EMPTY-SAVE GUARDRAIL &amp; SIDEBAR WORKSPACE BAR</div>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" class="subbar-util-btn" data-act="save-tmux-state">${ICONS.upload} <span>SAVE NOW</span></button>
+                  <button type="button" class="subbar-util-btn" data-act="restore-tmux-state">${ICONS.refresh} <span>RESTORE -C</span></button>
+                </div>
+              </div>
+              <div style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted);">
+                tmux-resurrect: INSTALLED · Saved Backup: ${state.savedSnapshotCount} sessions · Active: ${state.sessions.length}
+              </div>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Empty-Save Guardrail Confirmation Prompt</div>
+                  <div style="font-size:11px;color:var(--text-muted);">Warn before overwriting a multi-session backup when active session count is 1 or drops by 50%+</div>
+                </div>
+                <input type="checkbox" data-bool-set="emptySaveGuardrail" ${state.emptySaveGuardrail ? 'checked' : ''} />
+              </label>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Show SAVE STATE / RESTORE -C Footer in Fleet Sidebar</div>
+                  <div style="font-size:11px;color:var(--text-muted);">Turn OFF on compact mobile screens to prevent accidental taps (Save/Restore stay in Cmd+K &amp; Settings)</div>
+                </div>
+                <input type="checkbox" data-bool-set="showSidebarResurrectBar" ${state.showSidebarResurrectBar ? 'checked' : ''} />
+              </label>
+            </div>
+
+            <div class="settings-group-card">
+              <div class="settings-group-title">5. GIT REPO LAUNCHER SCAN FOLDERS (~/.aim_dashboard.json)</div>
+              <div style="font-size:11.5px;color:var(--text-secondary);">
+                Your home folder (<code>~</code> up to 2 levels deep) is scanned automatically. Add extra parent folders (one path per line)—shared directly with <code>aim-dash</code>.
+              </div>
+              <textarea id="repo-scan-paths-inp" class="ld-text-input" rows="3" style="font-family:var(--font-mono);font-size:11.5px;resize:vertical;">${escapeHtml(state.repoScanPaths)}</textarea>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <button type="button" class="fav-chip" data-act="preview-guardrail">TEST EMPTY-SAVE GUARDRAIL</button>
+                <button type="button" class="neon-cta-btn" style="height:32px;" data-act="save-scan-paths">${ICONS.folder} <span>SAVE SCAN FOLDERS</span></button>
+              </div>
             </div>
           `
               : state.settingsTab === 'keyboard'
@@ -4162,6 +4296,33 @@ function renderTokenGrabberModal(sess) {
   `;
 }
 
+function showShowcaseToast(msg) {
+  state.workspaceToast = msg || '';
+  render();
+  if (msg) {
+    setTimeout(() => {
+      if (state.workspaceToast === msg) {
+        state.workspaceToast = '';
+        render();
+      }
+    }, 3200);
+  }
+}
+
+function triggerMockSaveWorkspace(force = false) {
+  const activeCnt = state.sessions.length;
+  const savedCnt = state.savedSnapshotCount || 14;
+  const lowState = activeCnt <= 1 || (savedCnt >= 2 && activeCnt * 2 <= savedCnt);
+  if (state.emptySaveGuardrail && lowState && !force) {
+    state.modal = 'resurrect-guard';
+    render();
+    return;
+  }
+  state.savedSnapshotCount = activeCnt;
+  state.modal = null;
+  showShowcaseToast(`Saving ${activeCnt} tmux session(s) via tmux-resurrect...`);
+}
+
 function renderCommandPalette() {
   const q = state.cmdkQuery.trim().toLowerCase();
   const entries = [
@@ -4174,7 +4335,11 @@ function renderCommandPalette() {
         state.unreadSessions = state.unreadSessions.filter((u) => u !== s.name);
       },
     })),
-    { cat: 'SESSIONS', label: '+ Spawn New Isolated Tmux Session...', badge: 'TMUX', run: () => { state.modal = 'spawn-sess'; return true; } },
+    { cat: 'SESSIONS', label: 'Project: Open Local Git Repo... (Active & Offline)', badge: 'REPO · -C', run: () => { state.spawnTab = 'repo'; state.modal = 'spawn-sess'; return true; } },
+    { cat: 'SESSIONS', label: '+ Spawn New Isolated Tmux Session...', badge: 'TMUX', run: () => { state.spawnTab = 'custom'; state.modal = 'spawn-sess'; return true; } },
+    ...(state.activeSession ? [{ cat: 'SESSIONS', label: `Agent: Fast Resume (-c) in ${state.activeSession}`, badge: 'RESUME -C', run: () => { showShowcaseToast(`Resumed ${state.defaultAgent === 'shell' ? 'agy' : state.defaultAgent} -c in ${state.activeSession}`); } }] : []),
+    { cat: 'SESSIONS', label: 'Workspace: Save Tmux State (tmux-resurrect)', badge: 'SAVE STATE', run: () => { triggerMockSaveWorkspace(false); return state.modal === 'resurrect-guard'; } },
+    { cat: 'SESSIONS', label: 'Workspace: Restore Tmux State (tmux-resurrect)', badge: 'RESTORE -C', run: () => { showShowcaseToast('Restoring saved tmux workspace & resuming agents (-c)...'); } },
     { cat: 'JOSHUA ACTIONS', label: 'Open Forensics, SQLite FTS5 & Swarm Feed', badge: 'FORENSICS', run: () => { state.modal = 'forensics'; return true; } },
     { cat: 'JOSHUA ACTIONS', label: 'Open Scrollback Token & URL Grabber', badge: 'GRAB', run: () => { state.modal = 'grab'; return true; } },
     { cat: 'JOSHUA ACTIONS', label: 'Open Session & Reincarnations History Vault', badge: 'HISTORY', run: () => { state.showHistory = true; } },
@@ -4192,6 +4357,7 @@ function renderCommandPalette() {
     })),
     { cat: 'SETTINGS & SECURITY', label: 'Open Macro Studio (Create / Edit / Sync)', badge: `${state.macros.length} MACROS`, run: () => { state.modal = 'macros'; return true; } },
     { cat: 'SETTINGS & SECURITY', label: 'Open Outbound Email Integrations Vault', badge: 'VAULT', run: () => { state.settingsTab = 'integrations'; state.modal = 'settings'; return true; } },
+    { cat: 'SETTINGS & SECURITY', label: 'Open Tmux, Fast-Resume (-c) & WSL Boot Settings', badge: 'TMUX & BOOT', run: () => { state.settingsTab = 'tmux'; state.modal = 'settings'; return true; } },
     { cat: 'SETTINGS & SECURITY', label: 'Open System Settings (Themes, Voice, Passkeys)', badge: 'CONFIG', run: () => { state.modal = 'settings'; return true; } },
     { cat: 'SETTINGS & SECURITY', label: 'Preview 3FA Lock Screen', badge: '3FA', run: () => { state.isLocked = true; } },
   ].filter((e) => !q || `${e.cat} ${e.label} ${e.badge}`.toLowerCase().includes(q));
@@ -4673,6 +4839,9 @@ function render() {
               <div class="rail-header">
                 <span class="rail-kicker">${ICONS.cpu} FLEET // ${String(state.sessions.length).padStart(2, '0')} NODES</span>
                 <div style="display:flex;gap:4px;">
+                  <button class="ghost-btn" style="height:24px;padding:0 7px;" data-act="open-repo-launcher" title="Open local Git repository in tmux (with -c fast resume)">
+                    ${ICONS.gitBranch} REPOS
+                  </button>
                   <button class="ghost-btn" style="height:24px;padding:0 7px;" data-act="open-spawn-sess" title="Spawn New Isolated Tmux Session">
                     ${ICONS.plus} NEW
                   </button>
@@ -4801,6 +4970,20 @@ function render() {
                   })
                   .join('')}
               </div>
+              ${
+                state.showSidebarResurrectBar
+                  ? `
+                <div style="padding:7px 10px;border-top:1px solid var(--border-hairline);display:flex;gap:6px;flex-shrink:0;">
+                  <button type="button" class="ghost-btn" style="flex:1;justify-content:center;height:26px;font-size:10.5px;" data-act="save-tmux-state" title="Snapshot all tmux sessions via tmux-resurrect (Protected by Empty-Save Guardrail)">
+                    ${ICONS.upload} <span>SAVE STATE</span>
+                  </button>
+                  <button type="button" class="ghost-btn" style="flex:1;justify-content:center;height:26px;font-size:10.5px;" data-act="restore-tmux-state" title="Restore saved tmux sessions &amp; resume agents (-c) via tmux-resurrect">
+                    ${ICONS.refresh} <span>RESTORE -C</span>
+                  </button>
+                </div>
+              `
+                  : ''
+              }
             </aside>
           `
               : ''
@@ -5544,32 +5727,142 @@ function render() {
         ${state.modal === 'cmdk' ? renderCommandPalette() : ''}
         ${state.modal === 'shot-markup' ? renderShotMarkupModal() : ''}
 
-        <!-- Spawn New Isolated Session Modal -->
         ${
-          state.modal === 'spawn-sess'
+          state.workspaceToast
+            ? `<div role="status" style="position:fixed;bottom:18px;right:18px;z-index:9600;padding:9px 14px;border-radius:10px;background:rgba(5,10,14,0.94);border:1px solid var(--accent);color:var(--text-primary);font-family:var(--font-mono);font-size:11.5px;box-shadow:0 10px 28px rgba(0,0,0,0.55);max-width:min(420px,90vw);">${escapeHtml(state.workspaceToast)}</div>`
+            : ''
+        }
+
+        ${
+          state.modal === 'resurrect-guard'
             ? `
           <div class="modal-veil" data-act="close-modal">
-            <div class="ld-modal-card" style="padding:22px;" onclick="event.stopPropagation()">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--accent);">+ SPAWN NEW SOVEREIGN NODE</div>
+            <div class="ld-modal-card" style="padding:22px;border-color:rgba(245,158,11,0.55);width:min(480px,94vw);" onclick="event.stopPropagation()">
+              <div style="font-family:var(--font-mono);font-size:14.5px;font-weight:700;color:#fbbf24;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span style="display:inline-flex;align-items:center;gap:8px;">${ICONS.alert} <span>EMPTY-SAVE GUARDRAIL // TMUX-RESURRECT</span></span>
                 <button class="ghost-btn" style="padding:0 6px;" data-act="close-modal">${ICONS.close}</button>
               </div>
-              <form id="spawn-sess-form" style="margin-top:14px;display:flex;flex-direction:column;gap:10px;">
-                <input class="ld-text-input" id="spawn-name-inp" placeholder="Session name (e.g. aim-research)" required />
-                <select class="ld-select" id="spawn-vessel-sel">
-                  <option value="AGY">Antigravity CLI (AGY · 1M Context)</option>
-                  <option value="GROK">Grok CLI (200k Context)</option>
-                  <option value="OC">OpenCode CLI</option>
-                  <option value="SH">Raw Tmux Bash Shell</option>
-                </select>
-                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;">
-                  <button type="button" class="ghost-btn" data-act="close-modal">CANCEL</button>
-                  <button type="submit" class="neon-cta-btn">SPAWN &amp; ATTACH</button>
-                </div>
-              </form>
+              <p style="margin-top:12px;font-size:12.5px;color:var(--text-secondary);line-height:1.6;">
+                Only ${state.sessions.length} active session(s) running compared to ${state.savedSnapshotCount} in your last snapshot. Overwrite saved workspace state?
+              </p>
+              <div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.28);font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);display:flex;justify-content:space-between;">
+                <span>ACTIVE NODES: ${state.sessions.length}</span>
+                <span>LAST BACKUP: ${state.savedSnapshotCount}</span>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+                <button type="button" class="ghost-btn" data-act="close-modal">CANCEL</button>
+                <button type="button" class="neon-cta-btn" style="background:rgba(245,158,11,0.18);border-color:rgba(245,158,11,0.65);color:#fde68a;" data-act="force-save-tmux-state">
+                  ${ICONS.upload} <span>OVERWRITE BACKUP</span>
+                </button>
+              </div>
             </div>
           </div>
         `
+            : ''
+        }
+
+        <!-- Spawn New Isolated Session / Git Repo Launcher Modal (#300) -->
+        ${
+          state.modal === 'spawn-sess'
+            ? (() => {
+                const mockRepos = [
+                  { name: 'aim-auditor', path: '~/aim-agents/aim-auditor', vessel: 'GROK' },
+                  { name: 'aim-connect', path: '~/aim-connect', vessel: 'AGY' },
+                  { name: 'aim-joshua', path: '~/aim-joshua', vessel: 'AGY' },
+                  { name: 'aim-ld', path: '~/aim-ld', vessel: 'AGY' },
+                  { name: 'aim-tmux-dashboard', path: '~/aim-tmux-dashboard', vessel: 'AGY' },
+                  { name: 'aim-cron-dashboard', path: '~/aim-cron-dashboard', vessel: 'AGY' },
+                  { name: 'aim-skill-library', path: '~/aim-skill-library', vessel: 'GROK' },
+                ].map((r) => ({ ...r, active: state.sessions.some((s) => s.name === r.name) }))
+                  .sort((a, b) => (a.active === b.active ? a.name.localeCompare(b.name) : a.active ? -1 : 1));
+                const rq = state.repoSearch.trim().toLowerCase();
+                const visRepos = mockRepos.filter((r) => !rq || `${r.active ? 'active' : 'offline'} ${r.name} ${r.path}`.toLowerCase().includes(rq));
+                return `
+          <div class="modal-veil" data-act="close-modal">
+            <div class="ld-modal-card" style="padding:20px;width:min(520px,94vw);" onclick="event.stopPropagation()">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:8px;">
+                    ${state.spawnTab === 'repo' ? ICONS.gitBranch : ICONS.plus}
+                    <span>${state.spawnTab === 'repo' ? 'GIT PROJECT LAUNCHER' : 'SPAWN ISOLATED TMUX NODE'}</span>
+                  </div>
+                  <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;color:var(--accent);margin-top:3px;">
+                    FAST RESUME (-C) · STRICT ALPHABETICAL FLEET RAIL
+                  </div>
+                </div>
+                <button class="ghost-btn" style="padding:0 6px;" data-act="close-modal">${ICONS.close}</button>
+              </div>
+
+              <div style="display:flex;gap:6px;margin-top:12px;">
+                <button type="button" class="filter-chip ${state.spawnTab === 'repo' ? 'active' : ''}" style="flex:1;justify-content:center;padding:6px 10px;" data-act="spawn-tab-repo">GIT REPOS (${mockRepos.length})</button>
+                <button type="button" class="filter-chip ${state.spawnTab === 'custom' ? 'active' : ''}" style="flex:1;justify-content:center;padding:6px 10px;" data-act="spawn-tab-custom">CUSTOM NODE</button>
+              </div>
+
+              <div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.025);border:1px solid var(--border-hairline);display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-secondary);">AUTO-LAUNCH HARNESS</span>
+                  ${
+                    state.defaultAgent !== 'shell'
+                      ? `<div style="display:flex;gap:10px;align-items:center;font-family:var(--font-mono);font-size:10.5px;">
+                          ${state.defaultAgent === 'agy' ? `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-secondary);"><input type="checkbox" data-bool-set="skipPermissions" ${state.skipPermissions ? 'checked' : ''} /> Skip perms</label>` : ''}
+                          <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--accent);"><input type="checkbox" data-bool-set="autoResumeC" ${state.autoResumeC ? 'checked' : ''} /> Resume (-c)</label>
+                        </div>`
+                      : ''
+                  }
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                  ${[
+                    ['agy', 'AGY (-c)'],
+                    ['grok', 'GROK (-c)'],
+                    ['opencode', 'OPENCODE (-c)'],
+                    ['codex', 'CODEX (-c)'],
+                    ['shell', 'SHELL ONLY'],
+                  ]
+                    .map(
+                      ([id, lbl]) =>
+                        `<button type="button" class="filter-chip ${state.defaultAgent === id ? 'active' : ''}" data-pick-agent="${id}">${id === 'shell' ? lbl : state.autoResumeC ? lbl : id.toUpperCase()}</button>`
+                    )
+                    .join('')}
+                </div>
+              </div>
+
+              ${
+                state.spawnTab === 'repo'
+                  ? `
+                <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                  <input class="ld-text-input" id="repo-launcher-search" placeholder="Filter local Git repositories (active or offline)..." value="${escapeHtml(state.repoSearch)}" />
+                  <div style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;border:1px solid var(--border-hairline);border-radius:8px;padding:6px;">
+                    ${visRepos
+                      .map(
+                        (r) => `
+                      <button type="button" class="pop-item" style="width:100%;justify-content:space-between;gap:8px;" data-launch-repo="${r.name}|${r.path}">
+                        <span style="display:flex;flex-direction:column;align-items:flex-start;text-align:left;">
+                          <span style="font-weight:600;font-size:12px;">${escapeHtml(r.name)}</span>
+                          <span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);">${escapeHtml(r.path)}</span>
+                        </span>
+                        <span class="mono-kbd" style="${r.active ? 'border-color:var(--accent);color:var(--accent);' : ''}">${r.active ? 'ACTIVE · ATTACH' : 'OFFLINE · LAUNCH'}</span>
+                      </button>
+                    `
+                      )
+                      .join('')}
+                  </div>
+                </div>
+              `
+                  : `
+                <form id="spawn-sess-form" style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
+                  <input class="ld-text-input" id="spawn-name-inp" placeholder="Session name (e.g. aim-research)" required />
+                  <input class="ld-text-input" id="spawn-cwd-inp" placeholder="Working directory (optional, e.g. ~/my-project)" />
+                  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+                    <button type="button" class="ghost-btn" data-act="close-modal">CANCEL</button>
+                    <button type="submit" class="neon-cta-btn">SPAWN &amp; ATTACH</button>
+                  </div>
+                </form>
+              `
+              }
+            </div>
+          </div>
+        `;
+              })()
             : ''
         }
 
@@ -6301,6 +6594,62 @@ function bindInteractions() {
   const ttsSel = document.getElementById('set-tts-voice');
   if (ttsSel) ttsSel.onchange = (e) => { state.ttsVoice = e.target.value; };
 
+  const defAgentSel = document.getElementById('set-default-agent');
+  if (defAgentSel) {
+    defAgentSel.onchange = (e) => {
+      state.defaultAgent = e.target.value;
+      state.tmuxSettingsToast = 'SAVED ✓';
+      render();
+      setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 2000);
+    };
+  }
+
+  document.querySelectorAll('[data-pick-agent]').forEach((b) => {
+    b.onclick = () => {
+      state.defaultAgent = b.dataset.pickAgent;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-launch-repo]').forEach((b) => {
+    b.onclick = () => {
+      const [repoName, repoPath] = b.dataset.launchRepo.split('|');
+      const mapVessel = { agy: 'AGY', grok: 'GROK', opencode: 'OC', codex: 'CDX', shell: 'SH' };
+      const vessel = mapVessel[state.defaultAgent] || 'AGY';
+      const resumeCmd = state.defaultAgent === 'shell' ? 'bash' : `${state.defaultAgent}${state.defaultAgent === 'agy' && state.skipPermissions ? ' --dangerously-skip-permissions' : ''}${state.autoResumeC ? ' -c' : ''}`;
+      if (!state.sessions.some((s) => s.name === repoName)) {
+        state.sessions = [
+          {
+            name: repoName,
+            vessel,
+            isAgent: vessel !== 'SH',
+            status: 'IDLE',
+            branch: 'master',
+            isWorktree: false,
+            panes: 1,
+            pct: 8.4,
+            used: '84k',
+            limit: vessel === 'AGY' ? '1M' : '200k',
+            tier: 'normal',
+            compacted: 0,
+            browserTabId: null,
+            color: { hex: '#14b8a6', rgb: '20, 184, 166', label: 'Teal' },
+            preview: `Resumed via ${resumeCmd} in ${repoPath}`,
+            priorTurns: [],
+            userPrompt: `Attached to ${repoPath} (${resumeCmd})`,
+            tools: [`tmux new-session -d -s ${repoName} -c ${repoPath}`, resumeCmd],
+            spoken: `Opened ${repoName} and resumed ${vessel} context.`,
+          },
+          ...state.sessions,
+        ].sort((a, b) => a.name.localeCompare(b.name));
+        showShowcaseToast(`Spawned ${repoName} · ${resumeCmd}`);
+      }
+      state.activeSession = repoName;
+      state.modal = null;
+      render();
+    };
+  });
+
   document.querySelectorAll('[data-act]').forEach((el) => {
     el.onclick = (e) => {
       e.stopPropagation();
@@ -6567,7 +6916,22 @@ function bindInteractions() {
       }
       else if (act === 'open-grab') { state.modal = 'grab'; state.popover = null; }
       else if (act === 'open-forensics') { state.modal = 'forensics'; state.popover = null; }
-      else if (act === 'open-spawn-sess') { state.modal = 'spawn-sess'; state.popover = null; }
+      else if (act === 'open-repo-launcher') { state.spawnTab = 'repo'; state.modal = 'spawn-sess'; state.popover = null; }
+      else if (act === 'open-spawn-sess') { state.spawnTab = 'custom'; state.modal = 'spawn-sess'; state.popover = null; }
+      else if (act === 'spawn-tab-repo') { state.spawnTab = 'repo'; }
+      else if (act === 'spawn-tab-custom') { state.spawnTab = 'custom'; }
+      else if (act === 'save-tmux-state') { triggerMockSaveWorkspace(false); return; }
+      else if (act === 'force-save-tmux-state') { triggerMockSaveWorkspace(true); return; }
+      else if (act === 'preview-guardrail') { state.modal = 'resurrect-guard'; }
+      else if (act === 'restore-tmux-state') { showShowcaseToast('Restoring saved tmux workspace & resuming agents (-c)...'); return; }
+      else if (act === 'toggle-boot-unit') { state.bootUnitInstalled = !state.bootUnitInstalled; state.tmuxSettingsToast = 'HOST UPDATED ✓'; setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 1800); }
+      else if (act === 'toggle-wsl-keepalive') { state.wslKeepaliveRunning = !state.wslKeepaliveRunning; state.tmuxSettingsToast = 'HOST UPDATED ✓'; setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 1800); }
+      else if (act === 'sync-tmux-conf') { state.tmuxSettingsToast = 'SYNCED TO ~/.TMUX.CONF ✓'; setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 2000); }
+      else if (act === 'save-scan-paths') {
+        state.repoScanPaths = document.getElementById('repo-scan-paths-inp')?.value || state.repoScanPaths;
+        state.tmuxSettingsToast = 'SCAN PATHS SYNCED ✓';
+        setTimeout(() => { state.tmuxSettingsToast = ''; render(); }, 2000);
+      }
       else if (act === 'confirm-kill-sess') {
         state.sessions = state.sessions.filter((s) => s.name !== state.sessionToDelete);
         if (state.activeSession === state.sessionToDelete) {
@@ -6762,6 +7126,7 @@ function bindInteractions() {
   bindLiveInput('grab-search-inp', 'grabSearch');
   bindLiveInput('fts-query-inp', 'ftsQuery');
   bindLiveInput('cmdk-search-inp', 'cmdkQuery');
+  bindLiveInput('repo-launcher-search', 'repoSearch');
 
   const scrollSearchEl = document.getElementById('scroll-search-inp');
   if (scrollSearchEl) {
@@ -6877,7 +7242,10 @@ function bindInteractions() {
     spawnForm.onsubmit = (e) => {
       e.preventDefault();
       const name = document.getElementById('spawn-name-inp')?.value.trim().toLowerCase().replace(/\s+/g, '-');
-      const vessel = document.getElementById('spawn-vessel-sel')?.value || 'AGY';
+      const cwd = document.getElementById('spawn-cwd-inp')?.value.trim() || `~/${name}`;
+      const mapVessel = { agy: 'AGY', grok: 'GROK', opencode: 'OC', codex: 'CDX', shell: 'SH' };
+      const vessel = mapVessel[state.defaultAgent] || 'AGY';
+      const resumeCmd = state.defaultAgent === 'shell' ? 'bash' : `${state.defaultAgent}${state.autoResumeC ? ' -c' : ''}`;
       if (!name) return;
       if (!state.sessions.some((s) => s.name === name)) {
         state.sessions = [
@@ -6896,10 +7264,10 @@ function bindInteractions() {
             compacted: 0,
             browserTabId: null,
             color: { hex: '#14b8a6', rgb: '20, 184, 166', label: 'Teal' },
-            preview: 'Fresh sovereign session online',
+            preview: `Launched ${resumeCmd} in ${cwd}`,
             priorTurns: [],
-            userPrompt: `Session ${name} initialized.`,
-            tools: [`tmux new-session -d -s ${name}`],
+            userPrompt: `Session ${name} initialized in ${cwd}.`,
+            tools: [`tmux new-session -d -s ${name} -c ${cwd}`, resumeCmd],
             spoken: `Fresh ${vessel} workspace ${name} is ready for directives.`,
           },
           ...state.sessions,

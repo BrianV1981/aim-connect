@@ -141,6 +141,17 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     btn_block = styles_css.split(".composer-icon-btn {", 1)[1].split("}", 1)[0]
     assert "border:" in btn_block and "transparent" not in btn_block
 
+    # #299 / #300 / #302: TMUX & BOOT 5-card Settings tab, Empty-Save Guardrail, Fast Resume (-c), & Git Repo Launcher
+    assert "TMUX & BOOT" in app_js
+    assert "EMPTY-SAVE GUARDRAIL // TMUX-RESURRECT" in app_js
+    assert "GIT PROJECT LAUNCHER" in app_js
+    assert "Workspace: Save Tmux State" in app_js
+    assert "Workspace: Restore Tmux State" in app_js
+    assert "Agent: Fast Resume (-c)" in app_js
+    assert 'data-act="open-repo-launcher"' in app_js
+    assert 'data-act="save-tmux-state"' in app_js
+    assert 'data-act="restore-tmux-state"' in app_js
+
     proto_dir = DEMO_DIR.parents[1] / "planning-artifacts" / "emerald-matrix-prototype"
     if proto_dir.is_dir():
         for fname in ("index.html", "styles.css", "app.js"):
