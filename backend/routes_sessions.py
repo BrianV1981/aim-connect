@@ -44,6 +44,9 @@ AGY_TOKENS_RE = re.compile(
 SLASH_TOKENS_RE = re.compile(
     r"(\d+(?:\.\d+)?)\s*([kKmM])\s*/\s*(\d+(?:\.\d+)?)\s*([kKmM])"
 )
+OPENCODE_TOKENS_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*([kKmM])\s*\(\s*(\d+(?:\.\d+)?)%\s*\)"
+)
 GENERIC_TOKENS_RE = re.compile(
     r"(\d+(?:,\d{3})+|\d+(?:\.\d+)?\s*[kKmM])\s*(?:tokens|tok|ctx)",
     re.IGNORECASE,
@@ -100,12 +103,15 @@ def compute_30pct_rule_tier(
     return "normal"
 
 
-BORDER_AND_PROMPT_CHARS = "─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬>❯ "
+BORDER_AND_PROMPT_CHARS = "─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬▀▄╹╻>❯ "
 SPOKEN_PREFIX_RE = re.compile(r"^🔊\s*(?:voice\s*:\s*|:\s*)?", re.IGNORECASE)
 
 
 def _is_tui_chrome_line(line: str) -> bool:
     """Return True if a terminal line is a TUI border, prompt, or status bar footer."""
+    raw_s = (line or "").strip()
+    if raw_s.startswith(("▣", "╹", "▀", "╭", "╰")):
+        return True
     stripped = (line or "").strip(BORDER_AND_PROMPT_CHARS)
     if not stripped or len(stripped) <= 2:
         return True
@@ -113,7 +119,9 @@ def _is_tui_chrome_line(line: str) -> bool:
     if (
         "? for shortcuts" in low
         or "ctrl+p commands" in low
+        or "ctrl+x:shortcuts" in low
         or AGY_TOKENS_RE.search(stripped)
+        or OPENCODE_TOKENS_RE.search(stripped)
         or SLASH_TOKENS_RE.search(stripped)
         or BRAILLE_SPINNER_RE.search(stripped)
     ):
@@ -151,12 +159,15 @@ def extract_spoken_summary(raw_text: str, fallback: bool = False) -> str:
         parts = [first_part] if first_part else []
 
         for cont_idx in range(idx + 1, len(raw_lines)):
-            cont_raw = raw_lines[cont_idx].strip("│┃ ")
+            raw_cont_line = raw_lines[cont_idx]
+            if raw_cont_line.lstrip().startswith("┃"):
+                break
+            cont_raw = raw_cont_line.strip("│ ")
             if not cont_raw:
                 continue
             if _is_tui_chrome_line(cont_raw):
                 break
-            if cont_raw.startswith(("🔊", "●", "•", "- ", "* ", "#", "> ", "❯ ")):
+            if cont_raw.startswith(("🔊", "●", "•", "▣", "◆", "◈", "- ", "* ", "#", "> ", "❯ ")):
                 break
             parts.append(cont_raw)
 
@@ -229,16 +240,24 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
     cmd_lower = (command or "").lower()
     sess_lower = (session_name or "").lower()
 
-    # 1. Detect vessel
-    if "agy" in cmd_lower or "antigravity" in cmd_lower or "Gemini " in clean_text or "Ctrl+P commands" in clean_text or AGY_TOKENS_RE.search(clean_text):
+    # 1. Detect vessel — check authoritative pane_current_command FIRST before screen text (#303)
+    if "agy" in cmd_lower or "antigravity" in cmd_lower:
         vessel = "agy"
-    elif "grok" in cmd_lower or "Grok CLI" in clean_text or "xAI" in clean_text:
+    elif "grok" in cmd_lower:
         vessel = "grok"
-    elif "opencode" in cmd_lower or "OpenCode" in clean_text or "opencode" in sess_lower:
+    elif "opencode" in cmd_lower:
         vessel = "opencode"
     elif "codex" in cmd_lower:
         vessel = "codex"
-    elif cmd_lower in ("uvicorn", "python3", "python", "cloudflared", "node", "npm") or sess_lower == "aim-connect-workspace":
+    elif cmd_lower in ("uvicorn", "python3", "python", "cloudflared", "npm") or sess_lower == "aim-connect-workspace":
+        vessel = "service"
+    elif "OpenCode" in clean_text or "ctrl+p commands" in tail_text or OPENCODE_TOKENS_RE.search(tail_text) or "opencode" in sess_lower:
+        vessel = "opencode"
+    elif "Grok CLI" in clean_text or "Grok 4" in tail_text or "xAI" in clean_text:
+        vessel = "grok"
+    elif "Gemini " in clean_text or "Ctrl+P commands" in clean_text or AGY_TOKENS_RE.search(clean_text):
+        vessel = "agy"
+    elif cmd_lower == "node":
         vessel = "service"
     else:
         vessel = "shell"
@@ -265,12 +284,24 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
     # 3. Parse token usage & context saturation
     tokens_used = 0
     tokens_limit = 1_000_000 if vessel == "agy" else 200_000
+    explicit_pct: float | None = None
 
     agy_matches = list(AGY_TOKENS_RE.finditer(clean_text))
+    oc_matches = list(OPENCODE_TOKENS_RE.finditer(clean_text))
     slash_matches = list(SLASH_TOKENS_RE.finditer(clean_text))
     generic_matches = list(GENERIC_TOKENS_RE.finditer(clean_text))
 
-    if agy_matches:
+    if vessel == "opencode" and oc_matches:
+        m = oc_matches[-1]
+        tokens_used = _parse_token_number(m.group(1), m.group(2))
+        try:
+            pct_val = float(m.group(3))
+            if pct_val > 0:
+                explicit_pct = round(pct_val, 1)
+                tokens_limit = max(tokens_used, int(round(tokens_used * 100.0 / pct_val)))
+        except ValueError:
+            pass
+    elif agy_matches:
         m = agy_matches[-1]
         tokens_used = _parse_token_number(m.group(1), m.group(2))
         tokens_limit = 1_000_000
@@ -280,11 +311,17 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
         parsed_limit = _parse_token_number(m.group(3), m.group(4))
         if parsed_limit > 0:
             tokens_limit = parsed_limit
+    elif oc_matches:
+        m = oc_matches[-1]
+        tokens_used = _parse_token_number(m.group(1), m.group(2))
     elif generic_matches:
         m = generic_matches[-1]
         tokens_used = _parse_token_number(m.group(1))
 
-    context_pct = round((tokens_used / tokens_limit) * 100.0, 1) if (tokens_used > 0 and tokens_limit > 0) else 0.0
+    if explicit_pct is not None:
+        context_pct = explicit_pct
+    else:
+        context_pct = round((tokens_used / tokens_limit) * 100.0, 1) if (tokens_used > 0 and tokens_limit > 0) else 0.0
     tier = compute_30pct_rule_tier(context_pct, vessel=vessel, compaction_count=0)
 
     # 4. Extract concise preview line (skip pure border lines)

@@ -316,6 +316,146 @@ def parse_jsonl_transcript(file_path: str, max_turns: int = 80) -> list[dict]:
     return turns[-max_turns:]
 
 
+OPENCODE_URI_PREFIX = "opencode_db://"
+
+
+def _has_transcript_source(source_spec: str) -> bool:
+    if not source_spec:
+        return False
+    if source_spec.startswith(OPENCODE_URI_PREFIX):
+        rest = source_spec[len(OPENCODE_URI_PREFIX):]
+        db_part = rest.split("#", 1)[0]
+        return os.path.isfile(db_part)
+    return os.path.isfile(source_spec)
+
+
+def parse_opencode_db_session(db_path: str, session_id: str, max_turns: int = 80) -> list[dict]:
+    """Parse an OpenCode SQLite session (`opencode.db?mode=ro`) into structured turns (#303)."""
+    turns: list[dict] = []
+    if not db_path or not session_id or not os.path.isfile(db_path):
+        return turns
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
+        try:
+            msg_rows = conn.execute(
+                "SELECT id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created ASC",
+                (session_id,),
+            ).fetchall()
+            part_rows = conn.execute(
+                "SELECT message_id, time_created, data FROM part WHERE session_id = ? ORDER BY time_created ASC",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return turns
+
+    parts_by_msg: dict[str, list[dict]] = {}
+    for msg_id, _, raw_part in part_rows:
+        if not msg_id or not raw_part:
+            continue
+        try:
+            p_obj = json.loads(raw_part) if isinstance(raw_part, str) else {}
+        except Exception:
+            continue
+        if isinstance(p_obj, dict):
+            parts_by_msg.setdefault(str(msg_id), []).append(p_obj)
+
+    for idx, (msg_id, time_created, raw_msg) in enumerate(msg_rows):
+        try:
+            m_obj = json.loads(raw_msg) if isinstance(raw_msg, str) else {}
+        except Exception:
+            m_obj = {}
+        role_raw = str(m_obj.get("role") or "").lower()
+        if role_raw not in ("user", "assistant", "model"):
+            continue
+
+        ts_num = float(time_created or 0)
+        ts_sec = ts_num / 1000.0 if ts_num > 1e11 else ts_num
+        stamp_iso = (
+            time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ts_sec))
+            if ts_sec > 0
+            else ""
+        )
+
+        msg_parts = parts_by_msg.get(str(msg_id), [])
+        text_chunks: list[str] = []
+        reasoning_chunks: list[str] = []
+        tool_calls: list[dict] = []
+
+        for p in msg_parts:
+            ptype = str(p.get("type") or "")
+            if ptype == "text" and p.get("text"):
+                text_chunks.append(str(p["text"]))
+            elif ptype == "reasoning" and p.get("text"):
+                reasoning_chunks.append(str(p["text"]))
+            elif ptype == "tool":
+                t_name = str(p.get("tool") or p.get("name") or "tool")
+                state_obj = p.get("state") if isinstance(p.get("state"), dict) else {}
+                t_input = state_obj.get("input") if isinstance(state_obj, dict) else {}
+                args_str = (
+                    json.dumps(t_input, ensure_ascii=False)[:1200]
+                    if isinstance(t_input, dict)
+                    else str(t_input or "")[:1200]
+                )
+                t_out = str(state_obj.get("output") or state_obj.get("error") or "")[:3000]
+                t_status = str(state_obj.get("status") or "DONE").upper()
+                tool_calls.append(
+                    {
+                        "id": str(p.get("callID") or f"{t_name}-{len(tool_calls)}"),
+                        "name": t_name,
+                        "args": args_str,
+                        "output": t_out,
+                        "status": t_status,
+                    }
+                )
+
+        content_str = "\n\n".join(c.strip() for c in text_chunks if c.strip())
+        thinking_str = "\n\n".join(r.strip() for r in reasoning_chunks if r.strip())
+
+        if role_raw == "user":
+            if not content_str or _is_synthetic_system_user_turn(m_obj, content_str):
+                continue
+            turns.append(
+                {
+                    "step_index": idx,
+                    "role": "user",
+                    "created_at": stamp_iso,
+                    "content": content_str[:MAX_TRANSCRIPT_TURN_CHARS],
+                    "thinking": "",
+                    "tool_calls": [],
+                }
+            )
+        else:
+            if content_str or thinking_str or tool_calls:
+                turns.append(
+                    {
+                        "step_index": idx,
+                        "role": "assistant",
+                        "created_at": stamp_iso,
+                        "content": content_str[:MAX_TRANSCRIPT_TURN_CHARS],
+                        "thinking": thinking_str[:MAX_TRANSCRIPT_THINKING_CHARS],
+                        "tool_calls": tool_calls,
+                    }
+                )
+
+    return turns[-max_turns:]
+
+
+def parse_transcript_source(source_spec: str, max_turns: int = 80) -> list[dict]:
+    """Unified transcript parser supporting JSONL files and OpenCode SQLite URIs (#303)."""
+    if not source_spec:
+        return []
+    if source_spec.startswith(OPENCODE_URI_PREFIX):
+        rest = source_spec[len(OPENCODE_URI_PREFIX):]
+        if "#" not in rest:
+            return []
+        db_path, session_id = rest.split("#", 1)
+        return parse_opencode_db_session(db_path, session_id, max_turns=max_turns)
+    return parse_jsonl_transcript(source_spec, max_turns=max_turns)
+
+
 def parse_scrollback_tool_blocks(scrollback_text: str) -> list[dict]:
     """Parse collapsed TUI tool lines (e.g. '● Bash(pytest -q) (ctrl+o to expand)') from pane scrollback."""
     clean = ANSI_ESCAPE_RE.sub("", scrollback_text or "")
@@ -503,30 +643,49 @@ def _sync_forensics_fts_index(db_path: str) -> None:
 
 @router.get("/api/forensics/{session_name}", dependencies=[Depends(verify_token), Depends(require_admin)])
 def get_session_forensics(session_name: str):
-    """Lazy-loaded on-demand Turn & Tool-Call Inspector for a session (#212)."""
+    """Lazy-loaded on-demand Turn & Tool-Call Inspector for a session (#212, #303)."""
     pane_cwd = _resolve_session_cwd(session=session_name)
     _, main_repo_root = _find_repo_roots(pane_cwd)
 
     chosen_source = ""
     turns: list[dict] = []
 
-    # 1. Check candidate JSONL transcripts referencing this repo/session or most recent
-    candidates = [f for f in _candidate_transcript_files() if f.endswith(".jsonl")]
-    matched_file = None
-    for fpath in candidates:
-        try:
-            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-                sample = f.read(65536)
-            if session_name in sample or main_repo_root in sample:
-                matched_file = fpath
-                break
-        except OSError:
-            continue
+    # 0. Prefer exact session / active-vessel record (AGY, Grok, OpenCode SQLite)
+    preferred_vessel, active_cwd = _detect_active_session_pane_hint(session_name)
+    all_records = _collect_project_history_records()
+    sess_cands = [
+        r
+        for r in all_records
+        if r["session"] == session_name
+        or (active_cwd and r.get("workspace_root") == active_cwd)
+    ]
+    matched_rec = (
+        next((r for r in sess_cands if r["vessel"] == preferred_vessel), None)
+        if preferred_vessel
+        else None
+    ) or (sess_cands[0] if sess_cands else None)
+    if matched_rec and _has_transcript_source(matched_rec["log_path"]):
+        turns = parse_transcript_source(matched_rec["log_path"], max_turns=60)
+        chosen_source = matched_rec["log_path"]
 
-    target_jsonl = matched_file or (candidates[0] if candidates else None)
-    if target_jsonl:
-        turns = parse_jsonl_transcript(target_jsonl, max_turns=60)
-        chosen_source = target_jsonl
+    # 1. Fallback to candidate JSONL transcripts referencing this repo/session
+    if not turns:
+        candidates = [f for f in _candidate_transcript_files() if f.endswith(".jsonl")]
+        matched_file = None
+        for fpath in candidates:
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                    sample = f.read(65536)
+                if session_name in sample or main_repo_root in sample:
+                    matched_file = fpath
+                    break
+            except OSError:
+                continue
+
+        target_jsonl = matched_file or (candidates[0] if candidates else None)
+        if target_jsonl:
+            turns = parse_jsonl_transcript(target_jsonl, max_turns=60)
+            chosen_source = target_jsonl
 
     # 2. Also capture live scrollback tool blocks if JSONL had no turns or to supplement
     if not turns:
@@ -873,6 +1032,106 @@ def _scan_grok_session_records(seen_paths: set[str]) -> list[dict]:
     return records
 
 
+def _scan_opencode_session_records() -> list[dict]:
+    """Scan live & persisted OpenCode SQLite sessions (`opencode.db?mode=ro`) across host and tenant sandboxes (#303)."""
+    records: list[dict] = []
+    oc_dbs: list[tuple[str, str | None]] = []
+
+    host_oc_dir = os.environ.get(
+        "AIM_OPENCODE_DATA_DIR",
+        os.path.join(HOME_DIR, ".local", "share", "opencode"),
+    ).strip()
+    host_db = os.path.join(host_oc_dir, "opencode.db") if host_oc_dir else ""
+    if host_db and os.path.isfile(host_db):
+        oc_dbs.append((os.path.abspath(host_db), None))
+
+    if os.path.isdir(AGENT_WORKSPACES_DIR):
+        for entry in sorted(os.listdir(AGENT_WORKSPACES_DIR)):
+            if not entry.startswith("agent-"):
+                continue
+            tenant_db = os.path.join(AGENT_WORKSPACES_DIR, entry, "opencode_data", "opencode.db")
+            if os.path.isfile(tenant_db):
+                oc_dbs.append((os.path.abspath(tenant_db), entry))
+
+    for abs_db, tenant_session in oc_dbs:
+        try:
+            conn = sqlite3.connect(f"file:{abs_db}?mode=ro", uri=True, timeout=2.0)
+            try:
+                sess_rows = conn.execute(
+                    """
+                    SELECT id, title, directory, time_created, time_updated, tokens_input, tokens_cache_read
+                    FROM session
+                    WHERE parent_id IS NULL
+                    ORDER BY time_updated DESC
+                    LIMIT 200
+                    """
+                ).fetchall()
+                if not sess_rows:
+                    continue
+                sids = [str(r[0]) for r in sess_rows if r[0]]
+                placeholders = ",".join("?" for _ in sids)
+                msg_rows = conn.execute(
+                    f"SELECT session_id, data FROM message WHERE session_id IN ({placeholders})",
+                    sids,
+                ).fetchall()
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            logger.debug(f"OpenCode DB scan skipped for {abs_db}: {exc}")
+            continue
+
+        user_counts: dict[str, int] = {}
+        for sid_val, raw_data in msg_rows:
+            if not raw_data:
+                continue
+            if '"role":"user"' in raw_data or '"role": "user"' in raw_data:
+                user_counts[str(sid_val)] = user_counts.get(str(sid_val), 0) + 1
+
+        for sid, title, directory, time_created, time_updated, tok_in, tok_cache in sess_rows:
+            if not sid:
+                continue
+            sid_str = str(sid)
+            u_cnt = user_counts.get(sid_str, 0)
+            if u_cnt <= 0:
+                continue
+
+            raw_dir = str(directory or "")
+            norm_root = _normalize_workspace_root(raw_dir) if raw_dir else ""
+            if tenant_session:
+                sess_name = tenant_session
+            else:
+                repo_base = os.path.basename(norm_root) if norm_root else "aim-connect"
+                sess_name = REVERSE_WORKSPACE_ALIASES.get(repo_base, repo_base) or "aim-connect"
+
+            ts_raw = float(time_updated or time_created or 0)
+            mtime = ts_raw / 1000.0 if ts_raw > 1e11 else ts_raw
+            when_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime)) if mtime > 0 else "Recorded"
+
+            approx_tok = int(tok_in or 0) + int(tok_cache or 0)
+            tok_display = _format_tok_short(approx_tok, 200_000) if approx_tok > 0 else "OpenCode DB"
+            clean_title = str(title or "").strip() or f"{sess_name} (OpenCode session)"
+
+            records.append(
+                {
+                    "id": sid_str,
+                    "session": sess_name,
+                    "vessel": "OC",
+                    "title": clean_title,
+                    "turns": u_cnt,
+                    "tokens": tok_display,
+                    "compaction_count": 0,
+                    "seal": "BLACKBOX SEALED",
+                    "when": when_str,
+                    "mtime_epoch": mtime,
+                    "sort_key": f"{mtime:020.6f}",
+                    "log_path": f"{OPENCODE_URI_PREFIX}{abs_db}#{sid_str}",
+                    "workspace_root": norm_root,
+                    "is_live_process": False,
+                }
+            )
+    return records
+
+
 def _collect_project_history_records() -> list[dict]:
     """Index multi-generation session history across AGY conversation_summaries.db, Grok ~/.grok/sessions, and vault JSONL (#257, #301)."""
     raw_records: list[dict] = []
@@ -958,8 +1217,9 @@ def _collect_project_history_records() -> list[dict]:
         except Exception as exc:
             logger.debug(f"History DB scan skipped: {exc}")
 
-    # Scan live & persisted Grok CLI sessions (#301)
+    # Scan live & persisted Grok CLI and OpenCode SQLite sessions (#301, #303)
     raw_records.extend(_scan_grok_session_records(seen_paths))
+    raw_records.extend(_scan_opencode_session_records())
 
     # Scan additional vault / forensics JSONL transcripts (Grok, OpenCode, Codex, sealed vaults)
     vault_dirs = []
@@ -1060,7 +1320,7 @@ def get_history_record_turns(record_id: str):
     if not matched:
         raise HTTPException(status_code=404, detail="History record not found.")
 
-    raw_steps = parse_jsonl_transcript(matched["log_path"], max_turns=600)
+    raw_steps = parse_transcript_source(matched["log_path"], max_turns=600)
     paired_turns: list[dict] = []
     pending_op: dict | None = None
 
@@ -1183,6 +1443,7 @@ def _format_concise_tool_pill(tc: dict) -> str:
                 "CommandLine",
                 "command",
                 "Path",
+                "filePath",
                 "target_file",
                 "file_path",
                 "query",
@@ -1234,6 +1495,10 @@ def _detect_active_session_pane_hint(session_name: str) -> tuple[str | None, str
 
     if "grok" in chosen_cmd:
         return "GROK", chosen_cwd
+    if "opencode" in chosen_cmd:
+        return "OC", chosen_cwd
+    if "codex" in chosen_cmd:
+        return "CDX", chosen_cwd
     if "agy" in chosen_cmd or "antigravity" in chosen_cmd:
         return "AGY", chosen_cwd
     return None, chosen_cwd
@@ -1279,8 +1544,8 @@ def get_session_live_turns(session_name: str, limit: int = Query(24)):
     paired: list[dict] = []
     source_label = log_path
 
-    if log_path and os.path.isfile(log_path):
-        raw_steps = parse_jsonl_transcript(log_path, max_turns=240)
+    if log_path and _has_transcript_source(log_path):
+        raw_steps = parse_transcript_source(log_path, max_turns=240)
         pending_user: dict | None = None
         for step in raw_steps:
             if step["role"] == "user":
@@ -1322,7 +1587,7 @@ def get_session_live_turns(session_name: str, limit: int = Query(24)):
                             if len(prev["tools"]) > 16:
                                 prev["tools"] = prev["tools"][-16:]
                     if body:
-                        if vessel == "GROK" and prev["body"] and body not in prev["body"]:
+                        if vessel in ("GROK", "OC") and prev["body"] and body not in prev["body"]:
                             prev["body"] = f"{prev['body']}\n\n{body}"[:MAX_TRANSCRIPT_TURN_CHARS]
                         else:
                             prev["body"] = body
@@ -1351,8 +1616,8 @@ def get_session_live_turns(session_name: str, limit: int = Query(24)):
                 }
             )
 
-    # Fallback to live tmux scrollback only when no structured JSONL transcript file exists (#260, #261)
-    if not paired and not (log_path and os.path.isfile(log_path)):
+    # Fallback to live tmux scrollback only when no structured transcript source exists (#260, #261, #303)
+    if not paired and not _has_transcript_source(log_path):
         cap = subprocess.run(
             ["tmux", "capture-pane", "-t", session_name, "-S", "-400", "-p"],
             capture_output=True,
@@ -1438,23 +1703,37 @@ _BUILTIN_SLASH_COMMANDS: dict[str, list[dict[str, str]]] = {
 
 def _detect_session_vessel(session_name: str, explicit_vessel: str = "") -> str:
     clean_v = (explicit_vessel or "").strip().lower()
+    if clean_v == "oc":
+        return "opencode"
+    if clean_v == "cdx":
+        return "codex"
     if clean_v in _BUILTIN_SLASH_COMMANDS:
         return clean_v
     try:
         panes = subprocess.run(
-            ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_current_command}"],
+            ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_active}\t#{pane_current_command}"],
             capture_output=True,
             text=True,
             timeout=2.0,
         )
-        pane_cmd = (panes.stdout or "").splitlines()[0].strip() if panes.returncode == 0 and panes.stdout.strip() else ""
+        pane_cmd = ""
+        if panes.returncode == 0 and panes.stdout.strip():
+            for ln in panes.stdout.splitlines():
+                parts = ln.split("\t", 1)
+                if len(parts) == 2:
+                    if parts[0] == "1" or not pane_cmd:
+                        pane_cmd = parts[1].strip()
+                        if parts[0] == "1":
+                            break
+                elif not pane_cmd:
+                    pane_cmd = ln.strip()
         cap = subprocess.run(
             ["tmux", "capture-pane", "-t", session_name, "-S", "-40", "-p"],
             capture_output=True,
             text=True,
             timeout=2.0,
         )
-        parsed = parse_pane_telemetry(cap.stdout or "", pane_cmd=pane_cmd, session_name=session_name)
+        parsed = parse_pane_telemetry(cap.stdout or "", command=pane_cmd, session_name=session_name)
         detected = (parsed.get("vessel") or "").lower()
         if detected in _BUILTIN_SLASH_COMMANDS:
             return detected
@@ -1465,22 +1744,45 @@ def _detect_session_vessel(session_name: str, explicit_vessel: str = "") -> str:
 
 def _skill_dirs_for_vessel(vessel: str, cwd_path: str = "") -> list[str]:
     dirs: list[str] = []
+    v = (vessel or "agy").lower()
+    if v == "oc":
+        v = "opencode"
+    elif v == "cdx":
+        v = "codex"
+
+    repo_rels_by_vessel = {
+        "opencode": (".opencode/skills", ".agents/skills"),
+        "grok": (".grok/skills", ".agents/skills"),
+        "codex": (".codex/skills", ".agents/skills"),
+        "agy": (".gemini/skills", ".agents/skills"),
+    }
     if cwd_path and os.path.isdir(cwd_path):
-        for rel in (".gemini/skills", ".grok/skills", ".opencode/skills", ".agents/skills"):
+        for rel in repo_rels_by_vessel.get(v, (".gemini/skills", ".agents/skills")):
             cand = os.path.join(cwd_path, rel)
             if os.path.isdir(cand):
                 dirs.append(cand)
-    v = (vessel or "agy").lower()
+
     if v == "grok":
         dirs.append(os.path.join(HOME_DIR, ".grok", "skills"))
+        dirs.append(os.path.join(HOME_DIR, ".agents", "skills"))
     elif v == "opencode":
         dirs.append(os.path.join(HOME_DIR, ".config", "opencode", "skills"))
         dirs.append(os.path.join(HOME_DIR, ".opencode", "skills"))
+        dirs.append(os.path.join(HOME_DIR, ".agents", "skills"))
+    elif v == "codex":
+        dirs.append(os.path.join(HOME_DIR, ".codex", "skills"))
+        dirs.append(os.path.join(HOME_DIR, ".agents", "skills"))
     else:
         dirs.append(os.path.join(HOME_DIR, ".gemini", "antigravity-cli", "skills"))
         dirs.append(os.path.join(HOME_DIR, ".gemini", "skills"))
         dirs.append(os.path.join(HOME_DIR, ".gemini", "antigravity-cli", "builtin", "skills"))
-    return [d for d in dirs if os.path.isdir(d)]
+        dirs.append(os.path.join(HOME_DIR, ".agents", "skills"))
+
+    deduped: list[str] = []
+    for d in dirs:
+        if os.path.isdir(d) and d not in deduped:
+            deduped.append(d)
+    return deduped
 
 
 def _parse_skill_frontmatter(skill_md_path: str, fallback_name: str) -> tuple[str, str]:
