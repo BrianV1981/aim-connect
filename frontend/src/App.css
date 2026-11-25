@@ -3566,6 +3566,7 @@ mark.find-hit-mark.active-hit {
 
 .ld-prompt-field {
   flex: 1;
+  align-self: stretch;
   min-width: 0;
   background: transparent;
   border: none;

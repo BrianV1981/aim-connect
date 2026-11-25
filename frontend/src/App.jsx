@@ -2169,7 +2169,17 @@ function App() {
     el.style.height = `${layout.heightPx}px`;
     el.style.overflowY = layout.overflowY;
     setComposerActionsLayout((prev) => resolveComposerActionsLayout(layout.heightPx, prev));
-  }, [composerText, voiceInterimText, composerCustomHeight, isListening, agentStageMode]);
+  }, [
+    composerText,
+    voiceInterimText,
+    composerCustomHeight,
+    isListening,
+    agentStageMode,
+    isAuthenticated,
+    activeSession,
+    showHistory,
+    isNativeScrollMode,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -3570,6 +3580,11 @@ function App() {
                       rows={1}
                       inputMode={showKeyboard ? 'none' : undefined}
                       className="ld-prompt-field"
+                      style={
+                        composerCustomHeight !== null
+                          ? { height: `${composerCustomHeight}px` }
+                          : undefined
+                      }
                       placeholder={
                         isListening
                           ? `Listening on mic — speak directive for ${activeSession}...`

@@ -143,8 +143,11 @@ def test_issue_289_multiline_composer_resize_and_bordered_controls_wired():
     assert "composer-mic-btn" in app_jsx
     assert "composer-speak-btn" in app_jsx
     assert "composer-actions-group" in app_jsx
+    assert "isAuthenticated" in app_jsx and "activeSession" in app_jsx
 
     assert ".composer-resize-handle" in app_css
+    prompt_block = app_css.split(".ld-prompt-field {", 1)[1].split("}", 1)[0]
+    assert "align-self: stretch" in prompt_block
     assert ".composer-actions-group" in app_css
     assert 'data-actions-layout="two-tier"' in app_css
     assert 'data-actions-layout="stacked"' in app_css
