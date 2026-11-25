@@ -3616,7 +3616,6 @@ mark.find-hit-mark.active-hit {
 
 .composer-actions-group[data-actions-layout="stacked"] .composer-icon-btn,
 .composer-actions-group[data-actions-layout="stacked"] .ld-send-btn {
-  grid-area: send;
   width: 32px;
 }
 

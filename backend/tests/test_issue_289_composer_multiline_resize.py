@@ -148,6 +148,8 @@ def test_issue_289_multiline_composer_resize_and_bordered_controls_wired():
     assert ".composer-actions-group" in app_css
     assert 'data-actions-layout="two-tier"' in app_css
     assert 'data-actions-layout="stacked"' in app_css
+    stacked_btn_block = app_css.split('.composer-actions-group[data-actions-layout="stacked"] .composer-icon-btn', 1)[1].split("}", 1)[0]
+    assert "grid-area: send" not in stacked_btn_block
     assert ".composer-icon-btn" in app_css
     # Mic & Speaker buttons must have explicit borders (not border: none)
     btn_block = app_css.split(".composer-icon-btn {", 1)[1].split("}", 1)[0]
