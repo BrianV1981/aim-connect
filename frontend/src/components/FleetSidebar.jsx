@@ -69,6 +69,11 @@ export default function FleetSidebar({
   historyCounts = {},
   onSelectSession,
   onCreateSession,
+  onOpenRepoLauncher,
+  onFastResumeSession,
+  onSaveWorkspaceState,
+  onRestoreWorkspaceState,
+  showSidebarResurrectBar = true,
   onKillSession,
   onSendSessionCommand,
 }) {
@@ -150,6 +155,18 @@ export default function FleetSidebar({
           </span>
         </div>
         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+          {onOpenRepoLauncher && (
+            <button
+              type="button"
+              className="ghost-btn"
+              style={{ height: '24px', padding: '0 7px' }}
+              onClick={onOpenRepoLauncher}
+              title="Open local Git repository in tmux (with -c fast resume)"
+            >
+              <Icon name="gitBranch" size={11} />
+              <span>REPOS</span>
+            </button>
+          )}
           <button
             type="button"
             className="ghost-btn"
@@ -468,11 +485,64 @@ export default function FleetSidebar({
                     </button>
                   </div>
                 )}
+
+                {isRawTmux && item.vessel === 'shell' && isActive && onFastResumeSession && (
+                  <div className="fleet-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="fleet-action-btn wiki"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFastResumeSession(item.session_name);
+                      }}
+                      title="Fast-resume previous AI agent conversation (-c) in this session's directory"
+                    >
+                      ▶ RESUME -C
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
         )}
       </div>
+
+      {showSidebarResurrectBar && (onSaveWorkspaceState || onRestoreWorkspaceState) && (
+        <div
+          style={{
+            padding: '7px 10px',
+            borderTop: '1px solid var(--border-hairline)',
+            display: 'flex',
+            gap: '6px',
+            flexShrink: 0,
+          }}
+        >
+          {onSaveWorkspaceState && (
+            <button
+              type="button"
+              className="ghost-btn"
+              style={{ flex: 1, justifyContent: 'center', height: '26px', fontSize: '10.5px' }}
+              onClick={onSaveWorkspaceState}
+              title="Snapshot all tmux sessions via tmux-resurrect (Protected by Empty-Save Guardrail)"
+            >
+              <Icon name="upload" size={11} />
+              <span>SAVE STATE</span>
+            </button>
+          )}
+          {onRestoreWorkspaceState && (
+            <button
+              type="button"
+              className="ghost-btn"
+              style={{ flex: 1, justifyContent: 'center', height: '26px', fontSize: '10.5px' }}
+              onClick={onRestoreWorkspaceState}
+              title="Restore saved tmux sessions & resume agents (-c) via tmux-resurrect"
+            >
+              <Icon name="refresh" size={11} />
+              <span>RESTORE -C</span>
+            </button>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

@@ -22,6 +22,10 @@ export default function CommandPalette({
   macroLibrary = [],
   onSelectSession,
   onCreateSession,
+  onOpenRepoLauncher,
+  onFastResumeSession,
+  onSaveWorkspaceState,
+  onRestoreWorkspaceState,
   onKillSession,
   onSendSessionCommand,
   onSendRawCommand,
@@ -39,6 +43,7 @@ export default function CommandPalette({
   onSpeakSummary,
   onToggleVoiceAutoRead,
   onOpenSettings,
+  onOpenTmuxSettings,
   onOpenIntegrations,
   onSetUiTheme,
   onSetTermTheme,
@@ -83,12 +88,50 @@ export default function CommandPalette({
     });
 
     items.push({
+      id: 'session:repo-launcher',
+      category: 'SESSIONS',
+      label: 'Project: Open Local Git Repo... (Active & Offline)',
+      keywords: 'project open git repo repository launcher folder directory -c continue',
+      badge: 'REPO · -C',
+      action: () => onOpenRepoLauncher?.(),
+    });
+
+    items.push({
       id: 'session:create',
       category: 'SESSIONS',
       label: '+ Spawn New Isolated Tmux Session...',
       keywords: 'new create spawn session tmux',
       badge: 'TMUX',
       action: () => onCreateSession?.(),
+    });
+
+    if (activeSession) {
+      items.push({
+        id: 'session:fast-resume',
+        category: 'SESSIONS',
+        label: `Agent: Fast Resume (-c) in ${activeSession}`,
+        keywords: 'agent fast resume continue -c agy grok opencode codex previous session',
+        badge: 'RESUME -C',
+        action: () => onFastResumeSession?.(activeSession),
+      });
+    }
+
+    items.push({
+      id: 'workspace:save-resurrect',
+      category: 'SESSIONS',
+      label: 'Workspace: Save Tmux State (tmux-resurrect)',
+      keywords: 'workspace save tmux state snapshot backup resurrect guardrail',
+      badge: 'SAVE STATE',
+      action: () => onSaveWorkspaceState?.(),
+    });
+
+    items.push({
+      id: 'workspace:restore-resurrect',
+      category: 'SESSIONS',
+      label: 'Workspace: Restore Tmux State (tmux-resurrect)',
+      keywords: 'workspace restore load tmux state snapshot resurrect cold boot -c',
+      badge: 'RESTORE -C',
+      action: () => onRestoreWorkspaceState?.(),
     });
 
     if (activeSession) {
@@ -332,6 +375,14 @@ export default function CommandPalette({
         action: () => onOpenIntegrations?.(),
       },
       {
+        id: 'ui:tmux-settings',
+        category: 'SETTINGS & THEME',
+        label: 'Open Tmux, Fast-Resume (-c) & WSL Boot Settings',
+        keywords: 'tmux resurrect boot wsl keepalive fast resume -c skip permissions repo scan paths guardrail',
+        badge: 'TMUX & BOOT',
+        action: () => onOpenTmuxSettings?.(),
+      },
+      {
         id: 'ui:settings',
         category: 'SETTINGS & THEME',
         label: 'Open System Settings (Themes, Voice, Passkeys)',
@@ -349,6 +400,10 @@ export default function CommandPalette({
     macroLibrary,
     onSelectSession,
     onCreateSession,
+    onOpenRepoLauncher,
+    onFastResumeSession,
+    onSaveWorkspaceState,
+    onRestoreWorkspaceState,
     onKillSession,
     onSendSessionCommand,
     onSendRawCommand,
@@ -366,6 +421,7 @@ export default function CommandPalette({
     onSpeakSummary,
     onToggleVoiceAutoRead,
     onOpenSettings,
+    onOpenTmuxSettings,
     onOpenIntegrations,
     onSetUiTheme,
     onSetTermTheme,

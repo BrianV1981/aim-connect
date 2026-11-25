@@ -20,6 +20,8 @@ import BrowserPane from './components/BrowserPane';
 import ForensicsModal from './components/ForensicsModal';
 import HistoryVault from './components/HistoryVault';
 import SpawnSessionModal from './components/SpawnSessionModal';
+import ResurrectSaveModal from './components/ResurrectSaveModal';
+import { buildSpawnSessionPayload } from './tmuxWorkspaceUtils';
 import ScrollbackOverlay from './components/ScrollbackOverlay';
 import LiveTranscriptStage from './components/LiveTranscriptStage';
 import TmuxServerStage from './components/TmuxServerStage';
@@ -238,6 +240,31 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyCounts, setHistoryCounts] = useState({});
   const [isSpawnModalOpen, setIsSpawnModalOpen] = useState(false);
+  const [spawnModalTab, setSpawnModalTab] = useState('custom');
+  const [tmuxBootSettings, setTmuxBootSettings] = useState({
+    default_agent: 'agy',
+    auto_resume_c: true,
+    skip_permissions: false,
+    auto_restore_on_boot: true,
+    empty_save_guardrail: true,
+    show_sidebar_resurrect_bar: true,
+    search_paths: [],
+  });
+  const [resurrectConfirmState, setResurrectConfirmState] = useState(null);
+  const [resurrectBusy, setResurrectBusy] = useState(false);
+  const [workspaceToast, setWorkspaceToast] = useState('');
+  const workspaceToastTimerRef = useRef(null);
+  const showWorkspaceToast = useCallback((msg) => {
+    setWorkspaceToast(msg || '');
+    if (workspaceToastTimerRef.current) {
+      clearTimeout(workspaceToastTimerRef.current);
+    }
+    if (msg) {
+      workspaceToastTimerRef.current = setTimeout(() => {
+        setWorkspaceToast('');
+      }, 3600);
+    }
+  }, []);
   const [scrollFocusSearch, setScrollFocusSearch] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [requestedExplorerFile, setRequestedExplorerFile] = useState(null);
@@ -1201,17 +1228,31 @@ function App() {
         if (d && d.counts_by_project) setHistoryCounts(d.counts_by_project);
       })
       .catch(() => {});
+    fetch('/api/tmux/settings')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && d.settings) setTmuxBootSettings(d.settings);
+      })
+      .catch(() => {});
   }, [isAuthenticated]);
 
   const createSession = () => {
+    setSpawnModalTab('custom');
     setIsSpawnModalOpen(true);
   };
 
-  const confirmCreateSession = async (name) => {
+  const openRepoLauncher = () => {
+    setSpawnModalTab('repo');
+    setIsSpawnModalOpen(true);
+  };
+
+  const confirmCreateSession = async (nameOrPayload) => {
+    const payload = buildSpawnSessionPayload(nameOrPayload);
+    const targetName = payload.name;
     const createRes = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(payload),
     });
     const createData = await createRes.json();
     if (!createRes.ok || createData.error) {
@@ -1223,9 +1264,96 @@ function App() {
     setSessions(sorted);
     if (Array.isArray(data.fleet)) setFleet(data.fleet);
     setShowHistory(false);
-    setActiveSession(name);
+    setActiveSession(targetName);
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'switch_session', session: name }));
+      ws.current.send(JSON.stringify({ type: 'switch_session', session: targetName }));
+    }
+    if (createData.launched) {
+      showWorkspaceToast(`Spawned ${targetName} · ${createData.launched}`);
+    }
+  };
+
+  const refreshFleetSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sessions');
+      if (!res.ok) return;
+      const data = await res.json();
+      const sorted = [...(data.sessions || [])].sort((a, b) => a.localeCompare(b));
+      setSessions(sorted);
+      if (Array.isArray(data.fleet)) setFleet(data.fleet);
+    } catch {}
+  }, []);
+
+  const saveTmuxWorkspace = async (force = false) => {
+    setResurrectBusy(true);
+    try {
+      const res = await fetch('/api/tmux/resurrect/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: Boolean(force) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showWorkspaceToast(data.detail || 'tmux-resurrect save failed');
+        return;
+      }
+      if (data.status === 'confirm_required') {
+        setResurrectConfirmState({
+          warningMessage: data.warning_message,
+          activeCount: data.active_session_count ?? 0,
+          savedCount: data.saved_session_count ?? 0,
+        });
+        return;
+      }
+      setResurrectConfirmState(null);
+      showWorkspaceToast(
+        `Saving ${data.active_session_count ?? sessions.length} tmux session(s) via tmux-resurrect...`
+      );
+    } catch {
+      showWorkspaceToast('Failed to save tmux workspace state');
+    } finally {
+      setResurrectBusy(false);
+    }
+  };
+
+  const restoreTmuxWorkspace = async () => {
+    try {
+      const res = await fetch('/api/tmux/resurrect/restore', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        showWorkspaceToast(data.detail || 'tmux-resurrect restore failed');
+        return;
+      }
+      showWorkspaceToast(
+        data.bootstrapped_daemon
+          ? 'Cold-boot tmux daemon started — restoring snapshot & resuming agents (-c)...'
+          : 'Restoring saved tmux workspace & resuming agents (-c)...'
+      );
+      setTimeout(refreshFleetSessions, 2500);
+      setTimeout(refreshFleetSessions, 5800);
+    } catch {
+      showWorkspaceToast('Failed to restore tmux workspace state');
+    }
+  };
+
+  const fastResumeSession = async (targetSession) => {
+    const target = typeof targetSession === 'string' && targetSession ? targetSession : activeSession;
+    if (!target) return;
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(target)}/fast-resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showWorkspaceToast(data.detail || 'Fast resume (-c) failed');
+        return;
+      }
+      showWorkspaceToast(`Resumed ${data.command} in ${target} (${data.mode})`);
+      setTimeout(refreshFleetSessions, 600);
+    } catch {
+      showWorkspaceToast('Fast resume (-c) request failed');
     }
   };
 
@@ -2029,6 +2157,7 @@ function App() {
       showTokenGrabber ||
       isSpawnModalOpen ||
       isDeleteSessionModalOpen ||
+      Boolean(resurrectConfirmState) ||
       editingShot
     ) {
       setShowKeyboard(false);
@@ -2043,6 +2172,7 @@ function App() {
     showTokenGrabber,
     isSpawnModalOpen,
     isDeleteSessionModalOpen,
+    resurrectConfirmState,
     editingShot,
   ]);
 
@@ -2854,6 +2984,11 @@ function App() {
           historyCounts={historyCounts}
           onSelectSession={switchToSession}
           onCreateSession={createSession}
+          onOpenRepoLauncher={openRepoLauncher}
+          onFastResumeSession={fastResumeSession}
+          onSaveWorkspaceState={() => saveTmuxWorkspace(false)}
+          onRestoreWorkspaceState={restoreTmuxWorkspace}
+          showSidebarResurrectBar={tmuxBootSettings.show_sidebar_resurrect_bar !== false}
           onKillSession={killSession}
           onSendSessionCommand={sendSessionCommand}
         />
@@ -4023,13 +4158,53 @@ function App() {
           apiToken={apiTokenRef.current}
           e2eeSecret={e2eeSecret}
           setE2eeSecret={setE2eeSecret}
+          tmuxSettings={tmuxBootSettings}
+          onTmuxSettingsChange={setTmuxBootSettings}
+          onSaveWorkspaceState={() => saveTmuxWorkspace(false)}
+          onRestoreWorkspaceState={restoreTmuxWorkspace}
         />
+      )}
+
+      {workspaceToast && (
+        <div
+          role="status"
+          style={{
+            position: 'fixed',
+            bottom: '18px',
+            right: '18px',
+            zIndex: 9600,
+            padding: '9px 14px',
+            borderRadius: '10px',
+            background: 'rgba(5, 10, 14, 0.94)',
+            border: '1px solid var(--accent)',
+            color: 'var(--text-primary)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '11.5px',
+            boxShadow: '0 10px 28px rgba(0, 0, 0, 0.55)',
+            maxWidth: 'min(420px, 90vw)',
+          }}
+        >
+          {workspaceToast}
+        </div>
       )}
 
       <SpawnSessionModal
         isOpen={isSpawnModalOpen}
+        initialTab={spawnModalTab}
+        defaultTmuxSettings={tmuxBootSettings}
         onClose={() => setIsSpawnModalOpen(false)}
         onConfirm={confirmCreateSession}
+        onSelectExistingSession={switchToSession}
+      />
+
+      <ResurrectSaveModal
+        isOpen={Boolean(resurrectConfirmState)}
+        warningMessage={resurrectConfirmState?.warningMessage}
+        activeCount={resurrectConfirmState?.activeCount || 0}
+        savedCount={resurrectConfirmState?.savedCount || 0}
+        busy={resurrectBusy}
+        onClose={() => setResurrectConfirmState(null)}
+        onConfirmOverwrite={() => saveTmuxWorkspace(true)}
       />
 
       <ShotMarkupModal
@@ -4063,6 +4238,10 @@ function App() {
         macroLibrary={macroLibrary}
         onSelectSession={switchToSession}
         onCreateSession={createSession}
+        onOpenRepoLauncher={openRepoLauncher}
+        onFastResumeSession={fastResumeSession}
+        onSaveWorkspaceState={() => saveTmuxWorkspace(false)}
+        onRestoreWorkspaceState={restoreTmuxWorkspace}
         onKillSession={killSession}
         onSendSessionCommand={sendSessionCommand}
         onSendRawCommand={sendCommand}
@@ -4091,6 +4270,7 @@ function App() {
           });
         }}
         onOpenSettings={() => openSettingsModal('appearance')}
+        onOpenTmuxSettings={() => openSettingsModal('tmux')}
         onOpenIntegrations={() => openSettingsModal('integrations')}
         onSetUiTheme={setTheme}
         onSetTermTheme={(newTheme) => {

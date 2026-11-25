@@ -19,6 +19,7 @@ from main import (
     ENABLE_E2EE, E2EE_SECRET, HOME_DIR
 )
 from ws_handler import is_single_slash_command, pane_still_holds_slash_command
+import tmux_workspace_manager as twm
 import asyncio
 
 router = APIRouter()
@@ -1154,6 +1155,33 @@ def send_session_command(name: str, req: SessionCommandRequest) -> dict:
 
 class SessionRequest(BaseModel):
     name: str
+    cwd: str | None = None
+    agent: str | None = None
+    resume: bool | None = None
+    skip_permissions: bool | None = None
+
+
+class ResurrectSaveRequest(BaseModel):
+    force: bool = False
+
+
+class FastResumeRequest(BaseModel):
+    agent: str | None = None
+
+
+class TmuxBootSettingsUpdateRequest(BaseModel):
+    default_agent: str | None = None
+    auto_resume_c: bool | None = None
+    skip_permissions: bool | None = None
+    auto_restore_on_boot: bool | None = None
+    empty_save_guardrail: bool | None = None
+    show_sidebar_resurrect_bar: bool | None = None
+    search_paths: list[str] | None = None
+    sync_tmux_conf: bool = False
+
+
+class HostBootControlRequest(BaseModel):
+    action: str
 
 class E2EESettingsRequest(BaseModel):
     secret: str
@@ -1198,15 +1226,131 @@ def update_e2ee_settings(req: E2EESettingsRequest):
 
 @router.post("/api/sessions", dependencies=[Depends(verify_token), Depends(require_admin)])
 def create_session(req: SessionRequest) -> dict:
-    """Spawns a new detached tmux session and enables global mouse support."""
+    """Spawns a new detached tmux session (optionally rooted in cwd and launching/resuming an AI agent -c) and enables mouse support (#300)."""
     if not SESSION_NAME_RE.match(req.name):
         raise HTTPException(status_code=400, detail="Invalid session name. Use only letters, numbers, hyphens, underscores (max 64 chars).")
 
-    result = subprocess.run(["tmux", "new-session", "-d", "-s", req.name], capture_output=True, text=True)
+    resolved_cwd: str | None = None
+    if req.cwd and req.cwd.strip():
+        expanded = os.path.realpath(os.path.expanduser(req.cwd.strip()))
+        if not os.path.isdir(expanded):
+            raise HTTPException(status_code=400, detail=f"Working directory does not exist: {req.cwd}")
+        resolved_cwd = expanded
+
+    launch_cmd = ""
+    if req.agent and req.agent.strip():
+        prefs = twm.load_tmux_settings()
+        use_resume = prefs.get("auto_resume_c", True) if req.resume is None else bool(req.resume)
+        use_skip = prefs.get("skip_permissions", False) if req.skip_permissions is None else bool(req.skip_permissions)
+        try:
+            launch_cmd = twm.build_agent_launch_command(
+                req.agent,
+                resume=use_resume,
+                skip_permissions=use_skip,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    tmux_cmd = ["tmux", "new-session", "-d", "-s", req.name]
+    if resolved_cwd:
+        tmux_cmd.extend(["-c", resolved_cwd])
+
+    result = subprocess.run(tmux_cmd, capture_output=True, text=True)
     if result.returncode == 0:
         subprocess.run(["tmux", "set-option", "-g", "mouse", "on"])
-        return {"status": "success"}
+        if launch_cmd:
+            subprocess.run(["tmux", "send-keys", "-t", req.name, launch_cmd, "Enter"], capture_output=True, text=True)
+        return {
+            "status": "success",
+            "session": req.name,
+            "cwd": resolved_cwd,
+            "launched": launch_cmd,
+        }
     return {"error": result.stderr}
+
+
+@router.get("/api/tmux/resurrect/status", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_tmux_resurrect_status() -> dict:
+    """Return tmux-resurrect installation status, snapshot session count, and Empty-Save Guardrail status (#300)."""
+    return twm.get_resurrect_status()
+
+
+@router.post("/api/tmux/resurrect/save", dependencies=[Depends(verify_token), Depends(require_admin)])
+def save_tmux_resurrect_state(req: ResurrectSaveRequest) -> dict:
+    """Save tmux workspace state via tmux-resurrect with #47 Empty-Save Guardrail protection (#300)."""
+    try:
+        return twm.save_tmux_workspace(force=req.force)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/api/tmux/resurrect/restore", dependencies=[Depends(verify_token), Depends(require_admin)])
+def restore_tmux_resurrect_state() -> dict:
+    """Restore tmux workspace state via tmux-resurrect with #37 dead-daemon aim_restore_tmp bootstrap (#300)."""
+    try:
+        return twm.restore_tmux_workspace()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/api/sessions/{name}/fast-resume", dependencies=[Depends(verify_token), Depends(require_admin)])
+def fast_resume_session(name: str, req: FastResumeRequest) -> dict:
+    """Fast-resume (-c) localized AI agent in an idle shell pane or shell-backed window (#300)."""
+    if not SESSION_NAME_RE.match(name):
+        raise HTTPException(status_code=400, detail="Invalid session name.")
+    try:
+        return twm.fast_resume_session_agent(name, requested_agent=req.agent)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Fast resume failed: {exc}")
+
+
+@router.get("/api/projects/repos", dependencies=[Depends(verify_token), Depends(require_admin)])
+def list_local_git_repos() -> dict:
+    """Discover local Git repositories (depth 2) and annotate active vs offline tmux sessions (#300)."""
+    return {"repos": twm.discover_git_repos()}
+
+
+@router.get("/api/tmux/settings", dependencies=[Depends(verify_token), Depends(require_admin)])
+def get_tmux_boot_settings() -> dict:
+    """Return persistent TMUX & BOOT settings, resurrect status, and host WSL/systemd health (#300)."""
+    return {
+        "settings": twm.load_tmux_settings(),
+        "resurrect": twm.get_resurrect_status(),
+        "host_status": twm.get_host_boot_and_wsl_status(),
+    }
+
+
+@router.put("/api/tmux/settings", dependencies=[Depends(verify_token), Depends(require_admin)])
+def update_tmux_boot_settings(req: TmuxBootSettingsUpdateRequest) -> dict:
+    """Update persistent TMUX & BOOT settings and optionally sync ~/.tmux.conf @resurrect-processes (#300)."""
+    patch_dict = req.model_dump(exclude={"sync_tmux_conf"}, exclude_none=True)
+    try:
+        saved = twm.save_tmux_settings(patch_dict, sync_tmux_conf=req.sync_tmux_conf)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "status": "saved",
+        "settings": saved,
+        "resurrect": twm.get_resurrect_status(),
+        "host_status": twm.get_host_boot_and_wsl_status(),
+    }
+
+
+@router.post("/api/tmux/host-control", dependencies=[Depends(verify_token), Depends(require_admin)])
+def control_tmux_host_boot(req: HostBootControlRequest) -> dict:
+    """Install/remove Linux systemd boot-restore unit or start/stop WSL keepalive process (#299, #300)."""
+    from pathlib import Path
+
+    try:
+        return twm.execute_host_boot_control(req.action, Path(AIM_CONNECT_ROOT))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 @router.delete("/api/sessions/{name}", dependencies=[Depends(verify_token), Depends(require_admin)])
 def kill_session(name: str, delete_workspace: bool = False):

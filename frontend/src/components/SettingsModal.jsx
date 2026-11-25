@@ -80,6 +80,10 @@ export default function SettingsModal({
   apiToken,
   e2eeSecret,
   setE2eeSecret,
+  tmuxSettings = null,
+  onTmuxSettingsChange,
+  onSaveWorkspaceState,
+  onRestoreWorkspaceState,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'appearance');
   const [registerStatus, setRegisterStatus] = useState('');
@@ -87,6 +91,24 @@ export default function SettingsModal({
   const [localE2eeSecret, setLocalE2eeSecret] = useState(e2eeSecret || '');
   const [e2eeStatus, setE2eeStatus] = useState('');
   const [pwaHint, setPwaHint] = useState('');
+
+  // Tmux & Boot Persistence settings (#300)
+  const [localTmuxCfg, setLocalTmuxCfg] = useState(() => ({
+    default_agent: tmuxSettings?.default_agent || 'agy',
+    auto_resume_c: tmuxSettings?.auto_resume_c !== false,
+    skip_permissions: Boolean(tmuxSettings?.skip_permissions),
+    auto_restore_on_boot: tmuxSettings?.auto_restore_on_boot !== false,
+    empty_save_guardrail: tmuxSettings?.empty_save_guardrail !== false,
+    show_sidebar_resurrect_bar: tmuxSettings?.show_sidebar_resurrect_bar !== false,
+    search_paths: Array.isArray(tmuxSettings?.search_paths) ? tmuxSettings.search_paths : [],
+  }));
+  const [searchPathsText, setSearchPathsText] = useState(() =>
+    Array.isArray(tmuxSettings?.search_paths) ? tmuxSettings.search_paths.join('\n') : ''
+  );
+  const [resurrectMeta, setResurrectMeta] = useState(null);
+  const [hostBootStatus, setHostBootStatus] = useState(null);
+  const [tmuxCfgStatus, setTmuxCfgStatus] = useState('');
+  const [hostActionBusy, setHostActionBusy] = useState(false);
 
   // Integrations Vault state (consolidating IntegrationsModal)
   const targetVaultSession = activeSession || 'aim-connect';
@@ -98,6 +120,82 @@ export default function SettingsModal({
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'tmux') return;
+    fetch('/api/tmux/settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        if (data.settings) {
+          setLocalTmuxCfg(data.settings);
+          setSearchPathsText((data.settings.search_paths || []).join('\n'));
+          onTmuxSettingsChange?.(data.settings);
+        }
+        if (data.resurrect) setResurrectMeta(data.resurrect);
+        if (data.host_status) setHostBootStatus(data.host_status);
+      })
+      .catch(() => {});
+  }, [activeTab, onTmuxSettingsChange]);
+
+  const persistTmuxSettingsPatch = async (patch, syncTmuxConf = false, toastLabel = 'SAVED ✓') => {
+    const optimistic = { ...localTmuxCfg, ...patch };
+    setLocalTmuxCfg(optimistic);
+    onTmuxSettingsChange?.(optimistic);
+    try {
+      const res = await fetch('/api/tmux/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...patch, sync_tmux_conf: Boolean(syncTmuxConf) }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.settings) {
+          setLocalTmuxCfg(data.settings);
+          onTmuxSettingsChange?.(data.settings);
+        }
+        if (data.resurrect) setResurrectMeta(data.resurrect);
+        if (data.host_status) setHostBootStatus(data.host_status);
+        setTmuxCfgStatus(toastLabel);
+      } else {
+        setTmuxCfgStatus('Save failed');
+      }
+    } catch {
+      setTmuxCfgStatus('Network error');
+    }
+    setTimeout(() => setTmuxCfgStatus(''), 2600);
+  };
+
+  const handleSaveScanPaths = () => {
+    const parsed = searchPathsText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    persistTmuxSettingsPatch({ search_paths: parsed }, false, 'SCAN PATHS SYNCED ✓');
+  };
+
+  const handleHostControl = async (action) => {
+    setHostActionBusy(true);
+    try {
+      const res = await fetch('/api/tmux/host-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (res.ok && data.host_status) {
+        setHostBootStatus(data.host_status);
+        setTmuxCfgStatus('HOST UPDATED ✓');
+      } else {
+        setTmuxCfgStatus(data.detail || 'Host control failed');
+      }
+    } catch {
+      setTmuxCfgStatus('Host control request failed');
+    } finally {
+      setHostActionBusy(false);
+      setTimeout(() => setTmuxCfgStatus(''), 2600);
+    }
+  };
 
   useEffect(() => {
     if (activeTab !== 'integrations' || !targetVaultSession) return;
@@ -221,6 +319,7 @@ export default function SettingsModal({
         <div className="modal-tabs-rail">
           {[
             ['appearance', 'APPEARANCE & APP'],
+            ['tmux', 'TMUX & BOOT'],
             ['keyboard', 'KEYBOARD & ALERTS'],
             ['voice', 'VOICE & NEURAL TTS'],
             ['integrations', 'INTEGRATIONS VAULT'],
@@ -640,6 +739,232 @@ export default function SettingsModal({
                       <option value="global">Global (Follow Me)</option>
                     </select>
                   </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'tmux' && (
+            <>
+              {tmuxCfgStatus && (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(var(--accent-rgb), 0.1)',
+                    border: '1px solid var(--accent)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11.5px',
+                    color: 'var(--accent)',
+                  }}
+                >
+                  {tmuxCfgStatus}
+                </div>
+              )}
+
+              <div className="settings-group-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div className="settings-group-title">1. DEFAULT AGENT HARNESS, AUTO-RESUME (-C) &amp; PERMISSIONS</div>
+                  <button
+                    type="button"
+                    className="subbar-util-btn"
+                    onClick={() => persistTmuxSettingsPatch({}, true, 'SYNCED TO ~/.TMUX.CONF ✓')}
+                    title="Write matching @resurrect-processes (-c) translation rules to ~/.tmux.conf"
+                  >
+                    <Icon name="refresh" size={11} />
+                    <span>SYNC TO ~/.TMUX.CONF</span>
+                  </button>
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  Controls which CLI agent launches when opening a repository or invoking Fast Resume, whether it reopens your last folder conversation (<code>-c</code>), and whether Antigravity bypasses tool approval prompts.
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Default Spawn / Fast-Resume CLI</div>
+                  <select
+                    className="ld-select"
+                    value={localTmuxCfg.default_agent || 'agy'}
+                    onChange={(e) => persistTmuxSettingsPatch({ default_agent: e.target.value })}
+                  >
+                    <option value="agy">Antigravity (agy)</option>
+                    <option value="grok">Grok CLI (grok)</option>
+                    <option value="opencode">OpenCode (opencode)</option>
+                    <option value="codex">Codex CLI (codex)</option>
+                    <option value="shell">Bash Shell Only (No Auto-Agent)</option>
+                  </select>
+                </div>
+                <label className="setting-check-row">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Auto-Resume Previous Folder Session (-c)</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Turn OFF when you want newly launched or restored sessions to start a blank conversation
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(localTmuxCfg.auto_resume_c)}
+                    onChange={(e) => persistTmuxSettingsPatch({ auto_resume_c: e.target.checked })}
+                  />
+                </label>
+                <label className="setting-check-row">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Autonomous Skip-Permissions Mode (--dangerously-skip-permissions)</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Appends <code>--dangerously-skip-permissions</code> when launching <code>agy</code>; turn OFF on untrusted repos
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(localTmuxCfg.skip_permissions)}
+                    onChange={(e) => persistTmuxSettingsPatch({ skip_permissions: e.target.checked })}
+                  />
+                </label>
+              </div>
+
+              <div className="settings-group-card">
+                <div className="settings-group-title">2. COLD-BOOT AUTO-RESTORE (TMUX-RESURRECT ON REBOOT)</div>
+                <label className="setting-check-row">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Auto-Restore Saved Tmux Fleet on OS / WSL Reboot</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      When ON, <code>boot-restore.sh</code> reloads your saved snapshot and resumes all agents automatically. Turn OFF for a clean boot that starts only AIM-Connect (<code>:8000</code> + tunnel) without relaunching heavy agents.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(localTmuxCfg.auto_restore_on_boot)}
+                    onChange={(e) => persistTmuxSettingsPatch({ auto_restore_on_boot: e.target.checked })}
+                  />
+                </label>
+              </div>
+
+              <div className="settings-group-card">
+                <div className="settings-group-title">3. HEADLESS WSL2 KEEPALIVE &amp; LINUX SYSTEMD BOOT UNIT</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  Keep WSL2 and <code>tmux</code> awake with zero open Windows Terminal windows, or pause keepalive on battery power so WSL2 can release RAM when idle.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>Linux Cold-Boot Recovery Unit (aim-connect-boot.service)</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        Status: {hostBootStatus?.systemd_boot_unit_installed ? 'INSTALLED ✓' : 'NOT INSTALLED'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="subbar-util-btn"
+                      disabled={hostActionBusy}
+                      onClick={() =>
+                        handleHostControl(
+                          hostBootStatus?.systemd_boot_unit_installed ? 'uninstall_boot_unit' : 'install_boot_unit'
+                        )
+                      }
+                    >
+                      {hostBootStatus?.systemd_boot_unit_installed ? 'DISABLE BOOT UNIT' : 'ENABLE BOOT UNIT'}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>Background Keepalive Handle (sleep infinity)</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        Handle: {hostBootStatus?.wsl_keepalive_running ? 'ACTIVE ✓' : 'PAUSED'} · .wslconfig vmIdleTimeout=-1:{' '}
+                        {hostBootStatus?.wsl_idle_timeout_configured ? 'SET ✓' : 'NOT SET'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="subbar-util-btn"
+                      disabled={hostActionBusy}
+                      onClick={() =>
+                        handleHostControl(
+                          hostBootStatus?.wsl_keepalive_running ? 'stop_keepalive' : 'start_keepalive'
+                        )
+                      }
+                    >
+                      {hostBootStatus?.wsl_keepalive_running ? 'PAUSE KEEPALIVE' : 'START KEEPALIVE'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="settings-group-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div className="settings-group-title">4. EMPTY-SAVE GUARDRAIL &amp; SIDEBAR WORKSPACE BAR</div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="subbar-util-btn"
+                      onClick={() => onSaveWorkspaceState?.()}
+                    >
+                      <Icon name="upload" size={11} />
+                      <span>SAVE NOW</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="subbar-util-btn"
+                      onClick={() => onRestoreWorkspaceState?.()}
+                    >
+                      <Icon name="refresh" size={11} />
+                      <span>RESTORE -C</span>
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  {resurrectMeta
+                    ? `tmux-resurrect: ${resurrectMeta.installed ? 'INSTALLED' : 'MISSING'} · Saved Backup: ${resurrectMeta.saved_session_count} sessions · Active: ${resurrectMeta.active_session_count}${
+                        resurrectMeta.last_saved_at
+                          ? ` · ${new Date(resurrectMeta.last_saved_at * 1000).toLocaleString()}`
+                          : ''
+                      }`
+                    : 'Inspecting tmux-resurrect snapshot state...'}
+                </div>
+                <label className="setting-check-row">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Empty-Save Guardrail Confirmation Prompt</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Warn before overwriting a multi-session backup when active session count is 1 or drops by 50%+
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(localTmuxCfg.empty_save_guardrail)}
+                    onChange={(e) => persistTmuxSettingsPatch({ empty_save_guardrail: e.target.checked })}
+                  />
+                </label>
+                <label className="setting-check-row">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Show SAVE STATE / RESTORE -C Footer in Fleet Sidebar</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Turn OFF on compact mobile screens to prevent accidental taps (Save/Restore stay in Cmd+K &amp; Settings)
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(localTmuxCfg.show_sidebar_resurrect_bar)}
+                    onChange={(e) => persistTmuxSettingsPatch({ show_sidebar_resurrect_bar: e.target.checked })}
+                  />
+                </label>
+              </div>
+
+              <div className="settings-group-card">
+                <div className="settings-group-title">5. GIT REPO LAUNCHER SCAN FOLDERS (~/.aim_dashboard.json)</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  Your home folder (<code>~</code> up to 2 levels deep) is scanned automatically. Add extra parent folders (one path per line, e.g. <code>/mnt/d/projects</code>)—shared directly with <code>aim-dash</code>.
+                </div>
+                <textarea
+                  className="ld-text-input"
+                  rows={3}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', resize: 'vertical' }}
+                  placeholder="/mnt/d/projects&#10;~/work/clients"
+                  value={searchPathsText}
+                  onChange={(e) => setSearchPathsText(e.target.value)}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" className="neon-cta-btn" style={{ height: '32px' }} onClick={handleSaveScanPaths}>
+                    <Icon name="folder" size={12} />
+                    <span>SAVE SCAN FOLDERS</span>
+                  </button>
                 </div>
               </div>
             </>
