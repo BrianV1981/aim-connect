@@ -42,15 +42,12 @@ def test_issue_279_280_mobile_no_split_and_header_declutter_contracts():
     assert ".files-breadcrumb-actions" in css
 
 
+from tests.headless_cdp_helper import find_working_chromium_binary, launch_headless_cdp_page
+
+
 def test_live_mobile_390px_geometry_zero_overlap_and_hidden_redundant_buttons():
     """#279, #280: Render App.css at 390x844 in real headless Chromium and prove 0px overlaps + hidden redundant mobile buttons."""
-    binary = (
-        shutil.which("chromium")
-        or shutil.which("chromium-browser")
-        or shutil.which("google-chrome")
-        or shutil.which("google-chrome-stable")
-    )
-    if not binary:
+    if not find_working_chromium_binary():
         pytest.skip("Chromium binary not installed on test runner")
 
     css_text = APP_CSS.read_text(encoding="utf-8")
@@ -164,45 +161,10 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
 </html>
 """
 
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-
-    tmp_dir = tempfile.mkdtemp(prefix="aim_issue280_geom_")
-
-    proc = subprocess.Popen(
-        [
-            binary,
-            "--headless=new",
-            "--no-sandbox",
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "--remote-debugging-address=127.0.0.1",
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={tmp_dir}",
-            "--window-size=390,844",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "about:blank",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        targets = None
-        for _ in range(50):
-            try:
-                raw = urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=0.5).read()
-                parsed = json.loads(raw)
-                if any(t.get("type") == "page" for t in parsed):
-                    targets = parsed
-                    break
-            except Exception:
-                time.sleep(0.1)
-        assert targets, "Headless Chromium did not expose page target"
-        ws_url = [t["webSocketDebuggerUrl"] for t in targets if t.get("type") == "page"][0]
-
+    with launch_headless_cdp_page(
+        prefix="aim_issue280_geom_",
+        extra_args=["--window-size=390,844"],
+    ) as ws_url:
         import asyncio
 
         async def _measure():
@@ -281,10 +243,3 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 844px; overflow: hidd
         assert geom["bcRefOn"]["right"] <= 390.5, geom
         assert geom["bcDiffOff"]["right"] <= 390.5, geom
         assert geom["browserPane"]["width"] >= 388, geom
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except Exception:
-            proc.kill()
-        shutil.rmtree(tmp_dir, ignore_errors=True)

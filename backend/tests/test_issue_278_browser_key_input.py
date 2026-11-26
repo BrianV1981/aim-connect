@@ -171,15 +171,12 @@ def test_backend_normalize_cdp_key_params_heals_stale_ascii_punctuation():
     assert "text" not in true_delete
 
 
+from tests.headless_cdp_helper import find_working_chromium_binary, launch_headless_cdp_page
+
+
 def test_live_headless_chromium_email_typing_and_midword_period_edit():
     """#278: End-to-end empirical proof against real headless Chromium typing brianv1981@gmail.com and mid-word '.'."""
-    binary = (
-        shutil.which("chromium")
-        or shutil.which("chromium-browser")
-        or shutil.which("google-chrome")
-        or shutil.which("google-chrome-stable")
-    )
-    if not binary:
+    if not find_working_chromium_binary():
         pytest.skip("Chromium binary not installed on test runner")
 
     node_Keygen = f"""
@@ -227,43 +224,7 @@ console.log(JSON.stringify({{
     assert gen_proc.returncode == 0, gen_proc.stderr
     generated = json.loads(gen_proc.stdout.strip())
 
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-
-    tmp_dir = tempfile.mkdtemp(prefix="aim_issue278_cdp_")
-    proc = subprocess.Popen(
-        [
-            binary,
-            "--headless=new",
-            "--no-sandbox",
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "--remote-debugging-address=127.0.0.1",
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={tmp_dir}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "about:blank",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        targets = None
-        for _ in range(50):
-            try:
-                raw = urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=0.5).read()
-                parsed = json.loads(raw)
-                if any(t.get("type") == "page" for t in parsed):
-                    targets = parsed
-                    break
-            except Exception:
-                time.sleep(0.1)
-        assert targets, "Headless Chromium did not expose page target"
-        ws_url = [t["webSocketDebuggerUrl"] for t in targets if t.get("type") == "page"][0]
-
+    with launch_headless_cdp_page(prefix="aim_issue278_cdp_") as ws_url:
         async def _drive():
             async with websockets.connect(ws_url) as ws:
                 cid = 0
@@ -334,10 +295,3 @@ console.log(JSON.stringify({{
                 assert full_val["result"]["value"] == generated["fullSample"]
 
         asyncio.run(_drive())
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except Exception:
-            proc.kill()
-        shutil.rmtree(tmp_dir, ignore_errors=True)

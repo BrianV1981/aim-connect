@@ -78,6 +78,9 @@ console.log(JSON.stringify({{
     assert out["preservedRef"] is True
 
 
+from tests.headless_cdp_helper import find_working_chromium_binary, launch_headless_cdp_page
+
+
 def test_fleet_sidebar_thinking_and_new_pills_fit_280px_without_overlap():
     """#281: Verify FleetSidebar.jsx wires THINKING & NEW pills and fits cleanly inside 280px width in headless Chromium."""
     sidebar_jsx = FLEET_SIDEBAR_JSX.read_text(encoding="utf-8")
@@ -88,13 +91,7 @@ def test_fleet_sidebar_thinking_and_new_pills_fit_280px_without_overlap():
     assert "NEW ({counts.unread})" in sidebar_jsx
     assert "reconcileUnreadSessions" in app_jsx
 
-    binary = (
-        shutil.which("chromium")
-        or shutil.which("chromium-browser")
-        or shutil.which("google-chrome")
-        or shutil.which("google-chrome-stable")
-    )
-    if not binary:
+    if not find_working_chromium_binary():
         pytest.skip("Chromium binary not installed on test runner")
 
     html_harness = f"""<!doctype html>
@@ -123,44 +120,10 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 600px; }}
 </html>
 """
 
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    tmp_dir = tempfile.mkdtemp(prefix="aim_issue281_fleet_")
-
-    proc = subprocess.Popen(
-        [
-            binary,
-            "--headless=new",
-            "--no-sandbox",
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "--remote-debugging-address=127.0.0.1",
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={tmp_dir}",
-            "--window-size=390,600",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "about:blank",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        targets = None
-        for _ in range(50):
-            try:
-                raw = urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=0.5).read()
-                parsed = json.loads(raw)
-                if any(t.get("type") == "page" for t in parsed):
-                    targets = parsed
-                    break
-            except Exception:
-                time.sleep(0.1)
-        assert targets
-        ws_url = [t["webSocketDebuggerUrl"] for t in targets if t.get("type") == "page"][0]
-
+    with launch_headless_cdp_page(
+        prefix="aim_issue281_fleet_",
+        extra_args=["--window-size=390,600"],
+    ) as ws_url:
         import asyncio
 
         async def _measure():
@@ -207,10 +170,3 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 600px; }}
         for b in geom["boxes"]:
             assert b["width"] > 35 and b["height"] >= 18, b
             assert b["right"] <= geom["sidebarRight"], b
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except Exception:
-            proc.kill()
-        shutil.rmtree(tmp_dir, ignore_errors=True)
