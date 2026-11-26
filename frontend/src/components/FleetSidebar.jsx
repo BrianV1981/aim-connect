@@ -1,10 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getAgentColor } from '../agentColors';
 import {
   computeFleetFilterCounts,
   filterFleetItems,
   isRawTmuxItem,
 } from '../fleetFilterUtils';
+import {
+  getFleetScrollStorage,
+  loadFleetScrollTop,
+  saveFleetScrollTop,
+} from '../fleetScrollMemory';
 import Icon from './Icons';
 
 function formatTokens(n) {
@@ -144,6 +149,52 @@ export default function FleetSidebar({
     }, 2200);
   };
 
+  // #318: remember the list scroll position across close/reopen (the sidebar unmounts when closed).
+  const listRef = useRef(null);
+  const saveRafRef = useRef(0);
+  const pendingRestoreRef = useRef(0);
+  const ignoreNextScrollRef = useRef(false);
+
+  const handleListScroll = useCallback(() => {
+    // Our own restore assignment fires one scroll event; never persist a clamped interim value.
+    if (ignoreNextScrollRef.current) {
+      ignoreNextScrollRef.current = false;
+      return;
+    }
+    if (saveRafRef.current) return;
+    saveRafRef.current = window.requestAnimationFrame(() => {
+      saveRafRef.current = 0;
+      const el = listRef.current;
+      if (!el) return;
+      saveFleetScrollTop(getFleetScrollStorage(), el.scrollTop);
+      // Stop retrying once the saved position is reached or the user has moved the list.
+      pendingRestoreRef.current = 0;
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined;
+    pendingRestoreRef.current = loadFleetScrollTop(getFleetScrollStorage());
+    return () => {
+      if (saveRafRef.current) {
+        window.cancelAnimationFrame(saveRafRef.current);
+        saveRafRef.current = 0;
+      }
+    };
+  }, [isOpen]);
+
+  // Re-apply after each render that changes list length, so a reopen before fleet data has
+  // loaded still lands on the saved spot once the cards exist.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    const target = pendingRestoreRef.current;
+    if (!isOpen || !el || !target) return;
+    const before = el.scrollTop;
+    el.scrollTop = target;
+    if (el.scrollTop !== before) ignoreNextScrollRef.current = true;
+    if (Math.abs(el.scrollTop - target) <= 1) pendingRestoreRef.current = 0;
+  }, [isOpen, filteredItems.length]);
+
   if (!isOpen) return null;
 
   return (
@@ -269,7 +320,7 @@ export default function FleetSidebar({
         </div>
       </div>
 
-      <div className="fleet-session-list">
+      <div className="fleet-session-list" ref={listRef} onScroll={handleListScroll}>
         {filteredItems.length === 0 ? (
           <div className="fleet-empty-state">
             {statusFilter === 'thinking'
