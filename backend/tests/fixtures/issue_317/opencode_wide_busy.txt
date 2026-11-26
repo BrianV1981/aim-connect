@@ -1,0 +1,30 @@
+     TCP also uses ACK clocking, where incoming acknowledgments pace outgoing transmissions, keeping the pipe full      
+     while smoothing bursts. Delayed ACKs, cumulative ACKs, and selective acknowledgments (SACK) help the sender        
+     distinguish isolated losses from wholesale congestion and retransmit efficiently.                                  
+                                                                                                                        
+     Newer algorithms address limitations of loss-based AIMD. CUBIC, the Linux default, uses a cubic function of time   
+     since the last congestion event, growing aggressively on high-bandwidth long-delay paths and flattening near the   
+     previous ceiling. BBR instead models bottleneck bandwidth and round-trip propagation delay, pacing packets to      
+     match the estimated capacity and avoiding queue buildup; it does not treat all loss as congestion.                 
+                                                                                                                        
+     Implementations also tune initial windows, slow-start thresholds, and recovery via algorithms like NewReno,        
+     Vegas, and HyStart. The shared goal remains: fill the network pipe efficiently, share capacity fairly with other   
+     flows, and back off when congestion signals appear.                                                                
+                                                                                                                        
+     ▣  Build · DeepSeek V4.1 Flash 1017 · 5.6s                                                                         
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Do not use any tools. Reply in plain text only: write a 300-word explanation of how DNS resolution works.          
+  ┃                                                                                                                     
+                                                                                                                        
+     ⠼ Thinking                                                                                                         
+                                                                                                                        
+     ▣  Build · DeepSeek V4.1 Flash 1017                                                                                
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃  Build · DeepSeek V4.1 Flash 1017 DeepSeek · high                                                                   
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+   ⬝■■■■■■⬝  esc interrupt                                                         11.2K (1%) · $0.00  ctrl+p commands  
+                                                                                                                        

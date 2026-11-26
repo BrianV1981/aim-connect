@@ -1,0 +1,26 @@
+     estimate of how much data it      
+     can safely have in flight. The    
+     actual amount sent is limited     
+     by the minimum of cwnd and the    
+     receiver's advertised window (    
+     rwnd), which handles flow         
+     control rather than congestion.   
+                                       
+     The classic algorithm,            
+     standardized in TCP Reno, uses    
+     four phases. In slow start, c     
+                                       
+     ▣  Build · DeepSeek V4.1 Flash    
+     1017                              
+                                       
+  ┃                                    
+  ┃                                    
+  ┃                                    
+  ┃  Bui ·DeepSeek V4.1 Flash 1017 D·h 
+  ┃  ld                            e i 
+  ┃                                e g 
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+   ⬝⬝⬝⬝⬝⬝⬝⬝  esc  tab     ctrl+p       
+             interagents  commands     
+             upt                       
+                                       

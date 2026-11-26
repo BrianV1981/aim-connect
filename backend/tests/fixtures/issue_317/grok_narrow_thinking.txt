@@ -1,0 +1,26 @@
+ /tmp/aim317 1.5k / 256k │ [Dashboard] 
+                                       
+    Do not use any tools.    4:00 PM   
+    Reply in plain text                
+    only: write a 400-word             
+    explanation of how TCP             
+    congestion control                 
+    works.                             
+                                       
+ ┃  ◆ Thinking…                        
+ ┃                                     
+ ┃  Preparing a 400-word explanation   
+ ┃  of TCP congestion control.         
+                                       
+                                       
+                                       
+                                       
+                                       
+                                       
+                                       
+  ⠹ Thinking…       3.0s ⇣1.49k [stop] 
+ ╭───────────────────────────────────╮ 
+ │ ❯                                 │ 
+ ╰─ Grok 4.7 (high) · always-approve─╯ 
+                                       
+ Ctrl+x:shortcuts                      

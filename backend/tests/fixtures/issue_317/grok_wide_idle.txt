@@ -1,0 +1,30 @@
+ /tmp/aim317                                                                                   20k / 256k │ [Dashboard] 
+                                                                                                                        
+    The recursive resolver does the searching on the client's behalf and caches the answers. If its cache               
+    misses, it starts at the root of the DNS hierarchy. It already knows the addresses of the root servers.             
+    It asks a root server for example.com. The root does not hold the final address. It answers with a                  
+    referral to the servers responsible for the .com zone, the top-level domain.                                        
+                                                                                                                        
+    The resolver then queries a .com server. That server also replies with a referral, this time to the                 
+    authoritative name servers for example.com, whose names and addresses are published in the parent zone.             
+    The resolver queries one of those authoritative servers. That server holds the zone data and returns                
+    the record that was requested. For ordinary web access this is usually an A record with an IPv4 address             
+    or an AAAA record with an IPv6 address. The response includes a time to live, or TTL, which says how                
+    many seconds the answer may be cached.                                                                              
+                                                                                                                        
+    The recursive resolver stores the record, returns it to the stub, and the application can connect.                  
+    Later lookups for the same name skip the full walk until the TTL expires. A name may also point                     
+    elsewhere first. A CNAME record aliases one name to another, and the resolver follows that chain until              
+    it reaches address records. Reverse lookups invert the process, mapping an address back to a name                   
+    through special in-addr.arpa or ip6.arpa zones.                                                                     
+                                                                                                                        
+    Resolution is mostly a sequence of cached referrals from root to TLD to authoritative server, ending in             
+    one or more address records the client can use.                                                                     
+                                                                                                                        
+    Worked for 12s                                                                                                      
+                                                                                                                        
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ 
+ │ ❯                                                                                                                  │ 
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.7 (high) · always-approve ─╯ 
+                                                                                                                        
+ Ctrl+x:shortcuts                                                                                                       

@@ -27,9 +27,13 @@ logger = logging.getLogger("aim-connect")
 
 BRAILLE_SPINNER_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⢿⣻⣽⣾⣷⣯⣟]")
 THINKING_TEXT_RE = re.compile(
-    r"(?:Working\.{2,}|Thinking\.{2,}|Running command|Generating|Executing|esc to cancel|ctrl\+c to interrupt)",
+    r"(?:Working\.{2,}|Thinking\.{2,}|Running command|Generating|Executing|esc to cancel|ctrl\+c to interrupt|esc interrupt)",
     re.IGNORECASE,
 )
+# #317: OpenCode 1.17 busy bar (`⬝⬝■■■■⬝⬝  esc interrupt`) and Grok 1.0 status row
+# (`⠹ Thinking…  3.0s ⇣1.49k [stop]`, drawn just above its `╭─╮` input box).
+OPENCODE_BUSY_BAR_RE = re.compile(r"[⬝■]{4,}")
+GROK_BUSY_ROW_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⢿⣻⣽⣾⣷⣯⣟]\s+\S.*\[stop\]")
 WAITING_TEXT_RE = re.compile(
     r"(?:\[[yY]/[nN]\]|\(y/n\)|\(yes/no\)|Allow once|Allow always|Permission required|Confirm\s+Cancel|Tell OpenCode what to do differently|Do you want to proceed|Select an option|Enter to select|Approve\?|Proceed\?)",
     re.IGNORECASE,
@@ -466,12 +470,15 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
     scrollback_lines, above_prompt_line, footer_lines, has_prompt_box = _split_pane_prompt_regions(lines)
     footer_text = "\n".join(footer_lines) if footer_lines else ""
     has_active_tray_work = any(_is_active_tray_task(ln) for ln in footer_lines)
+    busy_tail_text = "\n".join(lines[-8:]) if lines else ""
     if WAITING_TEXT_RE.search(footer_text):
         status = "WAITING"
     elif (
         BRAILLE_SPINNER_RE.search(footer_text)
         or (has_prompt_box and BRAILLE_SPINNER_RE.search(above_prompt_line))
         or THINKING_TEXT_RE.search(footer_text)
+        or OPENCODE_BUSY_BAR_RE.search(footer_text)
+        or GROK_BUSY_ROW_RE.search(busy_tail_text)
         or ACTIVE_SUBAGENT_STATUS_RE.search(footer_text)
         or has_active_tray_work
     ):

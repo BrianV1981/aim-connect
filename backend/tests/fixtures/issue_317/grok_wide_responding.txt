@@ -1,0 +1,30 @@
+ /tmp/aim317                                                                                   20k / 256k │ [Dashboard] 
+                                                                                                                        
+    Do not use any tools. Reply in plain text only: write a 300-word explanation of how DNS resolution        4:01 PM   
+    works.                                                                                                              
+                                                                                                                        
+    ◆ Thought for 0.1s                                                                                                  
+                                                                                                                        
+    DNS resolution is the process that turns a human-readable name, such as example.com, into the numerical   4:02 PM   
+    address a computer needs to open a connection. An application asks a stub resolver, usually a library               
+    in the operating system. That stub checks its own short cache and the                                               
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ⠙ Responding… 1.0s                                                                                 4.0s ⇣20.3k [stop] 
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ 
+ │ ❯                                                                                                                  │ 
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.7 (high) · always-approve ─╯ 
+                                                                                                                        
+ Ctrl+x:shortcuts                                                                                                       

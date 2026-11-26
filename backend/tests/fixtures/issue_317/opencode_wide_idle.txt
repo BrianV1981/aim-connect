@@ -1,0 +1,30 @@
+     later use.                                                                                                         
+                                                                                                                        
+     If the resolver lacks a cached answer, it starts at the root. Root servers know the addresses of the top-level     
+     domain (TLD) servers, such as those for .com, .org, or .uk. The root responds with a referral pointing to the      
+     relevant TLD server. The resolver then queries that TLD server, which returns a referral to the authoritative      
+     name server responsible for the specific domain, for example example.com.                                          
+                                                                                                                        
+     The resolver finally queries the authoritative name server, which holds the definitive records for that domain.    
+     It responds with the requested record, commonly an A record (IPv4 address) or AAAA record (IPv6 address), though   
+     many other types exist for mail, aliases, and verification. The resolver returns this answer to your device,       
+     which then opens the connection to the destination IP.                                                             
+                                                                                                                        
+     Caching is central to performance. Answers carry a time-to-live (TTL) value telling resolvers how long they may    
+     store the result. Longer TTLs reduce lookup traffic but slow propagation of changes; shorter TTLs do the           
+     opposite. Records can also be served through intermediary servers that add resilience, and DNSSEC adds             
+     cryptographic signatures so resolvers can verify that answers are authentic and unmodified.                        
+                                                                                                                        
+     In practice, most lookups finish in milliseconds from cache. A cold, uncached lookup involves several round        
+     trips across the hierarchy, which is why caching at every layer, from browser to resolver, matters so much for     
+     everyday browsing speed.                                                                                           
+                                                                                                                        
+     ▣  Build · DeepSeek V4.1 Flash 1017 · 3.1s                                                                         
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃  Build · DeepSeek V4.1 Flash 1017 DeepSeek · high                                                                   
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+                                                                                   11.7K (1%) · $0.00  ctrl+p commands  
+                                                                                                                        
