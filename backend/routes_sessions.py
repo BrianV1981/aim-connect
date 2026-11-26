@@ -398,6 +398,40 @@ def extract_waiting_gate_info(lines: list[str], vessel: str = "") -> dict | None
     return None
 
 
+_PREVIEW_STRIP = "─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬> "
+_MESSAGE_FOOTER_DURATION_RE = re.compile(r"(?:^|·)\s*\d+(?:\.\d+)?\s*(?:ms|s|m)\s*$")
+
+
+def _pick_preview_line(lines: list[str]) -> str:
+    """Pick the last meaningful content row for the fleet preview (#316).
+
+    Splits `capture-pane -J`-joined narrow-pane rows apart, drops the OpenCode input box
+    (`┃` rows above the `╹▀▀▀` base), TUI chrome, and message-footer durations, and collapses
+    the column padding that full-width TUI rows carry.
+    """
+    rows = _explode_joined_modal_rows(lines)
+    base_idx = max((i for i, ln in enumerate(rows) if ln.strip().startswith("╹")), default=None)
+    if base_idx is not None:
+        rows = rows[:base_idx]
+        # Pop the input box: rows up to and including the `Agent · model` line, then its blank rows.
+        seen_model_line = False
+        while rows and rows[-1].strip().startswith("┃"):
+            body = rows[-1].strip(_PREVIEW_STRIP)
+            if not seen_model_line:
+                seen_model_line = "·" in body
+            elif body:
+                break
+            rows.pop()
+    for ln in reversed(rows):
+        if _is_tui_chrome_line(ln) or HORIZONTAL_BORDER_RE.match(ln.strip()):
+            continue
+        text = re.sub(r"\s{2,}", " ", ln.strip(_PREVIEW_STRIP)).strip()
+        if len(text) <= 2 or _MESSAGE_FOOTER_DURATION_RE.search(text):
+            continue
+        return text[:100]
+    return ""
+
+
 def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = "") -> dict:
     """Parse captured tmux pane text and command into vessel, status, and 30%-Rule telemetry."""
     clean_text = ANSI_ESCAPE_RE.sub("", pane_text or "")
@@ -496,6 +530,8 @@ def parse_pane_telemetry(pane_text: str, command: str = "", session_name: str = 
     if gate_info and gate_info.get("question"):
         preview = f"GATE: {gate_info['question']}"[:110]
     else:
+        preview = _pick_preview_line(scrollback_lines if has_prompt_box else lines)
+    if not preview and not gate_info:
         for ln in reversed(lines):
             stripped_borders = ln.strip("─━│┃╭╮╯╰┌┐┘└├┤┬┴┼═║╔╗╚╝╠╣╦╩╬> ")
             if stripped_borders and len(stripped_borders) > 2:

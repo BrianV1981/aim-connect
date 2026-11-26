@@ -47,7 +47,7 @@ def _narrow_permission_capture() -> str:
             _row(),
             _row("Patterns"),
             _row(),
-            _row("- /home/kingb/aim-agents/aim-"),
+            _row("- /home/user/aim-agents/aim-"),
             _row("auditor/workspace/*"),
             _row(),
             _row(" Allow once   Allow always   Rejec"),
@@ -75,7 +75,7 @@ def test_narrow_pane_joined_modal_keeps_question_and_pattern():
     assert gate["question"] == "Access external directory ~/aim-agents/aim-auditor/workspace"
     assert gate["question"] != "Approve requested action?"
     assert "Patterns" in gate["details"]
-    assert "- /home/kingb/aim-agents/aim-auditor/workspace/*" in gate["details"]
+    assert "- /home/user/aim-agents/aim-auditor/workspace/*" in gate["details"]
     assert not any("Allow once" in d or "ctrl+f" in d or "Build ·" in d for d in gate["details"])
     assert tel["preview"] == "GATE: Access external directory ~/aim-agents/aim-auditor/workspace"
 
@@ -89,7 +89,7 @@ def test_narrow_pane_joined_stage2_confirm_rejoins_wrapped_sentence():
                     _row("Always allow these rules until"),
                     _row("OpenCode is restarted."),
                     _row(),
-                    _row("- /home/kingb/aim-agents/aim-"),
+                    _row("- /home/user/aim-agents/aim-"),
                     _row("auditor/workspace/*"),
                     _row(),
                     _row(" Confirm   Cancel   ⇆ select"),
@@ -102,7 +102,7 @@ def test_narrow_pane_joined_stage2_confirm_rejoins_wrapped_sentence():
     gate = tel["gate_info"]
     assert gate["kind"] == "opencode_confirm"
     assert gate["question"] == "Always allow these rules until OpenCode is restarted."
-    assert gate["details"] == ["- /home/kingb/aim-agents/aim-auditor/workspace/*"]
+    assert gate["details"] == ["- /home/user/aim-agents/aim-auditor/workspace/*"]
 
 
 def test_wide_pane_unjoined_modal_unchanged():
