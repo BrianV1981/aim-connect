@@ -244,6 +244,23 @@ def _strip_gate_line(raw: str) -> str:
     return (raw or "").strip(_GATE_BORDER_STRIP).strip()
 
 
+def _explode_joined_modal_rows(lines: list[str]) -> list[str]:
+    """Split `capture-pane -J`-joined OpenCode rows back into visual `┃ <row>` lines (#315).
+
+    Lines with at most one `┃` (normal, unjoined rows) pass through untouched.
+    """
+    out: list[str] = []
+    for ln in lines:
+        if (ln or "").count("┃") < 2:
+            out.append(ln)
+            continue
+        pieces = ln.split("┃")
+        if pieces[0].strip():
+            out.append(pieces[0])
+        out.extend("┃" + piece for piece in pieces[1:])
+    return out
+
+
 def extract_waiting_gate_info(lines: list[str], vessel: str = "") -> dict | None:
     """Extract structured question, details, and gate kind from a WAITING terminal pane (#308)."""
     if not lines:
@@ -264,6 +281,9 @@ def extract_waiting_gate_info(lines: list[str], vessel: str = "") -> dict | None
         )
     )
     if is_oc_modal:
+        # #315: narrow panes make OpenCode rows full-width, so `capture-pane -J` glues the whole
+        # modal into one line. Split it back into visual rows at the `┃` border first.
+        tail = _explode_joined_modal_rows(tail)
         start_idx = None
         for i in range(len(tail) - 1, -1, -1):
             if re.search(r"Permission required|Tell OpenCode what to do differently", tail[i], re.IGNORECASE):
@@ -283,18 +303,36 @@ def extract_waiting_gate_info(lines: list[str], vessel: str = "") -> dict | None
         kind = "opencode_permission" if has_allow_once else "opencode_confirm"
         title = "Permission Required" if has_allow_once else "Confirm Permission Action"
 
-        body_lines: list[str] = []
+        # Group rows into blank-row-separated paragraphs, re-joining wrapped fragments (#315).
+        paragraphs: list[str] = []
+        current = ""
         for raw_ln in modal_slice:
             cleaned = _strip_gate_line(raw_ln)
             if not cleaned:
+                if current:
+                    paragraphs.append(current)
+                current = ""
                 continue
             if _OPENCODE_ACTION_BAR_RE.search(cleaned):
                 continue
             if re.match(r"^(?:△\s*)?Permission required\s*$", cleaned, re.IGNORECASE):
                 continue
+            starts_new = bool(re.match(r"^(?:←|△|-\s|•\s|\*\s|\$\s)", cleaned))
             cleaned = re.sub(r"^(?:△\s*|←\s*)+", "", cleaned).strip()
-            if cleaned:
-                body_lines.append(cleaned[:240])
+            if not cleaned:
+                continue
+            if current and (starts_new or current.endswith((".", ":", "?", "!"))):
+                paragraphs.append(current)
+                current = ""
+            if not current:
+                current = cleaned
+            elif current.endswith(("/", "-")):
+                current += cleaned
+            else:
+                current += " " + cleaned
+        if current:
+            paragraphs.append(current)
+        body_lines = [p[:240] for p in paragraphs]
 
         question = body_lines[0] if body_lines else ("Approve requested action?" if has_allow_once else "Confirm selected permission action?")
         details = body_lines[1:7]
