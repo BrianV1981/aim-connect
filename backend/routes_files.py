@@ -61,6 +61,8 @@ RAW_MEDIA_MIME_BY_EXT = {
     ".ogv": "video/ogg",
 }
 MAX_RAW_MEDIA_BYTES = 250 * 1024 * 1024
+MAX_TEXT_EDITOR_BYTES = 10 * 1024 * 1024
+MAX_GIT_STATUS_FILES = 500
 RANGE_STREAM_CHUNK_BYTES = 64 * 1024
 BINARY_SNIFF_BYTES = 8192
 
@@ -301,12 +303,12 @@ def get_git_status(session: str = "", path: str = ""):
         repo_path = top_res.stdout.strip()
         branch = _get_git_branch(repo_path)
         st_res = subprocess.run(
-            ["git", "-C", repo_path, "status", "--porcelain=v1", "-uall"],
+            ["git", "-C", repo_path, "status", "--porcelain=v1", "-unormal"],
             capture_output=True,
             text=True,
             timeout=3,
         )
-        files = []
+        all_files = []
         if st_res.returncode == 0:
             for line in st_res.stdout.splitlines():
                 if len(line) < 4:
@@ -315,16 +317,26 @@ def get_git_status(session: str = "", path: str = ""):
                 rel_path = line[3:].strip().strip('"')
                 if " -> " in rel_path:
                     rel_path = rel_path.split(" -> ", 1)[1].strip()
-                abs_file = os.path.join(repo_path, rel_path)
-                files.append({
+                clean_rel = rel_path.rstrip("/")
+                if not clean_rel:
+                    continue
+                abs_file = os.path.realpath(os.path.join(repo_path, clean_rel))
+                is_dir_entry = rel_path.endswith("/") or os.path.isdir(abs_file)
+                all_files.append({
                     "status": status_code,
                     "rel_path": rel_path,
                     "path": abs_file,
+                    "is_dir": is_dir_entry,
                 })
+        total_files = len(all_files)
+        truncated = total_files > MAX_GIT_STATUS_FILES
+        files = all_files[:MAX_GIT_STATUS_FILES] if truncated else all_files
         return {
             "repo_path": repo_path,
             "branch": branch,
             "files": files,
+            "total_files": total_files,
+            "truncated": truncated,
             "is_git_repo": True,
         }
     except Exception as e:
@@ -359,6 +371,14 @@ def get_git_diff(path: str, session: str = ""):
 
         modified = ""
         if os.path.isfile(safe_path):
+            if os.path.getsize(safe_path) > MAX_TEXT_EDITOR_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "error": "File exceeds 10 MB inline diff cap.",
+                        "path": safe_path,
+                    },
+                )
             with open(safe_path, "r", encoding="utf-8", errors="replace") as f:
                 modified = f.read()
 
@@ -404,6 +424,24 @@ def read_file(path: str):
             raise FileNotFoundError(f"File not found: {path}")
         size = os.path.getsize(safe_path)
         mtime = os.path.getmtime(safe_path)
+        if size > MAX_TEXT_EDITOR_BYTES:
+            _, ext = os.path.splitext(safe_path.lower())
+            guessed_mime = (
+                RAW_MEDIA_MIME_BY_EXT.get(ext)
+                or mimetypes.guess_type(safe_path)[0]
+                or "text/plain"
+            )
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "error": "File exceeds 10 MB inline text editor cap. Download it directly to inspect locally.",
+                    "is_binary": True,
+                    "path": safe_path,
+                    "size_bytes": size,
+                    "mtime": mtime,
+                    "mime_type": guessed_mime,
+                },
+            )
         with open(safe_path, "rb") as bf:
             head = bf.read(BINARY_SNIFF_BYTES)
         if b"\x00" in head:

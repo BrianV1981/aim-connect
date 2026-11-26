@@ -627,7 +627,7 @@ export default function FileExplorer({
     try {
       const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
       const data = await res.json();
-      if (res.status === 415 || data?.is_binary) {
+      if (res.status === 415 || res.status === 413 || data?.is_binary) {
         const resolvedPath = data?.path || path;
         pushOrFocusTab(
           {
@@ -638,7 +638,7 @@ export default function FileExplorer({
             sizeBytes: typeof data?.size_bytes === 'number' ? data.size_bytes : null,
             mtime: data?.mtime || null,
             mimeType: data?.mime_type || 'application/octet-stream',
-            errorReason: '',
+            errorReason: res.status === 413 && data?.error ? data.error : '',
             content: '',
             savedContent: '',
             conflict: null,
@@ -967,7 +967,7 @@ export default function FileExplorer({
     try {
       const res = await fetch(`/api/file?path=${encodeURIComponent(activeTab.path)}`);
       const data = await res.json();
-      if (res.status === 415 || data?.is_binary) {
+      if (res.status === 415 || res.status === 413 || data?.is_binary) {
         setTabs((prev) =>
           prev.map((t) =>
             t.id === activeTab.id
@@ -977,6 +977,7 @@ export default function FileExplorer({
                   sizeBytes: typeof data?.size_bytes === 'number' ? data.size_bytes : t.sizeBytes,
                   mtime: data?.mtime || t.mtime,
                   mimeType: data?.mime_type || t.mimeType,
+                  errorReason: res.status === 413 && data?.error ? data.error : t.errorReason,
                 }
               : t
           )
@@ -1149,6 +1150,14 @@ export default function FileExplorer({
     });
   }, [activeTab, currentPath, rootPath]);
 
+  const gitByPath = useMemo(() => {
+    const map = new Map();
+    gitStatus.files.forEach((gf) => {
+      if (gf?.path) map.set(gf.path, gf.status);
+    });
+    return map;
+  }, [gitStatus.files]);
+
   if (!isOpen) return null;
 
   const coreBrainFiles = (workspaceCtx?.brain_files || []).filter(
@@ -1158,11 +1167,6 @@ export default function FileExplorer({
     (bf) => bf.exists && bf.category === 'wiki_page'
   );
   const worktrees = workspaceCtx?.worktrees || [];
-
-  const gitByPath = new Map();
-  gitStatus.files.forEach((gf) => {
-    if (gf?.path) gitByPath.set(gf.path, gf.status);
-  });
 
   const renderTreeNodes = (dirPath, depth = 0) => {
     const rawEntries = dirChildrenMap[dirPath] || [];
@@ -1609,13 +1613,29 @@ export default function FileExplorer({
                 </div>
               ) : (
                 gitStatus.files.map((gf, idx) => {
+                  const isDirEntry = Boolean(gf.is_dir || gf.rel_path?.endsWith('/'));
                   const isSelected = activeTab?.path === gf.path;
                   return (
                     <div
                       key={`${gf.path}:${idx}`}
                       className={`tree-file-btn ${isSelected ? 'active' : ''}`}
-                      onClick={() => openDiffTab(gf.path, gf.rel_path)}
-                      title={`${gf.rel_path} (Click for Git Diff)`}
+                      onClick={async () => {
+                        if (isDirEntry) {
+                          setNavMode('files');
+                          setCurrentPath(gf.path);
+                          setExpandedDirs((prev) => ({ ...prev, [gf.path]: true }));
+                          if (!dirChildrenMap[gf.path]) {
+                            await fetchDirectoryEntries(gf.path);
+                          }
+                        } else {
+                          openDiffTab(gf.path, gf.rel_path);
+                        }
+                      }}
+                      title={
+                        isDirEntry
+                          ? `${gf.rel_path} (Untracked folder — click to browse in Files)`
+                          : `${gf.rel_path} (Click for Git Diff)`
+                      }
                     >
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                         {gf.rel_path}
@@ -1630,18 +1650,20 @@ export default function FileExplorer({
                         >
                           {gf.status}
                         </span>
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openFileTab(gf.path, gf.rel_path.split('/').pop());
-                          }}
-                          title="Open file"
-                          style={{ opacity: 0.75, display: 'inline-flex' }}
-                        >
-                          <Icon name="edit" size={11} />
-                        </span>
+                        {!isDirEntry && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openFileTab(gf.path, gf.rel_path.split('/').pop());
+                            }}
+                            title="Open file"
+                            style={{ opacity: 0.75, display: 'inline-flex' }}
+                          >
+                            <Icon name="edit" size={11} />
+                          </span>
+                        )}
                       </span>
                     </div>
                   );
