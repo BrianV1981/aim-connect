@@ -87,6 +87,11 @@ export const SETTINGS_HELP = {
     details:
       'Per-Session: each project remembers whether you had the terminal, files, or browser open, and which file you were looking at. Global: one layout follows you no matter which project you switch to.',
   },
+  recentSessions: {
+    summary: 'How many of the sessions you opened last appear under RECENT in the Fleet list.',
+    details:
+      'RECENT lists the sessions you tapped into, newest first. The list is saved on your server, so your phone and computer share the same one. Lowering the number only hides older entries; raise it again and they come back (up to 30 are remembered).',
+  },
 
   // ---------------------------------------------------------------- TMUX & BOOT (sessions & restart)
   agentDefaults: {

@@ -82,9 +82,10 @@ export default function FleetSidebar({
   resurrectGate = { disabled: false, title: '' },
   onKillSession,
   onSendSessionCommand,
+  recentSessions = [],
 }) {
   const [filterText, setFilterText] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // all | nobrowser | tmux | high_ctx | waiting
+  const [statusFilter, setStatusFilter] = useState('all'); // all | thinking | new | recent | tmux | high_ctx | waiting
   const [commandFeedback, setCommandFeedback] = useState({});
 
   // Merge raw session names with enriched fleet metadata in strict alphabetical order (#257)
@@ -120,13 +121,13 @@ export default function FleetSidebar({
   }, [sessions, fleet]);
 
   const counts = useMemo(
-    () => computeFleetFilterCounts(items, unreadSessions),
-    [items, unreadSessions]
+    () => computeFleetFilterCounts(items, unreadSessions, recentSessions),
+    [items, unreadSessions, recentSessions]
   );
 
   const filteredItems = useMemo(
-    () => filterFleetItems(items, { statusFilter, filterText, unreadSessions }),
-    [items, filterText, statusFilter, unreadSessions]
+    () => filterFleetItems(items, { statusFilter, filterText, unreadSessions, recentSessions }),
+    [items, filterText, statusFilter, unreadSessions, recentSessions]
   );
 
   const handleTriggerSkill = async (e, sessionName, command, label) => {
@@ -295,11 +296,11 @@ export default function FleetSidebar({
           </button>
           <button
             type="button"
-            className={`fleet-filter-pill ${statusFilter === 'nobrowser' ? 'active' : ''}`}
-            onClick={() => setStatusFilter('nobrowser')}
-            title="CLI-Only Agents & Raw Tmux Servers with No Open Browser Lease"
+            className={`fleet-filter-pill ${statusFilter === 'recent' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('recent')}
+            title="Sessions you opened most recently, newest first (shared across your devices)"
           >
-            NO WEB ({counts.noBrowser})
+            RECENT ({counts.recent})
           </button>
           <button
             type="button"

@@ -944,7 +944,7 @@ const FILES_DB = {
 - 4 Fleet filter chips`,
     newDiff: `+ Master @ f67ea00 (255 passed, 0 oxlint errors)
 + 2-column Left/Right Files IDE + DOCS 1-TAB + Audio/Video Range player
-+ 6 Fleet filter pills (ALL · THINKING · NEW · NO WEB · TMUX · CTX >=30%)`,
++ 6 Fleet filter pills (ALL · THINKING · NEW · RECENT · TMUX · CTX >=30%)`,
   },
   'README.md': {
     type: 'file',
@@ -1901,6 +1901,7 @@ const state = {
   micEnabled: false,
   speakEnabled: true,
   unreadSessions: ['aim-auditor', 'aim-calendar'],
+  recentSessions: ['aim-ld', 'aim-joshua', 'aim-connect'],
   skillFlash: {},
 
   // Operator Reply Visibility & Chat-Box Dot Alignment
@@ -4842,7 +4843,7 @@ function render() {
   );
 
   const serverCount = state.sessions.filter((s) => s.isAgent === false).length;
-  const noBrowserCount = state.sessions.filter((s) => !s.browserTabId).length;
+  const recentCount = state.sessions.filter((s) => state.recentSessions.includes(s.name)).length;
   const highCtxCount = state.sessions.filter(
     (s) => s.isAgent !== false && (s.tier !== 'normal' || s.compacted > 0)
   ).length;
@@ -4853,7 +4854,7 @@ function render() {
     if (state.filter === 'thinking' && (s.isAgent === false || stNow !== 'THINKING')) return false;
     if (state.filter === 'new' && !isUnread) return false;
     if (state.filter === 'servers' && s.isAgent !== false) return false;
-    if (state.filter === 'nobrowser' && s.browserTabId) return false;
+    if (state.filter === 'recent' && !state.recentSessions.includes(s.name)) return false;
     if (state.filter === 'ctx' && (s.isAgent === false || (s.tier === 'normal' && !s.compacted))) return false;
     if (state.search && !`${s.name} ${s.branch} ${s.vessel}`.toLowerCase().includes(state.search.toLowerCase())) return false;
     return true;
@@ -5058,7 +5059,7 @@ function render() {
                   <button class="filter-chip ${state.filter === 'all' ? 'active' : ''}" data-flt="all">ALL (${state.sessions.length})</button>
                   <button class="filter-chip ${state.filter === 'thinking' ? 'active' : ''} ${thinkingList.length ? 'has-thinking' : ''}" data-flt="thinking" title="Actively working / thinking AI agent sessions">THINKING (${thinkingList.length})</button>
                   <button class="filter-chip ${state.filter === 'new' ? 'active' : ''} ${unreadList.length ? 'has-new' : ''}" data-flt="new" title="Agents that finished a turn while in the background">NEW (${unreadList.length})</button>
-                  <button class="filter-chip ${state.filter === 'nobrowser' ? 'active' : ''}" data-flt="nobrowser" title="CLI-Only Agents &amp; Raw Tmux Servers with No Open Browser">NO WEB (${noBrowserCount})</button>
+                  <button class="filter-chip ${state.filter === 'recent' ? 'active' : ''}" data-flt="recent" title="Sessions you opened most recently, newest first (shared across your devices)">RECENT (${recentCount})</button>
                   <button class="filter-chip ${state.filter === 'servers' ? 'active' : ''}" data-flt="servers" title="Non-Agent Split-Pane Tmux Server &amp; Worker Sessions">TMUX (${serverCount})</button>
                   <button class="filter-chip ${state.filter === 'ctx' ? 'active' : ''}" data-flt="ctx">CTX ≥30% (${highCtxCount})</button>
                 </div>

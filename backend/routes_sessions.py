@@ -1952,3 +1952,42 @@ async def synthesize_tts(req: TTSRequest) -> Response:
     raise HTTPException(status_code=400, detail=f"Unsupported backend TTS engine: {engine}")
 
 
+
+
+# ----------------------------------------------------------------------------- #320 RECENT sessions
+import recent_sessions as recent_store  # noqa: E402
+
+
+class RecentVisitRequest(BaseModel):
+    session: str
+
+
+class RecentSettingsRequest(BaseModel):
+    limit: int
+
+
+def _recent_user_key(x_api_token: str | None) -> str:
+    from main import VALID_API_TOKENS
+
+    return recent_store.user_key_for(VALID_API_TOKENS.get(x_api_token or ""))
+
+
+@router.get("/api/recent-sessions", dependencies=[Depends(verify_token)])
+def get_recent_sessions(x_api_token: str = Header(None)) -> dict:
+    """Most-recently-opened sessions for this account, shared across devices (#320)."""
+    return recent_store.get_recent(_recent_user_key(x_api_token))
+
+
+@router.post("/api/recent-sessions", dependencies=[Depends(verify_token)])
+def record_recent_session(req: RecentVisitRequest, x_api_token: str = Header(None)) -> dict:
+    """Move a session the Operator just opened to the top of the RECENT list (#320)."""
+    name = (req.session or "").strip()
+    if not SESSION_NAME_RE.match(name):
+        raise HTTPException(status_code=400, detail="Invalid session name")
+    return recent_store.record_visit(_recent_user_key(x_api_token), name)
+
+
+@router.put("/api/recent-sessions/settings", dependencies=[Depends(verify_token)])
+def update_recent_sessions_settings(req: RecentSettingsRequest, x_api_token: str = Header(None)) -> dict:
+    """Set how many recent sessions RECENT shows (clamped 3-30; history beyond it is kept) (#320)."""
+    return recent_store.set_limit(_recent_user_key(x_api_token), req.limit)

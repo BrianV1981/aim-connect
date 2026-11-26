@@ -198,6 +198,9 @@ function App() {
   const [sessions, setSessions] = useState([]);
   const [fleet, setFleet] = useState([]);
   const [unreadSessions, setUnreadSessions] = useState([]);
+  // #320: RECENT fleet filter — sessions the Operator opened, shared across devices via the server.
+  const [recentSessions, setRecentSessions] = useState([]);
+  const [recentSessionsLimit, setRecentSessionsLimit] = useState(8);
   const [waitingSessions, setWaitingSessions] = useState([]);
   const [alertChime, setAlertChime] = useState(() => {
     const val = localStorage.getItem('aim-alert-chime');
@@ -1170,6 +1173,61 @@ function App() {
     });
   }, []);
 
+  const applyRecentSessionsPayload = useCallback((data) => {
+    if (Array.isArray(data?.sessions)) setRecentSessions(data.sessions);
+    if (Number.isFinite(Number(data?.limit)) && Number(data.limit) > 0) setRecentSessionsLimit(Number(data.limit));
+  }, []);
+
+  const recordRecentSession = useCallback(
+    async (name) => {
+      if (!name) return;
+      setRecentSessions((prev) => [name, ...prev.filter((s) => s !== name)].slice(0, recentSessionsLimit));
+      try {
+        const res = await fetch('/api/recent-sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: name }),
+        });
+        if (res.ok) applyRecentSessionsPayload(await res.json());
+      } catch {
+        /* offline: keep the optimistic local order */
+      }
+    },
+    [recentSessionsLimit, applyRecentSessionsPayload]
+  );
+
+  const updateRecentSessionsLimit = useCallback(
+    async (limit) => {
+      setRecentSessionsLimit(limit);
+      try {
+        const res = await fetch('/api/recent-sessions/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit }),
+        });
+        if (res.ok) applyRecentSessionsPayload(await res.json());
+      } catch {
+        /* ignore; next fetch re-syncs */
+      }
+    },
+    [applyRecentSessionsPayload]
+  );
+
+  // Pull the shared RECENT list on login and whenever the Fleet panel opens (picks up other devices).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    fetch('/api/recent-sessions')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) applyRecentSessionsPayload(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, showFleetSidebar, applyRecentSessionsPayload]);
+
   // Fetch tmux sessions + fleet telemetry (#209)
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1567,6 +1625,7 @@ function App() {
     }
     setActiveSession(newSession);
     setUnreadSessions((prev) => prev.filter((s) => s !== newSession));
+    recordRecentSession(newSession);
     const matchedFleet = fleet.find((f) => f.session_name === newSession);
     if (matchedFleet) {
       lastChimedDigestRef.current[newSession] =
@@ -3168,6 +3227,7 @@ function App() {
           fleet={fleet}
           activeSession={activeSession}
           unreadSessions={unreadSessions}
+          recentSessions={recentSessions}
           historyCounts={historyCounts}
           onSelectSession={switchToSession}
           onCreateSession={createSession}
@@ -4298,6 +4358,8 @@ function App() {
           setDocsSingleTabMode={setDocsSingleTabMode}
           sessionAutoScroll={sessionAutoScroll}
           setSessionAutoScroll={setSessionAutoScroll}
+          recentSessionsLimit={recentSessionsLimit}
+          setRecentSessionsLimit={updateRecentSessionsLimit}
           sessionLayoutMode={sessionLayoutMode}
           setSessionLayoutMode={(nextMode) => {
             const norm = normalizeLayoutMode(nextMode);

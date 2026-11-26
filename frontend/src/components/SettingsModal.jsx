@@ -69,6 +69,8 @@ export default function SettingsModal({
   setSessionAutoScroll,
   sessionLayoutMode = 'per-session',
   setSessionLayoutMode,
+  recentSessionsLimit = 8,
+  setRecentSessionsLimit,
   editorFontSize = 13,
   setEditorFontSize,
   editorWordWrap = true,
@@ -1072,6 +1074,30 @@ export default function SettingsModal({
                     >
                       <option value="per-session">Per-Session Memory</option>
                       <option value="global">Global (Follow Me)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
+                    <div>
+                      <div>
+                        Recent Sessions to Keep
+                        <Help k="recentSessions" />
+                      </div>
+                      <Summary k="recentSessions" style={{ marginTop: '2px' }} />
+                    </div>
+                    <select
+                      className="ld-select"
+                      style={{ width: 'auto', minWidth: '90px' }}
+                      value={String(recentSessionsLimit)}
+                      onChange={(e) => setRecentSessionsLimit?.(Number(e.target.value))}
+                    >
+                      {[3, 5, 8, 10, 15, 20, 30].map((n) => (
+                        <option key={n} value={String(n)}>
+                          {n}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

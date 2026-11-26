@@ -72,7 +72,7 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     assert "aimMark" in app_js
 
     # #281: All 6 Fleet filter pills including THINKING & NEW
-    for flt_token in ('data-flt="all"', 'data-flt="thinking"', 'data-flt="new"', 'data-flt="nobrowser"', 'data-flt="servers"', 'data-flt="ctx"'):
+    for flt_token in ('data-flt="all"', 'data-flt="thinking"', 'data-flt="new"', 'data-flt="recent"', 'data-flt="servers"', 'data-flt="ctx"'):
         assert flt_token in app_js, f"Missing Fleet filter pill {flt_token}"
 
     # #279 & #280: Widescreen-only Split View (>900px) & non-overlapping flex headers
