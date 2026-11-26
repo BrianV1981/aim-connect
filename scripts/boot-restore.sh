@@ -24,6 +24,7 @@ RESURRECT_LAST_FALLBACK="$HOME/.tmux/resurrect/last"
 TMUX_SETTINGS_FILE="${AIM_TMUX_SETTINGS_FILE:-$HOME/.aim_tmux_settings.json}"
 BOOT_RESTORE_WAIT_SECONDS="${AIM_BOOT_RESTORE_WAIT_SECONDS:-5}"
 STARTUP_SCRIPT="${AIM_STARTUP_SCRIPT:-$REPO_ROOT/startup.sh}"
+KEEPALIVE_SCRIPT="${AIM_KEEPALIVE_SCRIPT:-$SCRIPT_DIR/wsl-keepalive.sh}"
 
 has_saved_snapshot() {
     [ -e "$RESURRECT_LAST_PRIMARY" ] || [ -e "$RESURRECT_LAST_FALLBACK" ]
@@ -60,4 +61,8 @@ if [ -f "$STARTUP_SCRIPT" ]; then
 else
     echo "[boot-restore] ERROR: startup.sh not found at $STARTUP_SCRIPT" >&2
     exit 1
+fi
+
+if [ -f "$KEEPALIVE_SCRIPT" ] && { [ -n "${AIM_KEEPALIVE_SCRIPT:-}" ] || [ "$STARTUP_SCRIPT" = "$REPO_ROOT/startup.sh" ]; }; then
+    bash "$KEEPALIVE_SCRIPT" ensure-handle >/dev/null 2>&1 || true
 fi

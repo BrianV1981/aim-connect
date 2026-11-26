@@ -35,16 +35,19 @@ for arg in "$@"; do
         status|--status)
             ACTION="status"
             ;;
+        ensure-handle|--ensure-handle)
+            ACTION="ensure_handle"
+            ;;
         --json)
             JSON_OUTPUT=1
             ;;
         -h|--help)
-            echo "Usage: $0 [on | off | status] [--json]"
+            echo "Usage: $0 [on | off | status | ensure-handle] [--json]"
             exit 0
             ;;
         *)
             echo "Unknown option: $arg" >&2
-            echo "Usage: $0 [on | off | status] [--json]" >&2
+            echo "Usage: $0 [on | off | status | ensure-handle] [--json]" >&2
             exit 2
             ;;
     esac
@@ -137,7 +140,7 @@ LEGACY_VBS="${LOCALAPPDATA_DIR:+$LOCALAPPDATA_DIR/wsl-keepalive.vbs}"
 SAFE_DISTRO="$(resolve_distro_name)"
 
 is_keepalive_running() {
-    pgrep -f "aim_wsl_keepalive_sleep" >/dev/null 2>&1
+    pgrep -f "^aim_wsl_keepalive_sleep" >/dev/null 2>&1
 }
 
 is_idle_timeout_set() {
@@ -148,6 +151,34 @@ is_startup_installed() {
     { [ -n "$STARTUP_VBS" ] && [ -f "$STARTUP_VBS" ]; } || { [ -n "$LEGACY_VBS" ] && [ -f "$LEGACY_VBS" ]; }
 }
 
+spawn_keepalive_handle() {
+    local target_vbs=""
+    if [ -n "$STARTUP_VBS" ] && [ -f "$STARTUP_VBS" ]; then
+        target_vbs="$STARTUP_VBS"
+    elif [ -n "$LEGACY_VBS" ] && [ -f "$LEGACY_VBS" ]; then
+        target_vbs="$LEGACY_VBS"
+    fi
+
+    local wscript_exe="/mnt/c/Windows/System32/wscript.exe"
+    if [ "${AIM_SKIP_WIN_EXEC:-0}" != "1" ] && [ -n "$ACTIVE_INTEROP" ] && [ -n "$target_vbs" ] && [ -x "$wscript_exe" ] && command -v wslpath >/dev/null 2>&1; then
+        local win_vbs_path
+        win_vbs_path="$(wslpath -w "$target_vbs")"
+        (cd /mnt/c && WSL_INTEROP="$ACTIVE_INTEROP" setsid "$wscript_exe" //B //NoLogo "$win_vbs_path" </dev/null >/dev/null 2>&1 &)
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if is_keepalive_running; then
+                return 0
+            fi
+            sleep 0.2
+        done
+    fi
+
+    # Fallback handle when running inside a Linux/CI environment without Windows wscript.exe interop
+    if ! is_keepalive_running; then
+        nohup bash -c 'exec -a aim_wsl_keepalive_sleep sleep infinity' </dev/null >/dev/null 2>&1 &
+        sleep 0.1
+    fi
+}
+
 case "$ACTION" in
     on)
         if [ -z "$WSLCONFIG_PATH" ] || [ -z "$STARTUP_DIR" ]; then
@@ -156,25 +187,9 @@ case "$ACTION" in
         fi
         "$PYTHON_BIN" "$MERGE_PY" --force "$WSLCONFIG_PATH" >/dev/null
         mkdir -p "$STARTUP_DIR"
-        printf "' Headless zero-window WSL2 keepalive handle for AIM-Connect (#305)\r\nSet sh = CreateObject(\"WScript.Shell\")\r\nsh.Run \"wsl.exe -d %s --exec sh -c \"\"pgrep -f 'aim_wsl_keepalive_sleep' >/dev/null 2>&1 || exec -a aim_wsl_keepalive_sleep sleep infinity\"\"\", 0, False\r\n" "$SAFE_DISTRO" > "$STARTUP_VBS"
+        printf "' Headless zero-window WSL2 keepalive handle for AIM-Connect (#305/#311)\r\nSet sh = CreateObject(\"WScript.Shell\")\r\nsh.Run \"wsl.exe -d %s --exec bash -c \"\"pgrep -f ^aim_wsl_keepalive_sleep >/dev/null 2>&1 || exec -a aim_wsl_keepalive_sleep sleep infinity\"\"\", 0, False\r\n" "$SAFE_DISTRO" > "$STARTUP_VBS"
 
-        WSCRIPT_EXE="/mnt/c/Windows/System32/wscript.exe"
-        if [ "${AIM_SKIP_WIN_EXEC:-0}" != "1" ] && [ -n "$ACTIVE_INTEROP" ] && [ -x "$WSCRIPT_EXE" ] && command -v wslpath >/dev/null 2>&1; then
-            WIN_VBS_PATH="$(wslpath -w "$STARTUP_VBS")"
-            (cd /mnt/c && WSL_INTEROP="$ACTIVE_INTEROP" setsid "$WSCRIPT_EXE" //B //NoLogo "$WIN_VBS_PATH" </dev/null >/dev/null 2>&1 &)
-            for _ in 1 2 3 4 5 6 7 8; do
-                if is_keepalive_running; then
-                    break
-                fi
-                sleep 0.2
-            done
-        fi
-
-        # Fallback handle if running inside a test/Linux container without wscript.exe
-        if ! is_keepalive_running; then
-            nohup bash -c "exec -a aim_wsl_keepalive_sleep sleep infinity" </dev/null >/dev/null 2>&1 &
-            sleep 0.1
-        fi
+        spawn_keepalive_handle
 
         echo "[wsl-keepalive] ENABLED WSL2 Always-On Mode:"
         echo "  - .wslconfig vmIdleTimeout=-1 : $WSLCONFIG_PATH"
@@ -183,8 +198,16 @@ case "$ACTION" in
         echo "  - To turn OFF & revert        : ./scripts/wsl-keepalive.sh off"
         ;;
 
+    ensure_handle)
+        if is_idle_timeout_set && is_startup_installed; then
+            if ! is_keepalive_running; then
+                spawn_keepalive_handle
+            fi
+        fi
+        ;;
+
     off)
-        pkill -f "aim_wsl_keepalive_sleep" 2>/dev/null || true
+        pkill -f "^aim_wsl_keepalive_sleep" 2>/dev/null || true
         for _ in 1 2 3 4 5; do
             if ! is_keepalive_running; then
                 break

@@ -69,9 +69,9 @@ if ($Install) {
     New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
     $SafeDistro = $Distro -replace '[^a-zA-Z0-9_.-]', ''
     $VbsContent = @"
-' Headless zero-window WSL2 keepalive handle for AIM-Connect (#299)
+' Headless zero-window WSL2 keepalive handle for AIM-Connect (#299/#311)
 Set sh = CreateObject("WScript.Shell")
-sh.Run "wsl.exe -d $SafeDistro --exec sh -c ""pgrep -f 'aim_wsl_keepalive_sleep' >/dev/null 2>&1 || exec -a aim_wsl_keepalive_sleep sleep infinity""", 0, False
+sh.Run "wsl.exe -d $SafeDistro --exec bash -c ""pgrep -f ^aim_wsl_keepalive_sleep >/dev/null 2>&1 || exec -a aim_wsl_keepalive_sleep sleep infinity""", 0, False
 "@
     Set-Content -Path $VbsPath -Value $VbsContent -Encoding ASCII
 
