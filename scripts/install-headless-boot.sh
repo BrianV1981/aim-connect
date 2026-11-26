@@ -56,8 +56,16 @@ configure_tmux_conf() {
     fi
 
     if ! grep -q "@resurrect-processes" "$TMUX_CONF" 2>/dev/null; then
-        printf "set -g @resurrect-processes '\"~agy->agy -c\" \"~grok->grok -c\" \"~codex->codex -c\" \"~opencode->opencode -c\" ~node ~python3 ~cloudflared'\n" >> "$TMUX_CONF"
-        echo "[headless-boot] Added @resurrect-processes (-c fast-resume + daemons) to $TMUX_CONF"
+        RESUME_PY="$REPO_ROOT/scripts/aim_pane_resume.py"
+        RULES=""
+        for h in agy grok opencode codex claude gemini; do
+            RULES="$RULES \"~$h->python3 $RESUME_PY $h\""
+        done
+        printf "set -g @resurrect-processes '%s ~node ~python3 ~cloudflared'\n" "${RULES# }" >> "$TMUX_CONF"
+        if ! grep -q "@resurrect-hook-post-save-all" "$TMUX_CONF" 2>/dev/null; then
+            printf "set -g @resurrect-hook-post-save-all 'python3 %s --capture'\n" "$RESUME_PY" >> "$TMUX_CONF"
+        fi
+        echo "[headless-boot] Added @resurrect-processes (exact per-pane agent resume + daemons) to $TMUX_CONF"
     else
         echo "[headless-boot] Preserving existing @resurrect-processes in $TMUX_CONF"
     fi

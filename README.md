@@ -38,7 +38,7 @@ By wrapping standard `tmux` sessions in a secure WebSocket and serving them thro
 *   **Clientless SSH & Immortal `tmux` Streams:** Access your server from Safari, Chrome, or Firefox with zero App Store installs. Close your browser, put your phone in your pocket, and your processes keep running—log back in and instantly re-attach to the live PTY stream.
 *   **Multi-Session AI Fleet Cockpit (`Fleet Sidebar`):** Supervise dozens of concurrent `tmux` workspaces and autonomous CLI coding agents (`Claude`, `Codex`, `OpenCode`, `Grok`, `Antigravity`) from a single sidebar with live status badges (`THINKING`, `✋ Waiting` approval chimes, `ERROR`, `IDLE`), live multi-harness `CHAT VIEW` (`AGY` JSONL + Grok `~/.grok/sessions` + OpenCode `opencode.db`), per-vessel `/slash-commands` isolation, 30%-Rule context saturation meters, and sticky-red compaction radar.
 *   **Multi-Server Fleet Switcher, Dynamic Monogrammed PWA Icons, & Zero-Poll Bundle Updates:** Manage multiple AIM-Connect machines (workstation, cloud VPS, lab node) from one unified **Server Switcher** on the 3FA Lock Screen, Cockpit Header, Settings, and `Cmd+K` (`LOGOUT & SWITCH`), dynamically stamp custom color rings + `2–4` character monograms onto mobile Home-Screen icons so phone PWAs are unmistakable, and keep standalone mobile PWAs current via a piggybacked `build_id` check + 2-tap **`REFRESH APP`** button.
-*   **`tmux-resurrect` Workspace Save/Restore, Fast Resume (`-c`), & Reversible WSL2 Always-On:** Snapshot and cold-boot resurrect your entire `tmux` fleet from the sidebar or `Cmd+K` (protected by an **Empty-Save Guardrail** confirmation modal), launch local Git repositories (`REPOS`) directly into their folder with `<agent> -c` conversation continuation, and toggle or 100% revert headless WSL2 Always-On mode (`./scripts/wsl-keepalive.sh on | off | status`) right from the **`TMUX & BOOT`** Settings tab.
+*   **Workspace Save/Restore with Exact Per-Pane Agent Resume, Fast Resume, & Reversible WSL2 Always-On:** Snapshot your entire `tmux` fleet from the sidebar or `Cmd+K` (protected by an **Empty-Save Guardrail** confirmation modal). On restore, every agent pane comes back in **its own saved conversation** — even two agents of the same CLI in the same repo — for Antigravity (`agy --conversation <id>`), Grok (`grok -r <id>`), OpenCode (`opencode -s <id>`), Codex (`codex resume <id>`), and Claude Code (`claude -r <id>`). Launch local Git repositories (`REPOS`) directly into their folder with each CLI's own resume-latest form, and toggle or 100% revert headless WSL2 Always-On mode (`./scripts/wsl-keepalive.sh on | off | status`) right from the **`TMUX & BOOT`** Settings tab.
 *   **Keyboard-First `Cmd+K` Command Palette & Token Grabber:** Teleport across sessions, dispatch slash commands, or extract deduplicated URLs (with automatic secret-query redaction), file paths, IPs, and git SHAs straight from terminal scrollback without touching a mouse.
 *   **Split-Pane Web IDE, Session Brain, & Git Diff (`Monaco Engine`):** Open `📁 Files` side-by-side without unmounting your live terminal. Edit code with VS Code's Monaco engine, inspect session-scoped project docs and active git worktrees, prevent lost edits with `HTTP 409` `mtime` conflict detection, and review working-tree changes in a syntax-highlighted side-by-side Monaco Diff viewer.
 *   **Cross-Fleet FTS5 Forensics & Swarm Feed:** Search structured agent transcripts and tool-call histories across your entire machine via SQLite WAL `FTS5` (`?mode=ro`) and monitor inter-agent dispatches in real time.
@@ -250,7 +250,21 @@ Even with `systemd=true` in `/etc/wsl.conf`, WSL2's default `vmIdleTimeout` (`60
    ```bash
    ./scripts/install-headless-boot.sh --install --configure-tmux
    ```
-   Installs `~/.config/systemd/user/aim-connect-boot.service` (`scripts/boot-restore.sh`), which checks `tmux has-session`, bootstraps a dead `tmux` server via `aim_restore_tmp` + `~/.tmux/plugins/tmux-resurrect/scripts/restore.sh` (resuming `agy -c`, `grok -c`, `opencode -c`, `codex -c`, and background daemons), and idempotently invokes `./startup.sh`.
+   Installs `~/.config/systemd/user/aim-connect-boot.service` (`scripts/boot-restore.sh`), which checks `tmux has-session`, bootstraps a dead `tmux` server via `aim_restore_tmp` + `~/.tmux/plugins/tmux-resurrect/scripts/restore.sh` (resuming each agent pane's exact saved conversation via `scripts/aim_pane_resume.py`, plus background daemons), and idempotently invokes `./startup.sh`.
+
+### ♻️ Workspace Save/Restore Prerequisite (`tmux-resurrect`)
+
+SAVE/RESTORE uses [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect). Install it once:
+
+```bash
+git clone https://github.com/tmux-plugins/tmux-resurrect ~/.tmux/plugins/tmux-resurrect
+echo "run-shell ~/.tmux/plugins/tmux-resurrect/resurrect.tmux" >> ~/.tmux.conf
+tmux source-file ~/.tmux.conf
+```
+
+Then open **Settings → TMUX & BOOT** and click **Sync `~/.tmux.conf`** (a one-time backup is written to `~/.tmux.conf.aim-bak`). The SAVE/RESTORE buttons stay disabled until tmux-resurrect is detected.
+
+How it works: SAVE records each agent pane's exact session ID (from the CLI's open session file, its launch arguments, or its own session store) in `~/.aim_pane_sessions.json` (`0600`). RESTORE relaunches every agent pane through `scripts/aim_pane_resume.py`, which runs the CLI's exact-resume command. Gemini CLI has no resume-by-ID, so it resumes its latest session; Aider starts fresh.
 
 ### 💡 Pro-Tip: Bypassing the 7-Day Google OAuth Expiration
 When setting up custom Google Cloud credentials for tools like Rclone or personal AI agents connected to AIM, users often hit the "token expires every 7 days" Testing restriction. You do **not** need formal verification to push personal apps to Production!

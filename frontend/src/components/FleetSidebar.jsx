@@ -74,6 +74,7 @@ export default function FleetSidebar({
   onSaveWorkspaceState,
   onRestoreWorkspaceState,
   showSidebarResurrectBar = true,
+  resurrectGate = { disabled: false, title: '' },
   onKillSession,
   onSendSessionCommand,
 }) {
@@ -495,9 +496,9 @@ export default function FleetSidebar({
                         e.stopPropagation();
                         onFastResumeSession(item.session_name);
                       }}
-                      title="Fast-resume previous AI agent conversation (-c) in this session's directory"
+                      title="Resume the most recent AI agent conversation in this session's directory"
                     >
-                      ▶ RESUME -C
+                      ▶ RESUME
                     </button>
                   </div>
                 )}
@@ -523,7 +524,12 @@ export default function FleetSidebar({
               className="ghost-btn"
               style={{ flex: 1, justifyContent: 'center', height: '26px', fontSize: '10.5px' }}
               onClick={onSaveWorkspaceState}
-              title="Snapshot all tmux sessions via tmux-resurrect (Protected by Empty-Save Guardrail)"
+              disabled={resurrectGate.disabled}
+              title={
+                resurrectGate.disabled
+                  ? resurrectGate.title
+                  : 'Snapshot all tmux sessions and pin each agent pane to its exact conversation (Protected by Empty-Save Guardrail)'
+              }
             >
               <Icon name="upload" size={11} />
               <span>SAVE STATE</span>
@@ -535,10 +541,15 @@ export default function FleetSidebar({
               className="ghost-btn"
               style={{ flex: 1, justifyContent: 'center', height: '26px', fontSize: '10.5px' }}
               onClick={onRestoreWorkspaceState}
-              title="Restore saved tmux sessions & resume agents (-c) via tmux-resurrect"
+              disabled={resurrectGate.disabled}
+              title={
+                resurrectGate.disabled
+                  ? resurrectGate.title
+                  : 'Restore saved tmux sessions and resume every agent pane in its exact saved conversation'
+              }
             >
               <Icon name="refresh" size={11} />
-              <span>RESTORE -C</span>
+              <span>RESTORE</span>
             </button>
           )}
         </div>

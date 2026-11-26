@@ -203,9 +203,12 @@ def test_install_headless_boot_renders_user_unit_and_preserves_existing_tmux_con
 
     conf_text = tmux_conf.read_text(encoding="utf-8")
     assert "@resurrect-capture-pane-contents 'on'" in conf_text
-    assert '"~agy->agy -c"' in conf_text
-    assert '"~grok->grok -c"' in conf_text
-    assert '"~opencode->opencode -c"' in conf_text
+    # #313: agents relaunch through the exact per-pane resume script (no blanket -c rules)
+    resume_py = str(WORKTREE_ROOT / "scripts" / "aim_pane_resume.py")
+    for harness in ("agy", "grok", "opencode", "codex", "claude", "gemini"):
+        assert f'"~{harness}->python3 {resume_py} {harness}"' in conf_text
+    assert f"set -g @resurrect-hook-post-save-all 'python3 {resume_py} --capture'" in conf_text
+    assert ' -c"' not in conf_text
 
     # Custom user rule must NOT be overwritten on subsequent --configure-tmux runs
     custom_conf = "set -g @resurrect-processes '\"~agy->agy --dangerously-skip-permissions -c\"'\n"

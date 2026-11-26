@@ -17,6 +17,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pane_sessions
+
+RESUME_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "aim_pane_resume.py"
+
+RESURRECT_INSTALL_HINT = (
+    "tmux-resurrect is required for workspace SAVE/RESTORE. Install it with: "
+    "git clone https://github.com/tmux-plugins/tmux-resurrect ~/.tmux/plugins/tmux-resurrect "
+    "&& echo \"run-shell ~/.tmux/plugins/tmux-resurrect/resurrect.tmux\" >> ~/.tmux.conf "
+    "&& tmux source-file ~/.tmux.conf"
+)
+
 KNOWN_AI_AGENTS = (
     "agy",
     "aider",
@@ -208,38 +219,64 @@ def sync_resurrect_processes_in_tmux_conf(
     skip_permissions: bool = False,
     home_dir: str | None = None,
 ) -> None:
-    """Update or append @resurrect-processes in ~/.tmux.conf with valid single-quoted -> rules (#44)."""
+    """Rewrite AIM-owned tmux-resurrect rules in ~/.tmux.conf (#44, #313).
+
+    With auto-resume on, every agent pane is relaunched through scripts/aim_pane_resume.py,
+    which resumes the pane's *exact* saved conversation (no ambiguous blanket ``-c``).
+    A pristine backup (~/.tmux.conf.aim-bak) is written once before the first rewrite, and a
+    post-save hook captures pane sessions for saves triggered outside AIM (prefix+Ctrl-s,
+    tmux-continuum) unless the user already owns that hook.
+    """
     base_home = Path(home_dir or os.path.expanduser("~"))
     tmux_conf = Path(os.environ.get("AIM_TMUX_CONF", str(base_home / ".tmux.conf")))
-    agy_cmd = build_agent_launch_command("agy", resume=auto_resume_c, skip_permissions=skip_permissions)
-    grok_cmd = build_agent_launch_command("grok", resume=auto_resume_c, skip_permissions=False)
-    codex_cmd = build_agent_launch_command("codex", resume=auto_resume_c, skip_permissions=False)
-    oc_cmd = build_agent_launch_command("opencode", resume=auto_resume_c, skip_permissions=False)
-    target_line = (
-        f'set -g @resurrect-processes \'"{f"~agy->{agy_cmd}"}" '
-        f'"{f"~grok->{grok_cmd}"}" "{f"~codex->{codex_cmd}"}" "{f"~opencode->{oc_cmd}"}" '
-        f"~node ~python3 ~cloudflared'"
-    )
+    script = str(RESUME_SCRIPT)
 
-    existing_lines = tmux_conf.read_text(encoding="utf-8").splitlines() if tmux_conf.is_file() else []
+    rules: list[str] = []
+    for harness in pane_sessions.RESUMABLE_HARNESSES:
+        if auto_resume_c:
+            target = f"python3 {script} {harness}"
+        else:
+            target = harness
+        if harness == "agy" and skip_permissions:
+            target += " --dangerously-skip-permissions"
+        rules.append(f'"~{harness}->{target}"')
+    target_line = f"set -g @resurrect-processes '{' '.join(rules)} ~node ~python3 ~cloudflared'"
+    save_hook_line = f"set -g @resurrect-hook-post-save-all 'python3 {script} --capture'"
+
+    existing_text = tmux_conf.read_text(encoding="utf-8") if tmux_conf.is_file() else ""
+    backup = tmux_conf.with_name(tmux_conf.name + ".aim-bak")
+    if tmux_conf.is_file() and not backup.exists():
+        backup.write_text(existing_text, encoding="utf-8")
+
     out_lines: list[str] = []
     replaced = False
     has_capture = False
+    save_hook_state = "absent"  # absent | ours | foreign
 
-    for line in existing_lines:
-        if "@resurrect-capture-pane-contents" in line and not line.lstrip().startswith("#"):
+    for line in existing_text.splitlines():
+        active = not line.lstrip().startswith("#")
+        if active and "@resurrect-capture-pane-contents" in line:
             has_capture = True
-        if "@resurrect-processes" in line and not line.lstrip().startswith("#"):
+        if active and "@resurrect-processes" in line:
             if not replaced:
                 out_lines.append(target_line)
                 replaced = True
             continue
+        if active and "@resurrect-hook-post-save-all" in line:
+            if "aim_pane_resume.py" in line:
+                if save_hook_state != "ours":
+                    out_lines.append(save_hook_line)
+                save_hook_state = "ours"
+                continue
+            save_hook_state = "foreign"
         out_lines.append(line)
 
     if not has_capture:
         out_lines.append("set -g @resurrect-capture-pane-contents 'on'")
     if not replaced:
         out_lines.append(target_line)
+    if save_hook_state == "absent":
+        out_lines.append(save_hook_line)
 
     tmux_conf.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
     subprocess.run(["tmux", "source-file", str(tmux_conf)], capture_output=True)
@@ -381,8 +418,14 @@ def build_agent_launch_command(
     resume: bool = True,
     skip_permissions: bool | None = None,
     home_dir: str | None = None,
+    session_id: str | None = None,
 ) -> str:
-    """Build shell-safe CLI command to launch or fast-resume (-c) an AI agent."""
+    """Build a shell-safe command to launch or resume an AI agent with harness-correct syntax (#313).
+
+    ``session_id`` resumes that exact conversation; otherwise ``resume`` uses each harness's own
+    "most recent" form (``agy -c``, ``codex resume --last``, ``gemini --resume latest``...).
+    Harnesses without resume support (aider) launch fresh.
+    """
     normalized = (agent or "").strip().lower()
     if normalized in ("", "none", "shell", "bash"):
         return ""
@@ -392,12 +435,13 @@ def build_agent_launch_command(
     if skip_permissions is None:
         skip_permissions = bool(load_tmux_settings(home_dir=home_dir).get("skip_permissions", False))
 
-    parts = [normalized]
-    if normalized == "agy" and skip_permissions:
-        parts.append("--dangerously-skip-permissions")
-    if resume:
-        parts.append("-c")
-    return " ".join(parts)
+    argv = pane_sessions.build_resume_argv(
+        normalized,
+        session_id=session_id,
+        resume=resume,
+        skip_permissions=bool(skip_permissions),
+    )
+    return pane_sessions.argv_to_command(argv)
 
 
 def get_resurrect_paths(home_dir: str | None = None) -> tuple[Path, Path, Path | None]:
@@ -510,6 +554,7 @@ def get_resurrect_status(home_dir: str | None = None) -> dict:
     should_warn = raw_warn and bool(prefs.get("empty_save_guardrail", True))
     return {
         "installed": installed,
+        "install_hint": "" if installed else RESURRECT_INSTALL_HINT,
         "active_session_count": active_count,
         "saved_session_count": saved_count,
         "last_saved_at": last_saved_at,
@@ -518,11 +563,44 @@ def get_resurrect_status(home_dir: str | None = None) -> dict:
     }
 
 
-def save_tmux_workspace(force: bool = False, home_dir: str | None = None) -> dict:
-    """Trigger tmux-resurrect save.sh with configurable Empty-Save Guardrail (#47)."""
+def list_tmux_panes_for_capture() -> list[dict]:
+    """Return every live pane as {"key": "session:window.pane", "pane_pid", "cwd"} (#313)."""
+    fmt = "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_pid}\t#{pane_current_path}"
+    try:
+        res = subprocess.run(["tmux", "list-panes", "-a", "-F", fmt], capture_output=True, text=True, timeout=10)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    if res.returncode != 0:
+        return []
+    panes: list[dict] = []
+    for line in (res.stdout or "").splitlines():
+        parts = line.split("\t")
+        if len(parts) != 5 or parts[0] == "aim_restore_tmp":
+            continue
+        s_name, w_idx, p_idx, p_pid, p_path = parts
+        try:
+            pid = int(p_pid)
+        except ValueError:
+            continue
+        panes.append({"key": f"{s_name}:{w_idx}.{p_idx}", "pane_pid": pid, "cwd": p_path})
+    return panes
+
+
+def capture_and_store_pane_sessions(home_dir: str | None = None) -> dict:
+    """Resolve each agent pane's exact session ID and persist the 0600 manifest (#313)."""
+    panes = list_tmux_panes_for_capture()
+    if not panes:
+        return pane_sessions.read_manifest(home=home_dir)
+    manifest = pane_sessions.capture_pane_sessions(panes, home=home_dir)
+    pane_sessions.write_manifest(manifest, home=home_dir)
+    return manifest
+
+
+def save_tmux_workspace(force: bool = False, home_dir: str | None = None, timeout_seconds: int = 60) -> dict:
+    """Capture exact pane sessions, run tmux-resurrect save.sh, and verify the snapshot (#47, #313)."""
     save_script, _, _ = get_resurrect_paths(home_dir=home_dir)
     if not save_script.is_file():
-        raise FileNotFoundError("tmux-resurrect not found in ~/.tmux/plugins/tmux-resurrect/")
+        raise FileNotFoundError(RESURRECT_INSTALL_HINT)
 
     active_count = len(get_active_tmux_hierarchy())
     saved_count, last_saved_at = get_saved_resurrect_session_count(home_dir=home_dir)
@@ -540,21 +618,47 @@ def save_tmux_workspace(force: bool = False, home_dir: str | None = None) -> dic
             "last_saved_at": last_saved_at,
         }
 
-    subprocess.Popen(["tmux", "run-shell", str(save_script)])
+    manifest = capture_and_store_pane_sessions(home_dir=home_dir)
+    summary = pane_sessions.summarize_manifest(manifest)
+
+    try:
+        subprocess.run(
+            ["tmux", "run-shell", str(save_script)],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        pass
+
+    _, _, last_after = get_resurrect_paths(home_dir=home_dir)
+    new_mtime = None
+    if last_after is not None and last_after.exists():
+        new_mtime = last_after.stat().st_mtime
+    verified = new_mtime is not None and (last_saved_at is None or new_mtime > last_saved_at)
+    new_saved_count, _ = get_saved_resurrect_session_count(home_dir=home_dir)
+
     return {
-        "status": "saving",
+        "status": "saved" if verified else "save_unverified",
         "should_warn": False,
-        "warning_message": "",
+        "warning_message": "" if verified else "tmux-resurrect ran but no new snapshot was written.",
         "active_session_count": active_count,
-        "saved_session_count": saved_count,
+        "saved_session_count": new_saved_count if verified else saved_count,
+        "last_saved_at": new_mtime if verified else last_saved_at,
+        **summary,
     }
 
 
 def restore_tmux_workspace(home_dir: str | None = None, wait_seconds: int = 5) -> dict:
-    """Trigger tmux-resurrect restore.sh with cold-boot dead-daemon bootstrap (#37)."""
+    """Trigger tmux-resurrect restore.sh with cold-boot dead-daemon bootstrap (#37).
+
+    Agent panes are relaunched by resurrect through scripts/aim_pane_resume.py, which resumes
+    each pane's exact conversation from the saved manifest (#313).
+    """
     _, restore_script, _ = get_resurrect_paths(home_dir=home_dir)
     if not restore_script.is_file():
-        raise FileNotFoundError("tmux-resurrect not found in ~/.tmux/plugins/tmux-resurrect/")
+        raise FileNotFoundError(RESURRECT_INSTALL_HINT)
+    summary = pane_sessions.summarize_manifest(pane_sessions.read_manifest(home=home_dir))
 
     saved_count, last_saved_at = get_saved_resurrect_session_count(home_dir=home_dir)
     server_check = subprocess.run(["tmux", "has-session"], capture_output=True)
@@ -579,6 +683,7 @@ def restore_tmux_workspace(home_dir: str | None = None, wait_seconds: int = 5) -
         "bootstrapped_daemon": bootstrapped,
         "saved_session_count": saved_count,
         "last_saved_at": last_saved_at,
+        **summary,
     }
 
 

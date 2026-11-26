@@ -26,6 +26,7 @@ export default function CommandPalette({
   onFastResumeSession,
   onSaveWorkspaceState,
   onRestoreWorkspaceState,
+  resurrectGate = { disabled: false, title: '' },
   onKillSession,
   onSendSessionCommand,
   onSendRawCommand,
@@ -126,9 +127,9 @@ export default function CommandPalette({
       items.push({
         id: 'session:fast-resume',
         category: 'SESSIONS',
-        label: `Agent: Fast Resume (-c) in ${activeSession}`,
-        keywords: 'agent fast resume continue -c agy grok opencode codex previous session',
-        badge: 'RESUME -C',
+        label: `Agent: Fast Resume (latest) in ${activeSession}`,
+        keywords: 'agent fast resume continue -c agy grok opencode codex claude previous session',
+        badge: 'RESUME',
         action: () => onFastResumeSession?.(activeSession),
       });
     }
@@ -137,8 +138,8 @@ export default function CommandPalette({
       id: 'workspace:save-resurrect',
       category: 'SESSIONS',
       label: 'Workspace: Save Tmux State (tmux-resurrect)',
-      keywords: 'workspace save tmux state snapshot backup resurrect guardrail',
-      badge: 'SAVE STATE',
+      keywords: 'workspace save tmux state snapshot backup resurrect guardrail exact conversation',
+      badge: resurrectGate.disabled ? 'NOT INSTALLED' : 'SAVE STATE',
       action: () => onSaveWorkspaceState?.(),
     });
 
@@ -146,8 +147,8 @@ export default function CommandPalette({
       id: 'workspace:restore-resurrect',
       category: 'SESSIONS',
       label: 'Workspace: Restore Tmux State (tmux-resurrect)',
-      keywords: 'workspace restore load tmux state snapshot resurrect cold boot -c',
-      badge: 'RESTORE -C',
+      keywords: 'workspace restore load tmux state snapshot resurrect cold boot resume exact conversation',
+      badge: resurrectGate.disabled ? 'NOT INSTALLED' : 'RESTORE',
       action: () => onRestoreWorkspaceState?.(),
     });
 
@@ -394,7 +395,7 @@ export default function CommandPalette({
       {
         id: 'ui:tmux-settings',
         category: 'SETTINGS & THEME',
-        label: 'Open Tmux, Fast-Resume (-c) & WSL Boot Settings',
+        label: 'Open Tmux, Fast-Resume & WSL Boot Settings',
         keywords: 'tmux resurrect boot wsl keepalive fast resume -c skip permissions repo scan paths guardrail',
         badge: 'TMUX & BOOT',
         action: () => onOpenTmuxSettings?.(),
@@ -431,6 +432,7 @@ export default function CommandPalette({
     onFastResumeSession,
     onSaveWorkspaceState,
     onRestoreWorkspaceState,
+    resurrectGate.disabled,
     onKillSession,
     onSendSessionCommand,
     onSendRawCommand,

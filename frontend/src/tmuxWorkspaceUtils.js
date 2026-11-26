@@ -1,10 +1,12 @@
-// Pure utilities for Git Repo Launcher, Fast Resume (-c), and Session Spawn payloads (#300)
+// Pure utilities for Git Repo Launcher, Fast Resume, Session Spawn payloads (#300),
+// and workspace SAVE/RESTORE result messaging + tmux-resurrect gating (#313)
 
 export const AGENT_LAUNCH_OPTIONS = [
-  { id: 'agy', label: 'AGY (-c)', binary: 'agy', supportsResume: true },
-  { id: 'grok', label: 'GROK (-c)', binary: 'grok', supportsResume: true },
-  { id: 'opencode', label: 'OPENCODE (-c)', binary: 'opencode', supportsResume: true },
-  { id: 'codex', label: 'CODEX (-c)', binary: 'codex', supportsResume: true },
+  { id: 'agy', label: 'AGY (RESUME)', binary: 'agy', supportsResume: true },
+  { id: 'grok', label: 'GROK (RESUME)', binary: 'grok', supportsResume: true },
+  { id: 'opencode', label: 'OPENCODE (RESUME)', binary: 'opencode', supportsResume: true },
+  { id: 'codex', label: 'CODEX (RESUME)', binary: 'codex', supportsResume: true },
+  { id: 'claude', label: 'CLAUDE (RESUME)', binary: 'claude', supportsResume: true },
   { id: 'shell', label: 'SHELL ONLY', binary: '', supportsResume: false },
 ];
 
@@ -53,4 +55,37 @@ export function buildSpawnSessionPayload(input) {
     }
   }
   return payload;
+}
+
+export function describeResurrectSaveResult(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  if (d.status !== 'saved') {
+    return {
+      ok: false,
+      message: 'tmux-resurrect ran but the snapshot could not be verified — check tmux-resurrect and try again',
+    };
+  }
+  const sessions = Number(d.active_session_count) || 0;
+  const agents = Number(d.agent_pane_count) || 0;
+  const exact = Number(d.exact_pane_count) || 0;
+  const agentPart = agents > 0 ? ` · ${exact}/${agents} agent pane(s) pinned to exact conversations` : '';
+  return { ok: true, message: `Saved ${sessions} tmux session(s)${agentPart}` };
+}
+
+export function describeResurrectRestoreResult(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const agents = Number(d.agent_pane_count) || 0;
+  const exact = Number(d.exact_pane_count) || 0;
+  const prefix = d.bootstrapped_daemon ? 'Cold-boot tmux daemon started — restoring workspace' : 'Restoring workspace';
+  if (agents > 0) {
+    return `${prefix} · ${exact}/${agents} agent pane(s) resuming their exact conversations...`;
+  }
+  return `${prefix}...`;
+}
+
+export function resurrectGate(status) {
+  if (status && status.installed === false) {
+    return { disabled: true, title: status.install_hint || 'tmux-resurrect is not installed' };
+  }
+  return { disabled: false, title: '' };
 }

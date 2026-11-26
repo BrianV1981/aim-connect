@@ -261,7 +261,7 @@ export default function SpawnSessionModal({
                       checked={resumeFlag}
                       onChange={(e) => setResumeFlag(e.target.checked)}
                     />
-                    <span>Resume (-c)</span>
+                    <span>Resume latest</span>
                   </label>
                 </div>
               )}

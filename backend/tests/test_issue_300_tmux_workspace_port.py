@@ -102,7 +102,8 @@ def test_resurrect_save_and_cold_boot_restore_endpoints(tmp_path, monkeypatch, a
 
     with (
         patch("tmux_workspace_manager.get_active_tmux_hierarchy", return_value=mock_hierarchy_low),
-        patch("tmux_workspace_manager.subprocess.Popen") as mock_popen,
+        patch("tmux_workspace_manager.capture_and_store_pane_sessions", return_value={"panes": {}}) as mock_capture,
+        patch("tmux_workspace_manager.subprocess.run") as mock_run,
     ):
         status_resp = client.get("/api/tmux/resurrect/status", headers={"x-api-token": admin_token})
         assert status_resp.status_code == 200
@@ -112,7 +113,7 @@ def test_resurrect_save_and_cold_boot_restore_endpoints(tmp_path, monkeypatch, a
         assert st["saved_session_count"] == 4
         assert st["should_warn"] is True
 
-        # Save without force -> confirm_required, Popen NOT called
+        # Save without force -> confirm_required, nothing captured or executed
         save_guard = client.post(
             "/api/tmux/resurrect/save",
             json={"force": False},
@@ -120,17 +121,20 @@ def test_resurrect_save_and_cold_boot_restore_endpoints(tmp_path, monkeypatch, a
         )
         assert save_guard.status_code == 200
         assert save_guard.json()["status"] == "confirm_required"
-        mock_popen.assert_not_called()
+        mock_run.assert_not_called()
+        mock_capture.assert_not_called()
 
-        # Save with force=True -> executes save.sh via tmux run-shell
+        # Save with force=True -> captures pane sessions, then runs save.sh synchronously via tmux run-shell (#313)
         save_forced = client.post(
             "/api/tmux/resurrect/save",
             json={"force": True},
             headers={"x-api-token": admin_token},
         )
         assert save_forced.status_code == 200
-        assert save_forced.json()["status"] == "saving"
-        mock_popen.assert_called_once_with(["tmux", "run-shell", str(save_sh)])
+        # save.sh is a no-op fixture here, so the snapshot is honestly reported as unverified (#313)
+        assert save_forced.json()["status"] == "save_unverified"
+        mock_capture.assert_called_once()
+        assert mock_run.call_args[0][0] == ["tmux", "run-shell", str(save_sh)]
 
     # Cold-boot restore when tmux daemon is dead (has-session rc=1) -> aim_restore_tmp bootstrap
     dead_check = MagicMock(returncode=1)
@@ -313,7 +317,7 @@ console.log(JSON.stringify({{
 
     assert "Workspace: Save Tmux State" in palette_jsx
     assert "Workspace: Restore Tmux State" in palette_jsx
-    assert "Agent: Fast Resume (-c)" in palette_jsx
+    assert "Agent: Fast Resume (latest)" in palette_jsx
     assert "Project: Open Local Git Repo" in palette_jsx
     assert "/api/projects/repos" in spawn_jsx
     assert "EMPTY-SAVE GUARDRAIL" in save_modal_jsx
@@ -388,18 +392,19 @@ def test_all_5_tmux_and_boot_settings_persistence_and_sync(tmp_path, monkeypatch
     assert dash_after["pane_split_percent"] == 40
     assert dash_after["search_paths"] == ["/mnt/d/projects", "~/work"]
 
-    # Verify ~/.tmux.conf received valid single-quoted -> translation with --dangerously-skip-permissions -c
+    # Verify ~/.tmux.conf routes agents through the exact per-pane resume script (#313), keeping agy's skip flag
     conf_txt = tmux_conf.read_text(encoding="utf-8")
-    assert '"~agy->agy --dangerously-skip-permissions -c"' in conf_txt
-    assert '"~grok->grok -c"' in conf_txt
+    assert "aim_pane_resume.py agy --dangerously-skip-permissions\"" in conf_txt
+    assert "aim_pane_resume.py grok\"" in conf_txt
 
     # Verify empty_save_guardrail=False bypasses confirm_required even with 1 active session
     low_h = {"aim-connect": {"windows": {"@1": {"active": True, "panes": []}}}}
     with (
         patch("tmux_workspace_manager.get_active_tmux_hierarchy", return_value=low_h),
-        patch("tmux_workspace_manager.subprocess.Popen") as mock_popen,
+        patch("tmux_workspace_manager.capture_and_store_pane_sessions", return_value={"panes": {}}),
+        patch("tmux_workspace_manager.subprocess.run") as mock_run,
     ):
         save_resp = client.post("/api/tmux/resurrect/save", json={"force": False}, headers={"x-api-token": admin_token})
         assert save_resp.status_code == 200
-        assert save_resp.json()["status"] == "saving"
-        mock_popen.assert_called_once()
+        assert save_resp.json()["status"] in ("saved", "save_unverified")
+        mock_run.assert_called_once()

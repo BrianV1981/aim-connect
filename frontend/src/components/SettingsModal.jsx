@@ -1059,7 +1059,7 @@ export default function SettingsModal({
                     type="button"
                     className="subbar-util-btn"
                     onClick={() => persistTmuxSettingsPatch({}, true, 'SYNCED TO ~/.TMUX.CONF ✓')}
-                    title="Write matching @resurrect-processes (-c) translation rules to ~/.tmux.conf"
+                    title="Write AIM exact per-pane resume rules (@resurrect-processes) to ~/.tmux.conf (backup: ~/.tmux.conf.aim-bak)"
                   >
                     <Icon name="refresh" size={11} />
                     <span>SYNC TO ~/.TMUX.CONF</span>
@@ -1084,7 +1084,7 @@ export default function SettingsModal({
                 </div>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Auto-Resume Previous Folder Session (-c)</div>
+                    <div style={{ fontWeight: 600 }}>Auto-Resume Each Agent Pane's Saved Conversation</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                       Turn OFF when you want newly launched or restored sessions to start a blank conversation
                     </div>

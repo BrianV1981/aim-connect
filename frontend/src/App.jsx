@@ -21,7 +21,12 @@ import ForensicsModal from './components/ForensicsModal';
 import HistoryVault from './components/HistoryVault';
 import SpawnSessionModal from './components/SpawnSessionModal';
 import ResurrectSaveModal from './components/ResurrectSaveModal';
-import { buildSpawnSessionPayload } from './tmuxWorkspaceUtils';
+import {
+  buildSpawnSessionPayload,
+  describeResurrectRestoreResult,
+  describeResurrectSaveResult,
+  resurrectGate,
+} from './tmuxWorkspaceUtils';
 import {
   AUTO_RELOAD_BUILD_STORAGE_KEY,
   evaluateBuildFreshness,
@@ -266,6 +271,7 @@ function App() {
   });
   const [resurrectConfirmState, setResurrectConfirmState] = useState(null);
   const [resurrectBusy, setResurrectBusy] = useState(false);
+  const [resurrectStatus, setResurrectStatus] = useState(null);
   const bootBuildIdRef = useRef(
     extractDomBuildId(typeof document !== 'undefined' ? document : null)
   );
@@ -1367,6 +1373,7 @@ function App() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d && d.settings) setTmuxBootSettings(d.settings);
+        if (d && d.resurrect) setResurrectStatus(d.resurrect);
       })
       .catch(() => {});
   }, [isAuthenticated]);
@@ -1429,6 +1436,7 @@ function App() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 404) setResurrectStatus({ installed: false, install_hint: data.detail });
         showWorkspaceToast(data.detail || 'tmux-resurrect save failed');
         return;
       }
@@ -1441,9 +1449,7 @@ function App() {
         return;
       }
       setResurrectConfirmState(null);
-      showWorkspaceToast(
-        `Saving ${data.active_session_count ?? sessions.length} tmux session(s) via tmux-resurrect...`
-      );
+      showWorkspaceToast(describeResurrectSaveResult(data).message);
     } catch {
       showWorkspaceToast('Failed to save tmux workspace state');
     } finally {
@@ -1456,14 +1462,11 @@ function App() {
       const res = await fetch('/api/tmux/resurrect/restore', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 404) setResurrectStatus({ installed: false, install_hint: data.detail });
         showWorkspaceToast(data.detail || 'tmux-resurrect restore failed');
         return;
       }
-      showWorkspaceToast(
-        data.bootstrapped_daemon
-          ? 'Cold-boot tmux daemon started — restoring snapshot & resuming agents (-c)...'
-          : 'Restoring saved tmux workspace & resuming agents (-c)...'
-      );
+      showWorkspaceToast(describeResurrectRestoreResult(data));
       setTimeout(refreshFleetSessions, 2500);
       setTimeout(refreshFleetSessions, 5800);
     } catch {
@@ -3173,6 +3176,7 @@ function App() {
           onSaveWorkspaceState={() => saveTmuxWorkspace(false)}
           onRestoreWorkspaceState={restoreTmuxWorkspace}
           showSidebarResurrectBar={tmuxBootSettings.show_sidebar_resurrect_bar !== false}
+          resurrectGate={resurrectGate(resurrectStatus)}
           onKillSession={killSession}
           onSendSessionCommand={sendSessionCommand}
         />
@@ -4437,6 +4441,7 @@ function App() {
         onFastResumeSession={fastResumeSession}
         onSaveWorkspaceState={() => saveTmuxWorkspace(false)}
         onRestoreWorkspaceState={restoreTmuxWorkspace}
+        resurrectGate={resurrectGate(resurrectStatus)}
         onKillSession={killSession}
         onSendSessionCommand={sendSessionCommand}
         onSendRawCommand={sendCommand}
