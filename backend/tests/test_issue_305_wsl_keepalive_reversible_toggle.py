@@ -65,6 +65,7 @@ def test_wsl_keepalive_cli_on_status_and_off_roundtrip(tmp_path):
     env["AIM_WIN_HOME"] = str(win_home)
     env["AIM_SKIP_WIN_EXEC"] = "1"
     env["AIM_WSL_DISTRO"] = "Ubuntu"
+    env["AIM_KEEPALIVE_PROC_NAME"] = "aim_wsl_keepalive_sleep_test305"
 
     try:
         # 1. Enable Always-On
@@ -131,7 +132,7 @@ def test_wsl_keepalive_cli_on_status_and_off_roundtrip(tmp_path):
         assert st_off_data["windows_startup_installed"] is False
         assert st_off_data["wsl_keepalive_running"] is False
     finally:
-        subprocess.run(["pkill", "-f", "aim_wsl_keepalive_sleep"], capture_output=True)
+        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test305"], capture_output=True)
 
 
 def test_api_tmux_host_control_enable_and_disable_wsl_always_on(tmp_path, monkeypatch, admin_token):
@@ -144,6 +145,7 @@ def test_api_tmux_host_control_enable_and_disable_wsl_always_on(tmp_path, monkey
 
     monkeypatch.setenv("AIM_WIN_HOME", str(win_home))
     monkeypatch.setenv("AIM_SKIP_WIN_EXEC", "1")
+    monkeypatch.setenv("AIM_KEEPALIVE_PROC_NAME", "aim_wsl_keepalive_sleep_test305_api")
     monkeypatch.setattr("routes_sessions.AIM_CONNECT_ROOT", str(WORKTREE_ROOT))
 
     client = TestClient(main.app)
@@ -170,7 +172,7 @@ def test_api_tmux_host_control_enable_and_disable_wsl_always_on(tmp_path, monkey
         assert dis_host["windows_startup_installed"] is False
         assert dis_host["wsl_idle_timeout_configured"] is False
     finally:
-        subprocess.run(["pkill", "-f", "aim_wsl_keepalive_sleep"], capture_output=True)
+        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test305_api"], capture_output=True)
 
     settings_jsx = (FRONTEND_SRC / "components" / "SettingsModal.jsx").read_text(encoding="utf-8")
     assert "enable_wsl_always_on" in settings_jsx

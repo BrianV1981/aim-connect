@@ -237,6 +237,8 @@ console.log(JSON.stringify({{
         [
             binary,
             "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
             "--disable-dev-shm-usage",
             "--remote-debugging-address=127.0.0.1",
             f"--remote-debugging-port={port}",

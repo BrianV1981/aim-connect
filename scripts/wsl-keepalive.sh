@@ -138,9 +138,13 @@ LOCALAPPDATA_DIR="${AIM_WIN_LOCALAPPDATA_DIR:-${WIN_HOME:+$WIN_HOME/AppData/Loca
 STARTUP_VBS="${STARTUP_DIR:+$STARTUP_DIR/aim-wsl-keepalive.vbs}"
 LEGACY_VBS="${LOCALAPPDATA_DIR:+$LOCALAPPDATA_DIR/wsl-keepalive.vbs}"
 SAFE_DISTRO="$(resolve_distro_name)"
+KEEPALIVE_PROC_NAME="$(echo "${AIM_KEEPALIVE_PROC_NAME:-aim_wsl_keepalive_sleep}" | tr -cd 'a-zA-Z0-9_.-')"
+if [ -z "$KEEPALIVE_PROC_NAME" ]; then
+    KEEPALIVE_PROC_NAME="aim_wsl_keepalive_sleep"
+fi
 
 is_keepalive_running() {
-    pgrep -f "^aim_wsl_keepalive_sleep" >/dev/null 2>&1
+    pgrep -f "^${KEEPALIVE_PROC_NAME}([[:space:]]|$)" >/dev/null 2>&1
 }
 
 is_idle_timeout_set() {
@@ -174,7 +178,7 @@ spawn_keepalive_handle() {
 
     # Fallback handle when running inside a Linux/CI environment without Windows wscript.exe interop
     if ! is_keepalive_running; then
-        nohup bash -c 'exec -a aim_wsl_keepalive_sleep sleep infinity' </dev/null >/dev/null 2>&1 &
+        nohup bash -c "exec -a \"$KEEPALIVE_PROC_NAME\" sleep infinity" </dev/null >/dev/null 2>&1 &
         sleep 0.1
     fi
 }
@@ -187,7 +191,7 @@ case "$ACTION" in
         fi
         "$PYTHON_BIN" "$MERGE_PY" --force "$WSLCONFIG_PATH" >/dev/null
         mkdir -p "$STARTUP_DIR"
-        printf "' Headless zero-window WSL2 keepalive handle for AIM-Connect (#305/#311)\r\nSet sh = CreateObject(\"WScript.Shell\")\r\nsh.Run \"wsl.exe -d %s --exec bash -c \"\"pgrep -f ^aim_wsl_keepalive_sleep >/dev/null 2>&1 || exec -a aim_wsl_keepalive_sleep sleep infinity\"\"\", 0, False\r\n" "$SAFE_DISTRO" > "$STARTUP_VBS"
+        printf "' Headless zero-window WSL2 keepalive handle for AIM-Connect (#305/#311)\r\nSet sh = CreateObject(\"WScript.Shell\")\r\nsh.Run \"wsl.exe -d %s --exec bash -c \"\"pgrep -f '^%s([[:space:]]|\$)' >/dev/null 2>&1 || exec -a %s sleep infinity\"\"\", 0, False\r\n" "$SAFE_DISTRO" "$KEEPALIVE_PROC_NAME" "$KEEPALIVE_PROC_NAME" > "$STARTUP_VBS"
 
         spawn_keepalive_handle
 
@@ -207,7 +211,7 @@ case "$ACTION" in
         ;;
 
     off)
-        pkill -f "^aim_wsl_keepalive_sleep" 2>/dev/null || true
+        pkill -f "^${KEEPALIVE_PROC_NAME}([[:space:]]|$)" 2>/dev/null || true
         for _ in 1 2 3 4 5; do
             if ! is_keepalive_running; then
                 break

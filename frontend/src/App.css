@@ -5176,7 +5176,7 @@ mark.find-hit-mark.active-hit {
   font-weight: 500;
   line-height: 1.35;
   color: #fde68a;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .chat-gate-actions {

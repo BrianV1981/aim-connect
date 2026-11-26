@@ -50,8 +50,12 @@ def _candidate_transcript_files() -> list[str]:
         files.extend(glob.glob(os.path.join(custom_dir, "**", "*.jsonl"), recursive=True))
         files.extend(glob.glob(os.path.join(custom_dir, "**", "*.md"), recursive=True))
 
+    agy_app_dir = os.environ.get(
+        "AIM_AGY_APP_DATA_DIR",
+        os.path.join(HOME_DIR, ".gemini", "antigravity-cli"),
+    )
     agy_brain_glob = os.path.join(
-        HOME_DIR, ".gemini", "antigravity-cli", "brain", "*", ".system_generated", "logs", "transcript.jsonl"
+        agy_app_dir, "brain", "*", ".system_generated", "logs", "transcript.jsonl"
     )
     files.extend(glob.glob(agy_brain_glob))
 

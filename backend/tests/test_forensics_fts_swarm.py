@@ -53,6 +53,10 @@ def test_forensics_session_and_sqlite_fts5_search(client, valid_token, tmp_path,
     monkeypatch.setenv("AIM_FORENSICS_DIR", str(forensics_dir))
     monkeypatch.setenv("AIM_FORENSICS_DB", str(db_file))
     monkeypatch.setenv("AIM_EXTRA_ALLOWED_ROOT", str(tmp_path))
+    monkeypatch.setenv("AIM_AGY_APP_DATA_DIR", str(tmp_path / "isolated_agy"))
+    monkeypatch.setenv("AIM_GROK_HOME", str(tmp_path / "isolated_grok"))
+    monkeypatch.setenv("AIM_OPENCODE_DATA_DIR", str(tmp_path / "isolated_opencode"))
+    monkeypatch.setattr(routes_forensics, "AGENT_WORKSPACES_DIR", str(tmp_path / "isolated_agent_ws"))
 
     transcript = forensics_dir / "transcript.jsonl"
     steps = [

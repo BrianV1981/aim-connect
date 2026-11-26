@@ -176,6 +176,9 @@ def test_project_history_vault_endpoints_and_turn_weaver(
 
     monkeypatch.setenv("AIM_AGY_APP_DATA_DIR", str(agy_dir))
     monkeypatch.setenv("AIM_FORENSICS_DIR", str(vault_dir))
+    monkeypatch.setenv("AIM_GROK_HOME", str(tmp_path / "isolated_grok"))
+    monkeypatch.setenv("AIM_OPENCODE_DATA_DIR", str(tmp_path / "isolated_opencode"))
+    monkeypatch.setattr("routes_forensics.AGENT_WORKSPACES_DIR", str(tmp_path / "isolated_agent_ws"))
 
     resp = client.get(
         "/api/sessions/history?session=aim-connect",

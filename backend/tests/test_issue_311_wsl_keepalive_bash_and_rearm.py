@@ -31,8 +31,9 @@ def test_generated_vbs_uses_bash_and_spawns_persistent_sleep_without_self_matchi
     env["AIM_WIN_HOME"] = str(win_home)
     env["AIM_SKIP_WIN_EXEC"] = "1"
     env["AIM_WSL_DISTRO"] = "Ubuntu"
+    env["AIM_KEEPALIVE_PROC_NAME"] = "aim_wsl_keepalive_sleep_test311_a"
 
-    subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep"], capture_output=True)
+    subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test311_a"], capture_output=True)
     try:
         res = subprocess.run(
             ["bash", str(WSL_KEEPALIVE_SH), "on"],
@@ -44,7 +45,7 @@ def test_generated_vbs_uses_bash_and_spawns_persistent_sleep_without_self_matchi
         )
         assert res.returncode == 0, res.stderr
         # Kill the fallback process so we strictly test the VBS command itself!
-        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep"], capture_output=True)
+        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test311_a"], capture_output=True)
         time.sleep(0.15)
 
         vbs_text = (startup_dir / "aim-wsl-keepalive.vbs").read_text(encoding="utf-8")
@@ -95,7 +96,7 @@ def test_generated_vbs_uses_bash_and_spawns_persistent_sleep_without_self_matchi
         )
         assert dup.returncode == 0
     finally:
-        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep"], capture_output=True)
+        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test311_a"], capture_output=True)
 
 
 def test_ensure_handle_and_boot_restore_rearm_when_always_on_enabled(tmp_path):
@@ -109,8 +110,9 @@ def test_ensure_handle_and_boot_restore_rearm_when_always_on_enabled(tmp_path):
     env = os.environ.copy()
     env["AIM_WIN_HOME"] = str(win_home)
     env["AIM_SKIP_WIN_EXEC"] = "1"
+    env["AIM_KEEPALIVE_PROC_NAME"] = "aim_wsl_keepalive_sleep_test311_b"
 
-    subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep"], capture_output=True)
+    subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test311_b"], capture_output=True)
     try:
         # 1. When Always-On is OFF, ensure-handle is a strict no-op
         noop_res = subprocess.run(
@@ -142,7 +144,7 @@ def test_ensure_handle_and_boot_restore_rearm_when_always_on_enabled(tmp_path):
             check=True,
             capture_output=True,
         )
-        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep"], capture_output=True)
+        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test311_b"], capture_output=True)
         time.sleep(0.15)
 
         bin_dir = tmp_path / "bin"
@@ -178,4 +180,4 @@ def test_ensure_handle_and_boot_restore_rearm_when_always_on_enabled(tmp_path):
         assert st_rearmed["wsl_always_on_enabled"] is True
         assert st_rearmed["wsl_keepalive_running"] is True
     finally:
-        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep"], capture_output=True)
+        subprocess.run(["pkill", "-f", "^aim_wsl_keepalive_sleep_test311_b"], capture_output=True)

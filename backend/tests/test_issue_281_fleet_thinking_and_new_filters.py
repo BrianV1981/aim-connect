@@ -133,6 +133,8 @@ html, body {{ margin: 0; padding: 0; width: 390px; height: 600px; }}
         [
             binary,
             "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
             "--disable-dev-shm-usage",
             "--remote-debugging-address=127.0.0.1",
             f"--remote-debugging-port={port}",

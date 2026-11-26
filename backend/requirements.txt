@@ -13,3 +13,4 @@ uvloop>=0.21.0; sys_platform != 'win32'
 httptools>=0.6.4; sys_platform != 'win32'
 edge-tts
 piper-tts
+pillow>=10.0.0
