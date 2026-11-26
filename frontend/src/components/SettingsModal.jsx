@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { registerWebAuthn } from '../webauthn';
 import Icon from './Icons';
+import InfoBubble from './InfoBubble';
+import { SETTINGS_HELP } from '../settingsHelp';
 
 const TTS_VOICES = [
   { id: 'piper:en_GB-alan-medium', label: 'Offline Piper — Alan (UK J.O.S.H.U.A. / JARVIS)' },
@@ -14,6 +16,19 @@ const TTS_VOICES = [
 ];
 
 const NODE_BADGE_SWATCHES = ['#00FFA3', '#38BDF8', '#F59E0B', '#A855F7', '#F43F5E', '#FF5722'];
+
+// #314: every setting gets an always-visible plain-English line (Summary) and a tap-friendly ? bubble (Help).
+function Help({ k }) {
+  return <InfoBubble text={SETTINGS_HELP[k]?.details} />;
+}
+
+function Summary({ k, style }) {
+  return (
+    <div className="setting-help" style={style}>
+      {SETTINGS_HELP[k]?.summary}
+    </div>
+  );
+}
 
 export default function SettingsModal({
   onClose,
@@ -403,7 +418,7 @@ export default function SettingsModal({
               <span>SYSTEM SETTINGS &amp; VAULT</span>
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', letterSpacing: '0.14em', color: 'var(--accent)', marginTop: '3px' }}>
-              100% PARITY: APPEARANCE · KEYBOARD · VOICE/TTS · INTEGRATIONS · 3FA/E2EE
+              TAP ANY ? FOR A PLAIN-ENGLISH EXPLANATION
             </div>
           </div>
           <button type="button" className="ghost-btn" style={{ padding: '0 6px' }} onClick={onClose} title="Close Settings">
@@ -449,11 +464,10 @@ export default function SettingsModal({
               >
                 <div style={{ flex: 1, minWidth: '220px' }}>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 700 }}>
-                    STANDALONE APP MODE (POP-OUT WINDOW)
+                    INSTALL AS AN APP
+                    <Help k="installApp" />
                   </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Pop A.I.M. Connect out of the browser into a chromeless desktop/mobile app window with pass-through network-only Service Worker.
-                  </div>
+                  <Summary k="installApp" style={{ marginTop: '2px' }} />
                   {(currentBuildId || appUpdateAvailable) && (
                     <div
                       style={{
@@ -481,7 +495,7 @@ export default function SettingsModal({
                       className={appUpdateAvailable ? 'neon-cta-btn' : 'subbar-util-btn'}
                       style={{ height: '34px', padding: '0 13px', fontSize: '11px' }}
                       onClick={onRefreshApp}
-                      title="Clear PWA caches and reload the latest server bundle (mobile equivalent to Ctrl+Shift+R)"
+                      title="Load the newest version of the app from your server (like a hard refresh)"
                     >
                       <Icon name="refresh" size={13} />
                       <span>{appUpdateAvailable ? 'UPDATE & REFRESH' : 'REFRESH APP'}</span>
@@ -497,10 +511,11 @@ export default function SettingsModal({
               <div className="settings-group-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <div>
-                    <div className="settings-group-title">SERVER IDENTITY &amp; MULTI-SERVER SWITCHER</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Customize this machine&apos;s badge/Home-Screen icon monogram so phone apps are unmistakable, and switch between AIM-Connect servers in 1 tap.
+                    <div className="settings-group-title">
+                      SERVER IDENTITY &amp; MULTI-SERVER SWITCHER
+                      <Help k="serverIdentity" />
                     </div>
+                    <Summary k="serverIdentity" style={{ marginTop: '2px' }} />
                   </div>
                   {nodeSaveStatus && (
                     <span className="e2ee-status-chip">{nodeSaveStatus}</span>
@@ -573,7 +588,11 @@ export default function SettingsModal({
                   ))}
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid var(--border-hairline)' }}>
+                <div className="setting-help" style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
+                  <strong>Add another computer:</strong> {SETTINGS_HELP.addServer.summary}
+                  <Help k="addServer" />
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <input
                     type="text"
                     className="ld-text-input"
@@ -594,7 +613,7 @@ export default function SettingsModal({
                     type="color"
                     value={peerColorInput}
                     onChange={(e) => setPeerColorInput(e.target.value)}
-                    title="Peer Server Badge Color"
+                    title="Badge color for the other computer"
                     style={{ width: '34px', height: '32px', padding: '2px', borderRadius: '7px', border: '1px solid var(--border-hairline)', background: 'var(--bg-input)', cursor: 'pointer' }}
                   />
                   <button
@@ -609,8 +628,9 @@ export default function SettingsModal({
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-hairline)' }}>
-                  <div style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                    THIS SERVER&apos;S BADGE &amp; PHONE HOME-SCREEN ICON MONOGRAM (RE-ADD TO HOME SCREEN AFTER CHANGING ICON)
+                  <div className="setting-help">
+                    <strong>This computer:</strong> {SETTINGS_HELP.thisServerBadge.summary}
+                    <Help k="thisServerBadge" />
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <input
@@ -629,7 +649,7 @@ export default function SettingsModal({
                       placeholder="Icon (98X)"
                       value={nodeMonogramInput}
                       onChange={(e) => setNodeMonogramInput(e.target.value.toUpperCase())}
-                      title="2-4 character monogram drawn onto this server's PWA Home Screen icon"
+                      title="2-4 letters drawn onto this computer's app icon"
                     />
                     <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
                       {NODE_BADGE_SWATCHES.map((hex) => (
@@ -662,13 +682,17 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">UI COLOR SCHEME (SYNCED ACROSS UI, TERMINAL &amp; MONACO)</div>
+                <div className="settings-group-title">
+                  COLOR THEME
+                  <Help k="colorScheme" />
+                </div>
+                <Summary k="colorScheme" />
                 <div className="theme-swatch-grid">
                   {[
-                    ['emerald', 'Emerald Matrix', 'Obsidian #050505 + #00FFA3', '#050505', '#00FFA3'],
-                    ['oled', 'Pure OLED Black', 'Zero-glow #000000 high contrast', '#000000', '#00FFA3'],
-                    ['light', 'Daylight Crisp', 'Clean #FFFFFF light workspace', '#ffffff', '#047857'],
-                    ['navy', 'Classic AIM Navy', 'Heritage #0B162C + #FF5722', '#0b162c', '#ff5722'],
+                    ['emerald', 'Emerald Matrix', 'Black with neon green (default)', '#050505', '#00FFA3'],
+                    ['oled', 'Pure OLED Black', 'True black; saves battery on OLED phones', '#000000', '#00FFA3'],
+                    ['light', 'Daylight Crisp', 'Light background for bright rooms', '#ffffff', '#047857'],
+                    ['navy', 'Classic AIM Navy', 'Dark navy with orange accents', '#0b162c', '#ff5722'],
                   ].map(([id, title, sub, bg, acc]) => (
                     <button
                       key={id}
@@ -696,16 +720,17 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">OPERATOR REPLIES (COLOR HIGHLIGHT &amp; CHAT-BOX DOT SIDE)</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  Make your prompts stand out in History &amp; Forensics transcripts and choose whether your status dot sits on the left or right like a chat box.
+                <div className="settings-group-title">
+                  YOUR MESSAGES (HIGHLIGHT COLOR &amp; SIDE)
+                  <Help k="operatorReplies" />
                 </div>
+                <Summary k="operatorReplies" />
                 <div className="theme-swatch-grid">
                   {[
-                    ['cyan', 'Cyber Cyan Highlight', 'Crisp #00B8FF chat tint + bright text', '#00b8ff'],
-                    ['gold', 'Command Gold Highlight', 'Warm #F59E0B amber tint + bright text', '#f59e0b'],
-                    ['emerald', 'Emerald Mint Highlight', 'Neon #00FFA3 tint + bright text', '#00ffa3'],
-                    ['grey', 'Default Muted Grey', 'Classic subtle unhighlighted log style', '#6b7280'],
+                    ['cyan', 'Cyber Cyan Highlight', 'Blue highlight', '#00b8ff'],
+                    ['gold', 'Command Gold Highlight', 'Amber highlight', '#f59e0b'],
+                    ['emerald', 'Emerald Mint Highlight', 'Green highlight', '#00ffa3'],
+                    ['grey', 'Default Muted Grey', 'No highlight', '#6b7280'],
                   ].map(([id, title, sub, hex]) => (
                     <button
                       key={id}
@@ -743,7 +768,7 @@ export default function SettingsModal({
                   }}
                 >
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    OPERATOR DOT &amp; BUBBLE ALIGNMENT
+                    WHICH SIDE YOUR MESSAGES APPEAR ON
                   </span>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
@@ -766,9 +791,13 @@ export default function SettingsModal({
 
               <div className="settings-group-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="settings-group-title">TERMINAL FONT SIZE</span>
+                  <span className="settings-group-title">
+                    TERMINAL TEXT SIZE &amp; COLORS
+                    <Help k="terminalFont" />
+                  </span>
                   <span className="mono-kbd">{termFontSize}px</span>
                 </div>
+                <Summary k="terminalFont" />
                 <input
                   type="range"
                   min="10"
@@ -784,7 +813,7 @@ export default function SettingsModal({
                 />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Terminal Palette Override</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Terminal Colors</div>
                     <select
                       className="ld-select"
                       value={termTheme}
@@ -818,10 +847,11 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">WORKSPACE &amp; EDITOR (FILES TREE, STAGE VIEW &amp; SPLIT PRESETS)</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  Keep Left for classic Windows Explorer muscle memory, or flip the File Tree to the Right outer edge so Chat View and Code sit directly side-by-side in Split Screen.
+                <div className="settings-group-title">
+                  WORKSPACE &amp; EDITOR LAYOUT
+                  <Help k="workspaceEditor" />
                 </div>
+                <Summary k="workspaceEditor" />
 
                 <div
                   style={{
@@ -834,8 +864,9 @@ export default function SettingsModal({
                     flexWrap: 'wrap',
                   }}
                 >
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    FILE EXPLORER TREE SIDE
+                  <span className="setting-help" style={{ flex: '1 1 220px' }}>
+                    <strong>Folder list side.</strong> {SETTINGS_HELP.filesTreeSide.summary}
+                    <Help k="filesTreeSide" />
                   </span>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
@@ -874,8 +905,9 @@ export default function SettingsModal({
                     flexWrap: 'wrap',
                   }}
                 >
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    DEFAULT AGENT SESSION STAGE
+                  <span className="setting-help" style={{ flex: '1 1 220px' }}>
+                    <strong>Default session view.</strong> {SETTINGS_HELP.agentStage.summary}
+                    <Help k="agentStage" />
                   </span>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
@@ -900,7 +932,10 @@ export default function SettingsModal({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
-                      <span>Editor &amp; Preview Font Size</span>
+                      <span>
+                        Editor Text Size
+                        <Help k="editorFont" />
+                      </span>
                       <span className="mono-kbd">{editorFontSize}px</span>
                     </div>
                     <input
@@ -919,7 +954,8 @@ export default function SettingsModal({
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
-                      Split-Pane Width Preset ({Math.round(100 - splitWidthPct)}/{Math.round(splitWidthPct)})
+                      Split-Screen Sizes ({Math.round(100 - splitWidthPct)}/{Math.round(splitWidthPct)})
+                      <Help k="splitPreset" />
                     </div>
                     <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                       {[
@@ -942,7 +978,10 @@ export default function SettingsModal({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
-                    <span>Hide Dotfiles &amp; Cache (`.git`, `.pytest_cache`)</span>
+                    <span>
+                      Hide Hidden System Folders
+                      <Help k="hideDotfiles" />
+                    </span>
                     <input
                       type="checkbox"
                       checked={Boolean(filesHideDotfiles)}
@@ -954,7 +993,10 @@ export default function SettingsModal({
                     />
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
-                    <span>Monaco Editor Word Wrap</span>
+                    <span>
+                      Wrap Long Lines in Editor
+                      <Help k="wordWrap" />
+                    </span>
                     <input
                       type="checkbox"
                       checked={Boolean(editorWordWrap)}
@@ -970,10 +1012,11 @@ export default function SettingsModal({
                 <div style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '12px', cursor: 'pointer' }}>
                     <div>
-                      <div>Project Docs Single-Tab Website Reader (Optional Test-Drive)</div>
-                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Navigate README, HANDOFF, AGENTS &amp; memory-wiki in place inside one reusable tab with Back/Forward history instead of opening a new tab per doc.
+                      <div>
+                        Open Documents in One Tab
+                        <Help k="docsSingleTab" />
                       </div>
+                      <Summary k="docsSingleTab" style={{ marginTop: '2px' }} />
                     </div>
                     <input
                       type="checkbox"
@@ -990,10 +1033,11 @@ export default function SettingsModal({
                 <div style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '12px', cursor: 'pointer' }}>
                     <div>
-                      <div>Auto-Scroll Session Stream to Latest Reply (Optional)</div>
-                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        OFF by default so tall replies never yank your reading position; pair with the floating ↓ Hop-to-Bottom button.
+                      <div>
+                        Jump to Newest Reply Automatically
+                        <Help k="autoScroll" />
                       </div>
+                      <Summary k="autoScroll" style={{ marginTop: '2px' }} />
                     </div>
                     <input
                       type="checkbox"
@@ -1010,10 +1054,11 @@ export default function SettingsModal({
                 <div style={{ paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
                     <div>
-                      <div>Workspace Pane Memory Across Sessions</div>
-                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Per-Session remembers Terminal / Files / Browser &amp; active file per project with zero background mounts.
+                      <div>
+                        Remember Layout Per Project
+                        <Help k="paneMemory" />
                       </div>
+                      <Summary k="paneMemory" style={{ marginTop: '2px' }} />
                     </div>
                     <select
                       className="ld-select"
@@ -1054,22 +1099,30 @@ export default function SettingsModal({
 
               <div className="settings-group-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <div className="settings-group-title">1. DEFAULT AGENT HARNESS, AUTO-RESUME (-C) &amp; PERMISSIONS</div>
+                  <div className="settings-group-title">
+                    1. DEFAULT AI AGENT, RESUME &amp; PERMISSIONS
+                    <Help k="agentDefaults" />
+                  </div>
                   <button
                     type="button"
                     className="subbar-util-btn"
                     onClick={() => persistTmuxSettingsPatch({}, true, 'SYNCED TO ~/.TMUX.CONF ✓')}
-                    title="Write AIM exact per-pane resume rules (@resurrect-processes) to ~/.tmux.conf (backup: ~/.tmux.conf.aim-bak)"
+                    title={SETTINGS_HELP.syncConf.summary}
                   >
                     <Icon name="refresh" size={11} />
-                    <span>SYNC TO ~/.TMUX.CONF</span>
+                    <span>SYNC SETTINGS</span>
                   </button>
                 </div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  Controls which CLI agent launches when opening a repository or invoking Fast Resume, whether it reopens your last folder conversation (<code>-c</code>), and whether Antigravity bypasses tool approval prompts.
+                <Summary k="agentDefaults" />
+                <div className="setting-help">
+                  <strong>SYNC SETTINGS:</strong> {SETTINGS_HELP.syncConf.summary}
+                  <Help k="syncConf" />
                 </div>
                 <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Default Spawn / Fast-Resume CLI</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                    Default AI Agent
+                    <Help k="defaultAgent" />
+                  </div>
                   <select
                     className="ld-select"
                     value={localTmuxCfg.default_agent || 'agy'}
@@ -1079,15 +1132,17 @@ export default function SettingsModal({
                     <option value="grok">Grok CLI (grok)</option>
                     <option value="opencode">OpenCode (opencode)</option>
                     <option value="codex">Codex CLI (codex)</option>
-                    <option value="shell">Bash Shell Only (No Auto-Agent)</option>
+                    <option value="claude">Claude Code (claude)</option>
+                    <option value="shell">Plain Shell Only (No AI Agent)</option>
                   </select>
                 </div>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Auto-Resume Each Agent Pane's Saved Conversation</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Turn OFF when you want newly launched or restored sessions to start a blank conversation
+                    <div style={{ fontWeight: 600 }}>
+                      Continue Each Agent&apos;s Saved Conversation
+                      <Help k="autoResume" />
                     </div>
+                    <Summary k="autoResume" />
                   </div>
                   <input
                     type="checkbox"
@@ -1097,9 +1152,13 @@ export default function SettingsModal({
                 </label>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Autonomous Skip-Permissions Mode (--dangerously-skip-permissions)</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Appends <code>--dangerously-skip-permissions</code> when launching <code>agy</code>; turn OFF on untrusted repos
+                    <div style={{ fontWeight: 600 }}>
+                      Let Antigravity Act Without Asking
+                      <Help k="skipPermissions" />
+                    </div>
+                    <div className="setting-help">
+                      {SETTINGS_HELP.skipPermissions.summary}{' '}
+                      <strong style={{ color: '#fbbf24' }}>Only use on projects you trust.</strong>
                     </div>
                   </div>
                   <input
@@ -1111,13 +1170,14 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">2. COLD-BOOT AUTO-RESTORE (TMUX-RESURRECT ON REBOOT)</div>
+                <div className="settings-group-title">2. REOPEN EVERYTHING AFTER A RESTART</div>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Auto-Restore Saved Tmux Fleet on OS / WSL Reboot</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      When ON, <code>boot-restore.sh</code> reloads your saved snapshot and resumes all agents automatically. Turn OFF for a clean boot that starts only AIM-Connect (<code>:8000</code> + tunnel) without relaunching heavy agents.
+                    <div style={{ fontWeight: 600 }}>
+                      Auto-Restore After Restart
+                      <Help k="autoRestoreOnBoot" />
                     </div>
+                    <Summary k="autoRestoreOnBoot" />
                   </div>
                   <input
                     type="checkbox"
@@ -1128,10 +1188,11 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">3. HEADLESS WSL2 KEEPALIVE &amp; LINUX SYSTEMD BOOT UNIT</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  Keep WSL2 and <code>tmux</code> awake with zero open Windows Terminal windows—or revert 100% back to default Windows idle shutdown in 1 click or via CLI.
+                <div className="settings-group-title">
+                  3. KEEP RUNNING IN THE BACKGROUND
+                  <Help k="keepAwake" />
                 </div>
+                <Summary k="keepAwake" />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
                   <div
                     style={{
@@ -1152,11 +1213,13 @@ export default function SettingsModal({
                   >
                     <div>
                       <div style={{ fontSize: '12px', fontWeight: 700 }}>
-                        WSL2 Always-On Mode (Survive Closing Windows Terminal)
+                        WSL2 Always-On (Windows)
+                        <Help k="wslAlwaysOn" />
                       </div>
+                      <Summary k="wslAlwaysOn" style={{ marginTop: '2px' }} />
                       <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
-                        Mode: {hostBootStatus?.wsl_always_on_enabled ? 'ENABLED ✓' : 'OFF (Windows Default)'} · Startup VBS:{' '}
-                        {hostBootStatus?.windows_startup_installed ? 'INSTALLED ✓' : 'OFF'} · .wslconfig vmIdleTimeout=-1:{' '}
+                        Status: {hostBootStatus?.wsl_always_on_enabled ? 'ON ✓' : 'OFF (Windows default)'} · Starts with Windows:{' '}
+                        {hostBootStatus?.windows_startup_installed ? 'YES ✓' : 'NO'} · Sleep prevention:{' '}
                         {hostBootStatus?.wsl_idle_timeout_configured ? 'SET ✓' : 'OFF'}
                       </div>
                     </div>
@@ -1172,8 +1235,8 @@ export default function SettingsModal({
                       }
                       title={
                         hostBootStatus?.wsl_always_on_enabled
-                          ? 'Stop keepalive handle, remove Windows Startup VBS, and strip vmIdleTimeout=-1 from .wslconfig'
-                          : 'Configure .wslconfig vmIdleTimeout=-1, install hidden Windows Startup VBS, and launch wscript keepalive handle'
+                          ? 'Undo everything: let Windows put Linux to sleep again and stop the hidden helper from starting at sign-in'
+                          : 'Keep Linux awake, start a small hidden helper whenever you sign in to Windows, and start it now'
                       }
                     >
                       {hostBootStatus?.wsl_always_on_enabled ? 'TURN OFF & REVERT ALWAYS-ON' : 'ENABLE WSL ALWAYS-ON'}
@@ -1182,9 +1245,13 @@ export default function SettingsModal({
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingTop: '4px' }}>
                     <div>
-                      <div style={{ fontSize: '12px', fontWeight: 600 }}>Linux Cold-Boot Recovery Unit (aim-connect-boot.service)</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>
+                        Start Automatically on Boot (Linux)
+                        <Help k="bootUnit" />
+                      </div>
+                      <Summary k="bootUnit" />
                       <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                        Status: {hostBootStatus?.systemd_boot_unit_installed ? 'INSTALLED ✓' : 'NOT INSTALLED'}
+                        Status: {hostBootStatus?.systemd_boot_unit_installed ? 'ON ✓' : 'OFF'}
                       </div>
                     </div>
                     <button
@@ -1203,9 +1270,13 @@ export default function SettingsModal({
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid var(--border-hairline)' }}>
                     <div>
-                      <div style={{ fontSize: '12px', fontWeight: 600 }}>Background Keepalive Handle (Temporary Battery Pause)</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>
+                        Background Helper (Pause to Save Battery)
+                        <Help k="keepaliveHandle" />
+                      </div>
+                      <Summary k="keepaliveHandle" />
                       <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                        Handle: {hostBootStatus?.wsl_keepalive_running ? 'ACTIVE ✓' : 'PAUSED'} · .wslconfig vmIdleTimeout=-1:{' '}
+                        Helper: {hostBootStatus?.wsl_keepalive_running ? 'RUNNING ✓' : 'PAUSED'} · Sleep prevention:{' '}
                         {hostBootStatus?.wsl_idle_timeout_configured ? 'SET ✓' : 'NOT SET'}
                       </div>
                     </div>
@@ -1238,8 +1309,9 @@ export default function SettingsModal({
                     }}
                   >
                     <span>
-                      CLI Toggle: <code>./scripts/wsl-keepalive.sh on</code> · Revert:{' '}
+                      Terminal command · on: <code>./scripts/wsl-keepalive.sh on</code> · off:{' '}
                       <code>{hostBootStatus?.cli_disable_cmd || './scripts/wsl-keepalive.sh off'}</code>
+                      <Help k="keepaliveCli" />
                     </span>
                     <button
                       type="button"
@@ -1259,7 +1331,10 @@ export default function SettingsModal({
 
               <div className="settings-group-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <div className="settings-group-title">4. EMPTY-SAVE GUARDRAIL &amp; SIDEBAR WORKSPACE BAR</div>
+                  <div className="settings-group-title">
+                    4. SAVE &amp; RESTORE YOUR WORKSPACE
+                    <Help k="saveGuardrail" />
+                  </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
                       type="button"
@@ -1275,25 +1350,29 @@ export default function SettingsModal({
                       onClick={() => onRestoreWorkspaceState?.()}
                     >
                       <Icon name="refresh" size={11} />
-                      <span>RESTORE -C</span>
+                      <span>RESTORE</span>
                     </button>
                   </div>
                 </div>
+                <Summary k="saveGuardrail" />
                 <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                   {resurrectMeta
-                    ? `tmux-resurrect: ${resurrectMeta.installed ? 'INSTALLED' : 'MISSING'} · Saved Backup: ${resurrectMeta.saved_session_count} sessions · Active: ${resurrectMeta.active_session_count}${
-                        resurrectMeta.last_saved_at
-                          ? ` · ${new Date(resurrectMeta.last_saved_at * 1000).toLocaleString()}`
-                          : ''
-                      }`
-                    : 'Inspecting tmux-resurrect snapshot state...'}
+                    ? resurrectMeta.installed
+                      ? `Last backup: ${resurrectMeta.saved_session_count} sessions${
+                          resurrectMeta.last_saved_at
+                            ? ` (${new Date(resurrectMeta.last_saved_at * 1000).toLocaleString()})`
+                            : ''
+                        } · Open now: ${resurrectMeta.active_session_count}`
+                      : 'Save/Restore is unavailable: the restore tool (tmux-resurrect) is not installed. See the README for the one-time setup.'
+                    : 'Checking your saved backup...'}
                 </div>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Empty-Save Guardrail Confirmation Prompt</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Warn before overwriting a multi-session backup when active session count is 1 or drops by 50%+
+                    <div style={{ fontWeight: 600 }}>
+                      Warn Before Overwriting a Bigger Backup
+                      <Help k="guardrailToggle" />
                     </div>
+                    <Summary k="guardrailToggle" />
                   </div>
                   <input
                     type="checkbox"
@@ -1303,10 +1382,11 @@ export default function SettingsModal({
                 </label>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Show SAVE STATE / RESTORE -C Footer in Fleet Sidebar</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Turn OFF on compact mobile screens to prevent accidental taps (Save/Restore stay in Cmd+K &amp; Settings)
+                    <div style={{ fontWeight: 600 }}>
+                      Show Save/Restore Buttons in Session List
+                      <Help k="sidebarBar" />
                     </div>
+                    <Summary k="sidebarBar" />
                   </div>
                   <input
                     type="checkbox"
@@ -1317,10 +1397,11 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">5. GIT REPO LAUNCHER SCAN FOLDERS (~/.aim_dashboard.json)</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  Your home folder (<code>~</code> up to 2 levels deep) is scanned automatically. Add extra parent folders (one path per line, e.g. <code>/mnt/d/projects</code>)—shared directly with <code>aim-dash</code>.
+                <div className="settings-group-title">
+                  5. WHERE TO LOOK FOR YOUR PROJECTS
+                  <Help k="scanFolders" />
                 </div>
+                <Summary k="scanFolders" />
                 <textarea
                   className="ld-text-input"
                   rows={3}
@@ -1342,10 +1423,17 @@ export default function SettingsModal({
           {activeTab === 'keyboard' && (
             <>
               <div className="settings-group-card">
-                <div className="settings-group-title">SOVEREIGN ON-SCREEN KEYBOARD</div>
+                <div className="settings-group-title">
+                  ON-SCREEN KEYBOARD
+                  <Help k="keyboard" />
+                </div>
+                <Summary k="keyboard" />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Default Keyboard Mode</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                      Starting Layout
+                      <Help k="keyboardMode" />
+                    </div>
                     <select
                       className="ld-select"
                       value={keyboardMode}
@@ -1359,7 +1447,10 @@ export default function SettingsModal({
                     </select>
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Keypress Tactile Feedback</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                      Key Press Feedback
+                      <Help k="keyboardFeedback" />
+                    </div>
                     <select
                       className="ld-select"
                       value={keyboardFeedback}
@@ -1376,10 +1467,11 @@ export default function SettingsModal({
                 </div>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Auto-Capitalize Sentences</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Automatically shift first letter on Standard mobile keyboard
+                    <div style={{ fontWeight: 600 }}>
+                      Auto-Capitalize Sentences
+                      <Help k="autoCaps" />
                     </div>
+                    <Summary k="autoCaps" />
                   </div>
                   <input
                     type="checkbox"
@@ -1389,10 +1481,11 @@ export default function SettingsModal({
                 </label>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Auto-Hide In-House Keyboard (Android Mode)</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Hide automatically when tapping outside, pressing Enter to send, or opening modals, and suppress the OS keyboard while KB is active
+                    <div style={{ fontWeight: 600 }}>
+                      Auto-Hide In-House Keyboard
+                      <Help k="keyboardAutoHide" />
                     </div>
+                    <Summary k="keyboardAutoHide" />
                   </div>
                   <input
                     type="checkbox"
@@ -1403,13 +1496,14 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">FLEET AUDIO ALERTS</div>
+                <div className="settings-group-title">SOUND ALERTS</div>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Agent Completion &amp; Approval Gate Chime</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Play alert chime when a background session completes a turn (NEW) or pauses at WAITING
+                    <div style={{ fontWeight: 600 }}>
+                      Chime When an Agent Finishes or Needs You
+                      <Help k="alertChime" />
                     </div>
+                    <Summary k="alertChime" />
                   </div>
                   <input
                     type="checkbox"
@@ -1424,13 +1518,14 @@ export default function SettingsModal({
           {activeTab === 'voice' && (
             <>
               <div className="settings-group-card">
-                <div className="settings-group-title">NEURAL TEXT-TO-SPEECH (SPOKEN SUMMARY 🔊)</div>
+                <div className="settings-group-title">READ SUMMARIES ALOUD (🔊)</div>
                 <label className="setting-check-row">
                   <div>
-                    <div style={{ fontWeight: 600 }}>Auto-Playback Agent Spoken Summary</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Automatically read aloud the final 🔊 block when an agent turn finishes
+                    <div style={{ fontWeight: 600 }}>
+                      Read Each Summary Aloud Automatically
+                      <Help k="spokenSummary" />
                     </div>
+                    <Summary k="spokenSummary" />
                   </div>
                   <input
                     type="checkbox"
@@ -1438,6 +1533,10 @@ export default function SettingsModal({
                     onChange={(e) => toggleBool(setVoiceAutoRead, 'aim-voice-autoread', e.target.checked)}
                   />
                 </label>
+                <div className="setting-help">
+                  <strong>Voice:</strong> {SETTINGS_HELP.ttsVoice.summary}
+                  <Help k="ttsVoice" />
+                </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <select
                     className="ld-select"
@@ -1473,11 +1572,10 @@ export default function SettingsModal({
                   <div style={{ flex: 1, minWidth: '220px' }}>
                     <div className="settings-group-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Icon name="zap" />
-                      <span>CUSTOM VOICE MACROS (SPOKEN COMMAND ENGINE)</span>
+                      <span>CUSTOM VOICE MACROS (SPOKEN SHORTCUTS)</span>
+                      <Help k="voiceMacros" />
                     </div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.55, marginTop: '4px' }}>
-                      Any custom macro can be bound to a spoken trigger phrase—say your phrase into the mic to fire bash scripts, agent skills (<code>/aim-handoff</code>, <code>/aim-memory-wiki</code>), or terminal keys hands-free at will.
-                    </div>
+                    <Summary k="voiceMacros" style={{ marginTop: '4px' }} />
                   </div>
                   <button
                     type="button"
@@ -1515,19 +1613,26 @@ export default function SettingsModal({
               </div>
 
               <div className="settings-group-card">
-                <div className="settings-group-title">VOICE DICTATION &amp; HANDS-FREE TRIGGERS</div>
+                <div className="settings-group-title">
+                  VOICE TYPING
+                  <Help k="dictation" />
+                </div>
+                <Summary k="dictation" />
                 {[
-                  [voiceContinuous, setVoiceContinuous, 'aim-voice-continuous', 'Continuous Listening Loop', 'Keep microphone active across turns until manually toggled off'],
-                  [voiceAutoEnter, setVoiceAutoEnter, 'aim-voice-enter', 'Say "Enter" to Submit (\\r)', 'Speaking the word "enter" dispatches prompt immediately'],
-                  [voiceAutoSend, setVoiceAutoSend, 'aim-voice-send', 'Say "Send" to Submit (\\r)', 'Speaking the word "send" dispatches prompt immediately'],
-                  [voiceAutoExecute, setVoiceAutoExecute, 'aim-voice-execute', 'Say "Execute" to Submit (\\r)', 'Speaking the word "execute" dispatches prompt immediately'],
-                  [voiceAutoCapitalize, setVoiceAutoCapitalize, 'aim-voice-autocap', 'Auto-Capitalize Dictated Sentences', 'Clean punctuation and sentence casing on speech transcripts'],
-                  [voiceSlashes, setVoiceSlashes, 'aim-voice-slashes', 'Verbal Slash Conversion (/ \\)', 'Convert spoken "slash" and "backslash" for CLI skill commands'],
-                ].map(([val, setter, key, title, sub]) => (
+                  [voiceContinuous, setVoiceContinuous, 'aim-voice-continuous', 'Keep Listening', 'voiceContinuous'],
+                  [voiceAutoEnter, setVoiceAutoEnter, 'aim-voice-enter', 'Say "Enter" to Send', 'voiceAutoEnter'],
+                  [voiceAutoSend, setVoiceAutoSend, 'aim-voice-send', 'Say "Send" to Send', 'voiceAutoSend'],
+                  [voiceAutoExecute, setVoiceAutoExecute, 'aim-voice-execute', 'Say "Execute" to Send', 'voiceAutoExecute'],
+                  [voiceAutoCapitalize, setVoiceAutoCapitalize, 'aim-voice-autocap', 'Tidy Capitals & Punctuation', 'voiceAutoCapitalize'],
+                  [voiceSlashes, setVoiceSlashes, 'aim-voice-slashes', 'Spoken "Slash" Becomes /', 'voiceSlashes'],
+                ].map(([val, setter, key, title, helpKey]) => (
                   <label key={key} className="setting-check-row">
                     <div>
-                      <div style={{ fontWeight: 600 }}>{title}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{sub}</div>
+                      <div style={{ fontWeight: 600 }}>
+                        {title}
+                        <Help k={helpKey} />
+                      </div>
+                      <Summary k={helpKey} />
                     </div>
                     <input
                       type="checkbox"
@@ -1544,9 +1649,13 @@ export default function SettingsModal({
             <div className="settings-group-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <div>
-                  <div className="settings-group-title">ZERO-OAUTH OUTBOUND EMAIL VAULT</div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Scoped to active node: <strong>{targetVaultSession}</strong> (encrypted local credential store)
+                  <div className="settings-group-title">
+                    LET AGENTS SEND EMAIL (ZERO-OAUTH OUTBOUND EMAIL VAULT)
+                    <Help k="emailVault" />
+                  </div>
+                  <Summary k="emailVault" style={{ marginTop: '2px' }} />
+                  <div className="setting-help" style={{ marginTop: '2px' }}>
+                    Saved for session: <strong>{targetVaultSession}</strong>
                   </div>
                 </div>
                 {hasVaultPassword && (
@@ -1586,15 +1695,16 @@ export default function SettingsModal({
           {activeTab === 'security' && (
             <>
               <div className="settings-group-card">
-                <div className="settings-group-title">END-TO-END WEBSOCKET ENCRYPTION (PBKDF2 + AES-256-GCM)</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  Shared secret derives your per-frame WebSocket cipher key locally—never transmitted in plaintext.
+                <div className="settings-group-title">
+                  EXTRA ENCRYPTION PASSPHRASE (OPTIONAL)
+                  <Help k="e2ee" />
                 </div>
+                <Summary k="e2ee" />
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     className="ld-text-input"
                     type={showE2eeSecret ? 'text' : 'password'}
-                    placeholder="Leave blank for plaintext"
+                    placeholder="Leave blank to turn off"
                     value={localE2eeSecret}
                     onChange={(e) => setLocalE2eeSecret(e.target.value)}
                   />
@@ -1608,7 +1718,7 @@ export default function SettingsModal({
                     <span>{showE2eeSecret ? 'HIDE' : 'SHOW'}</span>
                   </button>
                   <button type="button" className="neon-cta-btn" style={{ height: '34px' }} onClick={handleApplyE2ee}>
-                    APPLY E2EE
+                    APPLY PASSPHRASE
                   </button>
                 </div>
                 {e2eeStatus && (
@@ -1619,10 +1729,11 @@ export default function SettingsModal({
               <div className="settings-group-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <div>
-                    <div className="settings-group-title">HARDWARE BIOMETRICS &amp; WEBAUTHN PASSKEYS</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Unlock A.I.M. Connect via FaceID, TouchID, or Windows Hello
+                    <div className="settings-group-title">
+                      FACE / FINGERPRINT SIGN-IN (PASSKEYS)
+                      <Help k="passkey" />
                     </div>
+                    <Summary k="passkey" style={{ marginTop: '2px' }} />
                   </div>
                   <button type="button" className="subbar-util-btn active" style={{ height: '30px' }} onClick={handleRegisterPasskey}>
                     <Icon name="fingerprint" /> <span>+ REGISTER PASSKEY</span>
@@ -1643,12 +1754,11 @@ export default function SettingsModal({
 
               <div className="settings-group-card" style={{ borderColor: 'rgba(239, 68, 68, 0.35)' }}>
                 <div className="settings-group-title" style={{ color: '#f87171' }}>
-                  SESSION LOCK &amp; TOKEN REVOCATION
+                  SIGN OUT
+                  <Help k="logout" />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                    Revoke active session token and return to the Emerald Matrix 3FA Lock Screen.
-                  </span>
+                  <span className="setting-help">{SETTINGS_HELP.logout.summary}</span>
                   <button
                     type="button"
                     className="danger-btn"
@@ -1667,7 +1777,7 @@ export default function SettingsModal({
 
         <div className="modal-footer-bar">
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--text-muted)' }}>
-            4h sliding active-user session · Zero-cache HTML
+            You stay signed in while active · after 4 hours without activity you sign in again
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {onLogout && (
@@ -1679,7 +1789,7 @@ export default function SettingsModal({
                   onClose?.();
                   onLogout?.();
                 }}
-                title="Lock this server and return to the 3FA login & Server Switcher screen"
+                title="Sign out of this computer and go back to the login screen (where you can also switch computers)"
               >
                 <Icon name="lock" size={12} />
                 <span>{serverDirectory.length > 1 ? 'LOCK / SWITCH SERVER' : 'LOCK 3FA'}</span>
