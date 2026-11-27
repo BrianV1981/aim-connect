@@ -195,7 +195,7 @@ export default function CommandPalette({
       id: 'joshua:forensics',
       category: 'JOSHUA ACTIONS',
       label: 'Open Forensics, SQLite FTS5 & Swarm Feed',
-      keywords: 'forensics tool call fts5 search lancedb swarm aim-communicate',
+      keywords: 'forensics tool call fts5 search lancedb swarm a-mail amail aim-mail aim-mailbox',
       badge: 'FORENSICS',
       action: () => onOpenForensics?.(),
     });

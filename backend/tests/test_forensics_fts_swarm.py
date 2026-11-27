@@ -135,26 +135,36 @@ def test_brain_search_two_pass_per_path_deduplication(client, valid_token, tmp_p
     assert "HANDOFF.md" in paths
 
 
-def test_swarm_activity_parses_aim_communicate_headers(client, valid_token, tmp_path, monkeypatch):
-    """GET /api/swarm/activity extracts sender, recipient, and REPLY_TO from chalkboard dispatches (#212)."""
-    swarm_dir = tmp_path / "swarm"
-    swarm_dir.mkdir()
-    monkeypatch.setenv("AIM_SWARM_DIR", str(swarm_dir))
+def test_swarm_activity_reads_amail_maildir_envelopes(client, valid_token, tmp_path, monkeypatch):
+    """GET /api/swarm/activity extracts sender, recipient, and REPLY_TO from A-Mail Maildir envelopes (#212, #319)."""
+    mb_dir = tmp_path / "mailbox"
+    claimed_dir = mb_dir / "boxes" / "aim-connect" / "claimed"
+    claimed_dir.mkdir(parents=True)
+    monkeypatch.setenv("AIM_MAILBOX_DIR", str(mb_dir))
 
-    dispatch_file = swarm_dir / "DISPATCH_TEST_212.md"
-    dispatch_file.write_text(
-        "To: aim-connect\n"
-        "From: aim-joshua\n"
-        "REPLY_TO: aim-joshua\n"
-        "INSTRUCTION: Please review your aim-communicate skill.\n\n"
-        "[DISPATCH from aim-joshua] Execute #209-#212 sequentially.\n",
+    env_id = "20261127T120000000000Z_ab12cd34"
+    envelope_file = claimed_dir / f"{env_id}.json"
+    envelope_file.write_text(
+        json.dumps(
+            {
+                "id": env_id,
+                "thread_id": "thr_212",
+                "from": "aim-joshua",
+                "to": "aim-connect",
+                "reply_to": "aim-joshua",
+                "subject": "Execute #209-#212",
+                "body": "[DISPATCH] Execute #209-#212 sequentially.",
+                "priority": "normal",
+                "created_at": "2026-11-27T12:00:00.000000Z",
+            }
+        ),
         encoding="utf-8",
     )
 
     resp = client.get("/api/swarm/activity", headers={"x-api-token": valid_token})
     assert resp.status_code == 200
     dispatches = resp.json()["dispatches"]
-    matched = [d for d in dispatches if d["filename"] == "DISPATCH_TEST_212.md"]
+    matched = [d for d in dispatches if d["id"] == env_id]
     assert len(matched) == 1
     assert matched[0]["sender"] == "aim-joshua"
     assert matched[0]["recipient"] == "aim-connect"

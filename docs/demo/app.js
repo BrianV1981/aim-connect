@@ -1232,7 +1232,7 @@ const SESSION_HISTORY_REINCARNATIONS = [
     title: 'SQLite WAL FTS5 Forensics Modal, 2-Step Tmux Swarm Dispatcher & WAITING Chimes (#212–#221)',
     logPath: '~/.aim/vault/grok_97d9e2c1.jsonl',
     sampleTurns: [
-      { role: 'OPERATOR', text: 'Build cross-fleet SQLite FTS5 transcript search and aim-communicate swarm chalkboard.' },
+      { role: 'OPERATOR', text: 'Build cross-fleet SQLite FTS5 transcript search and A-Mail (amail) swarm feed.' },
       { role: 'J.O.S.H.U.A.', text: 'Shipped ForensicsModal.jsx + delta-cached fleet telemetry.' },
     ],
   },
@@ -4296,7 +4296,7 @@ function renderForensicsModal(sess) {
         <div class="modal-tabs-rail">
           <button type="button" class="modal-tab-btn ${state.forensicsTab === 'turns' ? 'active' : ''}" data-ftab="turns">1. TURN &amp; TOOL INSPECTOR</button>
           <button type="button" class="modal-tab-btn ${state.forensicsTab === 'fts5' ? 'active' : ''}" data-ftab="fts5">2. SQLITE FTS5 &amp; BRAIN SEARCH</button>
-          <button type="button" class="modal-tab-btn ${state.forensicsTab === 'swarm' ? 'active' : ''}" data-ftab="swarm">3. SWARM (AIM-COMMUNICATE)</button>
+          <button type="button" class="modal-tab-btn ${state.forensicsTab === 'swarm' ? 'active' : ''}" data-ftab="swarm">3. SWARM (A-MAIL)</button>
         </div>
 
         <div class="modal-body-scroll">
@@ -4359,14 +4359,14 @@ function renderForensicsModal(sess) {
           `
               : `
             <form id="swarm-dispatch-form" class="settings-group-card">
-              <div class="settings-group-title">2-STEP TMUX BUFFER SWARM DISPATCHER (AIM-COMMUNICATE)</div>
+              <div class="settings-group-title">A-MAIL INTER-AGENT DISPATCHER (AMAIL)</div>
               <div style="display:grid;grid-template-columns:160px 1fr auto;gap:8px;">
                 <select class="ld-select" id="swarm-target-sel">
                   ${state.sessions
                     .map((s) => `<option value="${s.name}" ${state.swarmTarget === s.name ? 'selected' : ''}>-> ${s.name}</option>`)
                     .join('')}
                 </select>
-                <input class="ld-text-input" id="swarm-msg-inp" placeholder="Transmit verified 1-hop agent directive (set-buffer + Enter)..." required />
+                <input class="ld-text-input" id="swarm-msg-inp" placeholder="Transmit verified 1-hop A-Mail directive (Enter-only wake)..." required />
                 <button type="submit" class="neon-cta-btn" style="height:34px;">${ICONS.send} <span>DISPATCH</span></button>
               </div>
             </form>

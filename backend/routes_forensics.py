@@ -7,6 +7,8 @@ import sqlite3
 import subprocess
 import time
 import urllib.parse
+from datetime import datetime, timezone
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 from main import (
     AGENT_WORKSPACES_DIR,
@@ -18,6 +20,7 @@ from main import (
     verify_token,
     verify_token_or_loopback,
 )
+from ws_handler import _AMAIL_AGENT_ID_RE, execute_amail_submit, resolve_amail_mailbox_dir
 from routes_files import _find_repo_roots, _resolve_session_cwd, secure_path
 from routes_sessions import (
     ANSI_ESCAPE_RE,
@@ -770,59 +773,166 @@ def search_brain_wiki(session: str = "", q: str = "", path: str = "", limit: int
     }
 
 
+_AMAIL_STATE_ORDER = ("unread", "claimed", "done", "dead")
+_AMAIL_STATE_RANK = {"unread": 1, "claimed": 2, "dead": 3, "done": 4}
+
+
+def _parse_amail_timestamp(raw_iso: str, fallback_mtime: float) -> float:
+    cleaned = (raw_iso or "").strip()
+    if not cleaned:
+        return fallback_mtime
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+    try:
+        dt_val = datetime.fromisoformat(cleaned)
+        if dt_val.tzinfo is None:
+            dt_val = dt_val.replace(tzinfo=timezone.utc)
+        return dt_val.timestamp()
+    except ValueError:
+        return fallback_mtime
+
+
+def _resolve_swarm_mailbox_root() -> str:
+    env_mb = os.environ.get("AIM_MAILBOX_DIR", "").strip()
+    if env_mb:
+        return os.path.abspath(os.path.expanduser(env_mb))
+    legacy_swarm = os.environ.get("AIM_SWARM_DIR", "").strip()
+    if legacy_swarm and os.path.isdir(os.path.join(legacy_swarm, "boxes")):
+        return os.path.abspath(os.path.expanduser(legacy_swarm))
+    return resolve_amail_mailbox_dir()
+
+
+class SwarmDispatchRequest(BaseModel):
+    to: str
+    body: str
+    from_agent: str = "aim-connect"
+    reply_to: str | None = None
+    subject: str = "Swarm Dispatch"
+
+
 @router.get("/api/swarm/activity", dependencies=[Depends(verify_token_or_loopback), Depends(require_admin_or_loopback)])
 def get_swarm_activity():
-    """Return Hub-and-Spoke aim-communicate chalkboard dispatches and recent inter-agent reports (#212)."""
-    candidate_files: list[str] = []
-    custom_swarm_dir = os.environ.get("AIM_SWARM_DIR", "").strip()
-    if custom_swarm_dir and os.path.isdir(custom_swarm_dir):
-        candidate_files.extend(glob.glob(os.path.join(custom_swarm_dir, "*.md")))
-        candidate_files.extend(glob.glob(os.path.join(custom_swarm_dir, "*.txt")))
+    """Return recent A-Mail (`amail` / `aim-mail`) Maildir envelopes preserving the dispatches schema (#212, #319)."""
+    mb_root = _resolve_swarm_mailbox_root()
+    boxes_dir = os.path.join(mb_root, "boxes")
+    if not os.path.isdir(boxes_dir):
+        return {"dispatches": []}
 
-    candidate_files.extend(glob.glob("/tmp/aim_comm*"))
-    candidate_files.extend(glob.glob("/tmp/dispatch*"))
-    candidate_files.extend(
-        glob.glob(os.path.join(AIM_CONNECT_ROOT, "joshua_os", "planning-artifacts", "*REPORT*.md"))
-    )
-    candidate_files.extend(
-        glob.glob(os.path.join(AIM_CONNECT_ROOT, "joshua_os", "planning-artifacts", "*DISPATCH*.md"))
-    )
+    by_id: dict[str, tuple[int, dict]] = {}
+    try:
+        agent_boxes = sorted(os.listdir(boxes_dir))
+    except OSError:
+        return {"dispatches": []}
 
-    valid = [f for f in set(candidate_files) if os.path.isfile(f)]
-    valid.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-
-    dispatches = []
-    for fpath in valid[:30]:
-        try:
-            content = open(fpath, "r", encoding="utf-8", errors="replace").read(12000)
-            mtime = os.path.getmtime(fpath)
-        except OSError:
+    for agent_box in agent_boxes:
+        agent_dir = os.path.join(boxes_dir, agent_box)
+        if not os.path.isdir(agent_dir):
             continue
+        for box_state in _AMAIL_STATE_ORDER:
+            state_dir = os.path.join(agent_dir, box_state)
+            if not os.path.isdir(state_dir):
+                continue
+            try:
+                fnames = os.listdir(state_dir)
+            except OSError:
+                continue
+            for fname in fnames:
+                if not fname.endswith(".json") or fname.startswith("."):
+                    continue
+                fpath = os.path.join(state_dir, fname)
+                try:
+                    file_mtime = os.path.getmtime(fpath)
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+                        env = json.load(fh)
+                except (OSError, ValueError):
+                    continue
+                if not isinstance(env, dict):
+                    continue
 
-        m_from = FROM_HEADER_RE.search(content)
-        m_to = TO_HEADER_RE.search(content)
-        m_reply = REPLY_TO_RE.search(content)
+                env_id = str(env.get("id") or os.path.splitext(fname)[0]).strip()
+                if not env_id:
+                    continue
+                sender = str(env.get("from") or "agent").strip()
+                recipient = str(env.get("to") or agent_box or "fleet").strip()
+                reply_to = str(env.get("reply_to") or sender).strip()
+                subject = str(env.get("subject") or "").strip()
+                body_text = str(env.get("body") or "").strip()
+                created_at = str(env.get("created_at") or "").strip()
+                thread_id = str(env.get("thread_id") or "").strip()
+                priority = str(env.get("priority") or "normal").strip().lower()
+                mtime = _parse_amail_timestamp(created_at, file_mtime)
 
-        sender = m_from.group(1) if m_from else "agent"
-        recipient = m_to.group(1) if m_to else (m_reply.group(1) if m_reply else "fleet")
-        reply_to = m_reply.group(1) if m_reply else sender
+                first_body_line = next((ln.strip() for ln in body_text.splitlines() if ln.strip()), "")
+                if subject and first_body_line:
+                    raw_preview = first_body_line if first_body_line.startswith(subject) else f"{subject} — {first_body_line}"
+                elif subject:
+                    raw_preview = subject
+                elif first_body_line:
+                    raw_preview = first_body_line
+                else:
+                    raw_preview = fname
+                preview = raw_preview[:140]
 
-        lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
-        preview = lines[0][:120] if lines else os.path.basename(fpath)
+                header_lines = [
+                    f"ID: {env_id} [{box_state.upper()}]",
+                    f"From: {sender} -> To: {recipient} (reply_to: {reply_to})",
+                ]
+                if thread_id:
+                    header_lines.append(f"Thread: {thread_id} · Priority: {priority}")
+                if subject:
+                    header_lines.append(f"Subject: {subject}")
+                if created_at:
+                    header_lines.append(f"Created: {created_at}")
+                full_content = ("\n".join(header_lines) + ("\n\n" + body_text if body_text else ""))[:5000]
 
-        dispatches.append({
-            "id": fpath,
-            "filename": os.path.basename(fpath),
-            "path": fpath,
-            "sender": sender,
-            "recipient": recipient,
-            "reply_to": reply_to,
-            "mtime": mtime,
-            "preview": preview,
-            "content": content[:5000],
-        })
+                record = {
+                    "id": env_id,
+                    "filename": f"{env_id}.json" if not fname.endswith(".json") else fname,
+                    "path": f"boxes/{agent_box}/{box_state}/{fname}",
+                    "sender": sender,
+                    "recipient": recipient,
+                    "reply_to": reply_to,
+                    "mtime": mtime,
+                    "preview": preview,
+                    "content": full_content,
+                    "body": body_text[:5000],
+                    "subject": subject,
+                    "thread_id": thread_id,
+                    "state": box_state,
+                    "priority": priority,
+                    "created_at": created_at,
+                }
+                rank = _AMAIL_STATE_RANK.get(box_state, 0)
+                prev = by_id.get(env_id)
+                if prev is None or rank >= prev[0]:
+                    by_id[env_id] = (rank, record)
 
+    dispatches = sorted((item[1] for item in by_id.values()), key=lambda d: d["mtime"], reverse=True)[:40]
     return {"dispatches": dispatches}
+
+
+@router.post("/api/swarm/dispatch", dependencies=[Depends(verify_token), Depends(require_admin)])
+async def post_swarm_dispatch(req: SwarmDispatchRequest):
+    """Send an Operator-approved 1-hop A-Mail envelope and wake the target agent (#319)."""
+    target = (req.to or "").strip().lstrip("@")
+    sender = (req.from_agent or "aim-connect").strip().lstrip("@")
+    reply_to = (req.reply_to or sender).strip().lstrip("@")
+    body = (req.body or "").strip()
+    if not _AMAIL_AGENT_ID_RE.match(target) or not _AMAIL_AGENT_ID_RE.match(sender) or not _AMAIL_AGENT_ID_RE.match(reply_to):
+        raise HTTPException(status_code=400, detail="Invalid agent identifier")
+    if not body:
+        raise HTTPException(status_code=400, detail="Dispatch body cannot be empty")
+
+    ok = await execute_amail_submit(
+        target,
+        body,
+        sender=sender,
+        reply_to=reply_to,
+        subject=(req.subject or "Swarm Dispatch").strip()[:140],
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail="A-Mail dispatch failed; verify target agent or mailbox")
+    return {"status": "dispatched", "to": target.lower(), "from": sender.lower(), "reply_to": reply_to.lower()}
 
 
 REVERSE_WORKSPACE_ALIASES = {v: k for k, v in SESSION_WORKSPACE_ALIASES.items()}

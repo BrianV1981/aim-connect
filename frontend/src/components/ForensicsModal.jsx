@@ -100,15 +100,32 @@ export default function ForensicsModal({
     e.preventDefault();
     const target = dispatchTarget || activeSession;
     const body = dispatchMessage.trim();
-    if (!target || !body || !onSendSessionCommand) return;
+    if (!target || !body) return;
 
     const sender = activeSession || 'aim-connect';
-    const formatted = `To: ${target} | From: ${sender} | REPLY_TO: ${sender} — ${body}`;
     setDispatchStatus('SENDING...');
     try {
-      await onSendSessionCommand(target, formatted);
-      setDispatchStatus('DELIVERED VIA 2-STEP TMUX BUFFER ✓');
+      const res = await fetch('/api/swarm/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_agent: sender,
+          to: target,
+          reply_to: sender,
+          subject: 'Operator Swarm Dispatch',
+          body,
+        }),
+      });
+      if (!res.ok) {
+        if (onSendSessionCommand) {
+          await onSendSessionCommand(target, body);
+        } else {
+          throw new Error('Dispatch failed');
+        }
+      }
+      setDispatchStatus('DELIVERED VIA A-MAIL ✓');
       setDispatchMessage('');
+      fetchSwarmActivity();
       setTimeout(() => setDispatchStatus(''), 2500);
     } catch {
       setDispatchStatus('DELIVERY FAILED');
@@ -157,7 +174,7 @@ export default function ForensicsModal({
             className={`modal-tab-btn ${activeTab === 'swarm' ? 'active' : ''}`}
             onClick={() => setActiveTab('swarm')}
           >
-            3. SWARM (AIM-COMMUNICATE)
+            3. SWARM (A-MAIL)
           </button>
         </div>
 
@@ -374,7 +391,7 @@ export default function ForensicsModal({
             <>
               <form onSubmit={handleSendSwarmDispatch} className="settings-group-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                  <span className="settings-group-title">2-STEP TMUX BUFFER SWARM DISPATCHER (AIM-COMMUNICATE)</span>
+                  <span className="settings-group-title">A-MAIL INTER-AGENT DISPATCHER (AMAIL)</span>
                   {dispatchStatus && (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--accent)' }}>
                       {dispatchStatus}
@@ -397,7 +414,7 @@ export default function ForensicsModal({
                   <input
                     type="text"
                     className="ld-text-input"
-                    placeholder="Transmit verified 1-hop agent directive (set-buffer + Enter)..."
+                    placeholder="Transmit verified 1-hop A-Mail directive (Enter-only wake)..."
                     value={dispatchMessage}
                     onChange={(e) => setDispatchMessage(e.target.value)}
                   />
@@ -410,7 +427,7 @@ export default function ForensicsModal({
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {dispatches.length === 0 ? (
-                  <div className="fleet-empty-state">No chalkboard dispatches found on disk.</div>
+                  <div className="fleet-empty-state">No A-Mail envelopes found in mailbox.</div>
                 ) : (
                   dispatches.map((d) => {
                     const isOpenDispatch = selectedDispatch === d.id;

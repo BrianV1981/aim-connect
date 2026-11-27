@@ -250,6 +250,132 @@ def set_pty_size(fd: int, rows: int, cols: int) -> None:
 
 
 _SINGLE_SLASH_CMD_RE = re.compile(r"^/[A-Za-z0-9_.:-]+$")
+_AMAIL_AGENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+
+def resolve_amail_mailbox_dir(explicit_dir: str | None = None) -> str:
+    """Resolve the A-Mail Maildir root ($AIM_MAILBOX_DIR or ~/.aim/mailbox) (#319)."""
+    if explicit_dir and str(explicit_dir).strip():
+        return os.path.abspath(os.path.expanduser(str(explicit_dir).strip()))
+    env_dir = os.environ.get("AIM_MAILBOX_DIR", "").strip()
+    if env_dir:
+        return os.path.abspath(os.path.expanduser(env_dir))
+    return os.path.abspath(os.path.join(HOME_DIR, ".aim", "mailbox"))
+
+
+def resolve_amail_binary(explicit_bin: str | None = None) -> str | None:
+    """Locate the installed `amail` / `aim-mail` CLI binary, or None if unavailable (#319)."""
+    import shutil as _shutil
+
+    override = (explicit_bin or os.environ.get("AIM_MAIL_BIN", "")).strip()
+    if override:
+        expanded = os.path.expanduser(override)
+        return expanded if (os.path.isfile(expanded) and os.access(expanded, os.X_OK)) else None
+
+    for name in ("amail", "aim-mail"):
+        found = _shutil.which(name)
+        if found:
+            return found
+        local_cand = os.path.join(HOME_DIR, ".local", "bin", name)
+        if os.path.isfile(local_cand) and os.access(local_cand, os.X_OK):
+            return local_cand
+    return None
+
+
+async def execute_amail_submit(
+    session_name: str,
+    msg_text: str,
+    *,
+    sender: str | None = None,
+    reply_to: str | None = None,
+    subject: str | None = None,
+    is_new_session: bool = False,
+    mailbox_dir: str | None = None,
+    amail_bin: str | None = None,
+) -> bool:
+    """Dispatch a submit message via A-Mail (`amail` --driver tmux, Enter-only, zero Escape) (#319).
+
+    Falls back to exact `=session:` bracketed paste + Enter-only when `amail` is not installed
+    on standalone open-source installations.
+    """
+    clean_sess = (session_name or "").strip().lstrip("=").rstrip(":")
+    clean_text = (msg_text or "").strip()
+    if not clean_sess or not clean_text or not _AMAIL_AGENT_ID_RE.match(clean_sess):
+        return False
+
+    if is_new_session:
+        await asyncio.sleep(4)
+
+    raw_sender = (sender or "aim-connect").strip().lstrip("@")
+    from_agent = raw_sender.lower() if _AMAIL_AGENT_ID_RE.match(raw_sender) else "aim-connect"
+    raw_reply = (reply_to or from_agent).strip().lstrip("@")
+    reply_to_agent = raw_reply.lower() if _AMAIL_AGENT_ID_RE.match(raw_reply) else from_agent
+    subj = (subject or "Operator WebSocket Dispatch").strip()[:140]
+
+    bin_path = resolve_amail_binary(amail_bin)
+    if not bin_path:
+        return await execute_bracketed_paste(f"={clean_sess}:", clean_text, submit_enter=True)
+
+    mb_dir = resolve_amail_mailbox_dir(mailbox_dir)
+    target_agent = clean_sess.lower()
+    agents_file = os.path.join(mb_dir, "agents.json")
+    registered_agents: dict = {}
+    if os.path.isfile(agents_file):
+        try:
+            with open(agents_file, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                registered_agents = loaded
+        except (OSError, ValueError):
+            registered_agents = {}
+
+    if target_agent not in registered_agents:
+        reg_proc = await asyncio.create_subprocess_exec(
+            bin_path,
+            "--mailbox-dir",
+            mb_dir,
+            "register",
+            target_agent,
+            "--driver",
+            "tmux",
+            "--tmux-session",
+            clean_sess,
+            "--json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await reg_proc.communicate()
+
+    send_proc = await asyncio.create_subprocess_exec(
+        bin_path,
+        "--mailbox-dir",
+        mb_dir,
+        "send",
+        "--from",
+        from_agent,
+        "--to",
+        target_agent,
+        "--reply-to",
+        reply_to_agent,
+        "--subject",
+        subj,
+        "--body",
+        clean_text,
+        "--operator-approved",
+        "--wake",
+        "--allow-deferred",
+        "--json",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, send_err = await send_proc.communicate()
+    if send_proc.returncode != 0:
+        logger.warning(
+            f"A-Mail send failed for {target_agent} (rc={send_proc.returncode}): "
+            f"{(send_err or b'').decode('utf-8', errors='replace').strip()}"
+        )
+        return False
+    return True
 
 
 def is_single_slash_command(text: str) -> bool:
@@ -1212,30 +1338,23 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                             )
                     elif msg_type == "submit":
                         text = data.get("payload", "")
-                        logger.info(f"Executing aim-communicate for {target_session} with {text}")
-                        async def execute_aim_communicate(session_name, msg_text):
-                            nonlocal is_new_session
-                            if is_new_session:
-                                # Wait 4 seconds for agy to finish booting
-                                await asyncio.sleep(4)
-                                is_new_session = False
-                                
-                            # 1. Load into buffer
-                            proc1 = await asyncio.create_subprocess_exec("tmux", "set-buffer", msg_text)
-                            await proc1.wait()
-                            # 2. Paste buffer with bracketed paste (-p)
-                            proc2 = await asyncio.create_subprocess_exec("tmux", "paste-buffer", "-p", "-t", session_name)
-                            await proc2.wait()
-                            # 3. Sleep 1 second
-                            await asyncio.sleep(1)
-                            # 4. Send Escape then Enter to submit multi-line blocks in Textual
-                            proc3 = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, "Escape")
-                            await proc3.wait()
-                            proc4 = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, "Enter")
-                            await proc4.wait()
-                        
-                        # Run it in the background so it doesn't block other messages
-                        asyncio.create_task(execute_aim_communicate(target_session, text))
+                        submit_target = (data.get("to") or data.get("session") or target_session or "").strip()
+                        submit_sender = data.get("from")
+                        submit_reply_to = data.get("reply_to")
+                        submit_subject = data.get("subject")
+                        wait_for_boot = is_new_session
+                        is_new_session = False
+                        logger.info(f"Executing A-Mail submit for {submit_target}")
+                        asyncio.create_task(
+                            execute_amail_submit(
+                                submit_target,
+                                text,
+                                sender=submit_sender,
+                                reply_to=submit_reply_to,
+                                subject=submit_subject,
+                                is_new_session=wait_for_boot,
+                            )
+                        )
                     elif msg_type == "switch_session":
                         next_sess = (data.get("session") or "").strip()
                         if not next_sess or not re.match(r"^[a-zA-Z0-9_.-]+$", next_sess):
