@@ -1901,7 +1901,17 @@ const state = {
   micEnabled: false,
   speakEnabled: true,
   unreadSessions: ['aim-auditor', 'aim-calendar'],
-  recentSessions: ['aim-ld', 'aim-joshua', 'aim-connect'],
+  // #320: RECENT = sessions you opened, newest first (live app shares this list across devices via the server).
+  recentSessions: (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('proto-recent-sessions') || 'null');
+      if (Array.isArray(saved)) return saved;
+    } catch {}
+    return ['aim-ld', 'aim-joshua', 'aim-connect'];
+  })(),
+  recentSessionsLimit: Number(localStorage.getItem('proto-recent-limit')) || 8,
+  // #318: Fleet list scroll position survives closing/reopening the panel.
+  fleetScrollTop: 0,
   skillFlash: {},
 
   // Operator Reply Visibility & Chat-Box Dot Alignment
@@ -3790,6 +3800,15 @@ function renderSettingsModal(sess) {
                 </div>
                 <input type="checkbox" data-bool-set="sessionAutoScroll" ${state.sessionAutoScroll ? 'checked' : ''} />
               </label>
+              <label class="setting-check-row">
+                <div>
+                  <div style="font-weight:600;">Recent Sessions to Keep</div>
+                  <div style="font-size:11px;color:var(--text-muted);">How many of the sessions you opened last appear under RECENT in the Fleet list (shared across your devices)</div>
+                </div>
+                <select class="ld-select" style="width:auto;min-width:80px;" data-recent-limit>
+                  ${[3, 5, 8, 10, 15, 20, 30].map((n) => `<option value="${n}" ${state.recentSessionsLimit === n ? 'selected' : ''}>${n}</option>`).join('')}
+                </select>
+              </label>
             </div>
           `
               : state.settingsTab === 'tmux'
@@ -4517,6 +4536,7 @@ function renderCommandPalette() {
       badge: `${s.vessel} · ${s.pct}%`,
       run: () => {
         state.activeSession = s.name;
+        markRecentSession(s.name);
         state.unreadSessions = state.unreadSessions.filter((u) => u !== s.name);
       },
     })),
@@ -4813,6 +4833,14 @@ function renderRawTermStage(sess, extraMsgs) {
   `;
 }
 
+function markRecentSession(name) {
+  if (!name) return;
+  state.recentSessions = [name, ...state.recentSessions.filter((n) => n !== name)].slice(0, 30);
+  try {
+    localStorage.setItem('proto-recent-sessions', JSON.stringify(state.recentSessions));
+  } catch {}
+}
+
 function render() {
   clearActiveScrambles();
   document.documentElement.setAttribute('data-theme', state.theme);
@@ -4843,7 +4871,8 @@ function render() {
   );
 
   const serverCount = state.sessions.filter((s) => s.isAgent === false).length;
-  const recentCount = state.sessions.filter((s) => state.recentSessions.includes(s.name)).length;
+  const recentVisible = state.recentSessions.slice(0, state.recentSessionsLimit);
+  const recentCount = state.sessions.filter((s) => recentVisible.includes(s.name)).length;
   const highCtxCount = state.sessions.filter(
     (s) => s.isAgent !== false && (s.tier !== 'normal' || s.compacted > 0)
   ).length;
@@ -4854,11 +4883,14 @@ function render() {
     if (state.filter === 'thinking' && (s.isAgent === false || stNow !== 'THINKING')) return false;
     if (state.filter === 'new' && !isUnread) return false;
     if (state.filter === 'servers' && s.isAgent !== false) return false;
-    if (state.filter === 'recent' && !state.recentSessions.includes(s.name)) return false;
+    if (state.filter === 'recent' && !recentVisible.includes(s.name)) return false;
     if (state.filter === 'ctx' && (s.isAgent === false || (s.tier === 'normal' && !s.compacted))) return false;
     if (state.search && !`${s.name} ${s.branch} ${s.vessel}`.toLowerCase().includes(state.search.toLowerCase())) return false;
     return true;
   });
+  if (state.filter === 'recent') {
+    filtered = filtered.sort((a, b) => recentVisible.indexOf(a.name) - recentVisible.indexOf(b.name));
+  }
 
   // Widescreen-only Split View (>900px) — Mobile (<=900px or phone-mode) stays 100% Full View (#279, #280)
   const isWidescreen = state.device !== 'phone' && window.innerWidth > 900;
@@ -6096,7 +6128,19 @@ function render() {
   const nextFavBar = document.querySelector('.cp-fav-bar');
   if (nextFavBar && prevFavLeft) nextFavBar.scrollLeft = prevFavLeft;
   const nextFleetList = document.querySelector('.fleet-scroll-list');
-  if (nextFleetList && prevFleetTop) nextFleetList.scrollTop = prevFleetTop;
+  if (nextFleetList) {
+    // #318: restore from state (the list is not rendered while the panel is closed) and keep it current.
+    if (!state.fleetScrollTop && prevFleetTop) state.fleetScrollTop = prevFleetTop;
+    if (state.fleetScrollTop) nextFleetList.scrollTop = state.fleetScrollTop;
+    nextFleetList.addEventListener(
+      'scroll',
+      () => {
+        // A queued scroll event can land after the next render detached this list (reads 0); ignore it.
+        if (nextFleetList.isConnected) state.fleetScrollTop = nextFleetList.scrollTop;
+      },
+      { passive: true }
+    );
+  }
   const nextStreamEl = document.getElementById('live-stream-scroll');
   if (nextStreamEl && state.lastScrolledSession === state.activeSession && prevStreamTop) {
     nextStreamEl.scrollTop = prevStreamTop;
@@ -6253,6 +6297,7 @@ function bindInteractions() {
     b.onclick = () => {
       const picked = b.dataset.pickSess;
       state.activeSession = picked;
+      markRecentSession(picked);
       state.tmuxActivePane = 0;
       const found = state.sessions.find((x) => x.name === picked);
       if (found?.browserTabId && state.browserTabs.some((t) => t.id === found.browserTabId)) {
@@ -6716,6 +6761,16 @@ function bindInteractions() {
       e.preventDefault();
       const m = state.macros.find((x) => x.id === b.dataset.rclickUnpin);
       if (m) m.pinned = false;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-recent-limit]').forEach((sel) => {
+    sel.onchange = () => {
+      state.recentSessionsLimit = Number(sel.value) || 8;
+      try {
+        localStorage.setItem('proto-recent-limit', String(state.recentSessionsLimit));
+      } catch {}
       render();
     };
   });

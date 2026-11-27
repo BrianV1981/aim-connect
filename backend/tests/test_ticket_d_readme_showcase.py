@@ -154,7 +154,7 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
 
     # #304 / #305 / #306 / #307: Refresh App, Reversible WSL2 Always-On, & Multi-Server Switcher parity
     html_text = (DEMO_DIR / "index.html").read_text(encoding="utf-8")
-    assert "?v=307" in html_text
+    assert "?v=321" in html_text
     assert "REFRESH APP" in app_js
     assert 'data-act="hard-refresh-app"' in app_js
     assert "TURN OFF & REVERT ALWAYS-ON" in app_js
