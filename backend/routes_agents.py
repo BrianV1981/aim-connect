@@ -28,6 +28,7 @@ from sandbox_smtp import (
     smtp_values,
     verify_sandbox_relay_token,
 )
+from dashboard_jwt import verify_dashboard_jwt
 import logging
 
 router = APIRouter()
@@ -39,47 +40,7 @@ SANDBOX_RELAY_MAX_PER_HOUR = 15
 SANDBOX_RELAY_WINDOW_S = 3600
 SANDBOX_RELAY_MAX_BODY_BYTES = 512 * 1024
 
-def _verify_dashboard_jwt(token: str) -> dict:
-    """Verify a LeadDeed dashboard magic-link JWT.
-    
-    Validates HMAC signature, requires `e` (email) and `exp` (expiry) fields.
-    Returns the decoded payload dict on success.
-    Raises HTTPException on any failure.
-    """
-    if not token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    try:
-        import base64, hmac, hashlib, time as _time
-        parts = token.split(".")
-        if len(parts) != 2:
-            raise HTTPException(status_code=401, detail="Invalid Token Format")
-        payload_b64, signature_b64 = parts
-        secret = get_gateway_signing_secret()
-        if not secret:
-            raise HTTPException(status_code=500, detail="Missing Secret")
-        expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
-        expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-        if not hmac.compare_digest(signature_b64.rstrip("="), expected_b64):
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        # Decode payload
-        def _pad_b64(data):
-            return data + "=" * (-len(data) % 4)
-        payload_json = base64.urlsafe_b64decode(_pad_b64(payload_b64)).decode()
-        payload_data = json.loads(payload_json)
-        # Require email (#161)
-        if not payload_data.get("e"):
-            raise HTTPException(status_code=401, detail="Missing Email")
-        # Require and enforce exp (#161)
-        exp = payload_data.get("exp")
-        if exp is None:
-            raise HTTPException(status_code=401, detail="Token Missing Expiry")
-        if _time.time() > float(exp):
-            raise HTTPException(status_code=401, detail="Token Expired")
-        return payload_data
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Token Verification Failed")
+_verify_dashboard_jwt = verify_dashboard_jwt
 
 @router.post("/api/sync_csv/{agent_id}", dependencies=[Depends(verify_token), Depends(require_admin)])
 async def sync_csv(agent_id: str, file: UploadFile = File(...)):

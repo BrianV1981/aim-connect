@@ -2,56 +2,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from typing import Optional
 import sqlite3
 import os
-import json
 import logging
-import base64
-import hmac
-import hashlib
-import time
 from main import AGENT_WORKSPACES_DIR, AIM_CONNECT_ROOT
-from sandbox_smtp import get_gateway_signing_secret
+from dashboard_jwt import verify_dashboard_jwt
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 logger = logging.getLogger("aim-connect")
 
-def b64url_decode(s: str) -> bytes:
-    padded = s.replace("-", "+").replace("_", "/")
-    padded += "=" * ((4 - len(padded) % 4) % 4)
-    return base64.b64decode(padded)
 
 def verify_vercel_jwt(authorization: str = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Bearer token")
 
-    secret = get_gateway_signing_secret()
-    if not secret:
-        raise HTTPException(status_code=500, detail="Missing signing secret")
-
-    token = authorization.replace("Bearer ", "").strip()
-    try:
-        if "." not in token:
-            raise HTTPException(status_code=401, detail="Invalid token format")
-            
-        body_b64, sig_b64 = token.split(".", 1)
-        expected_sig = base64.urlsafe_b64encode(
-            hmac.new(secret.encode(), body_b64.encode(), hashlib.sha256).digest()
-        ).decode().rstrip("=")
-        
-        if not hmac.compare_digest(sig_b64, expected_sig):
-            raise HTTPException(status_code=401, detail="Invalid token signature")
-            
-        payload = json.loads(b64url_decode(body_b64).decode("utf-8"))
-        if not payload.get("e") or not payload.get("exp"):
-            raise HTTPException(status_code=401, detail="Invalid token payload")
-            
-        if int(time.time()) > payload["exp"]:
-            raise HTTPException(status_code=401, detail="Token Expired")
-            
-        return payload["e"]
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+    token = authorization[len("Bearer "):].strip()
+    payload = verify_dashboard_jwt(token)
+    return payload["e"]
 
 def get_operator_db_path(email: str) -> str:
     from ws_handler import resolve_workspace_id_for_email

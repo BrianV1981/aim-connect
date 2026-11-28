@@ -1,16 +1,10 @@
-import os
-import json
 import asyncio
 import subprocess
-import base64
-import hmac
-import hashlib
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
-from main import AGENT_WORKSPACES_DIR
-from routes_agents import _verify_dashboard_jwt
-from ws_handler import resolve_workspace_id_for_email, legacy_sanitize_email
 import logging
+from fastapi import APIRouter, Query
+from fastapi.responses import JSONResponse
+from dashboard_jwt import verify_dashboard_jwt
+from ws_handler import resolve_workspace_id_for_email, legacy_sanitize_email
 
 router = APIRouter()
 logger = logging.getLogger("aim-connect")
@@ -21,16 +15,8 @@ async def delete_fleet_session(agent_id: str, token: str = Query(None)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
     try:
-        _verify_dashboard_jwt(token)
-        
-        parts = token.split(".")
-        import base64
-        def pad_b64(data): return data + "=" * (-len(data) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(pad_b64(parts[0])).decode())
-        
-        email = payload.get("e")
-        if not email:
-            return JSONResponse({"error": "Invalid payload"}, status_code=401)
+        payload = verify_dashboard_jwt(token)
+        email = payload["e"]
 
         workspace_id = resolve_workspace_id_for_email(email)
         legacy_id = legacy_sanitize_email(email)
@@ -62,7 +48,7 @@ async def get_fleet_sessions(agent_id: str, token: str = Query(None)):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
     try:
-        payload = _verify_dashboard_jwt(token)
+        payload = verify_dashboard_jwt(token)
         email = payload["e"]
 
         workspace_id = resolve_workspace_id_for_email(email)

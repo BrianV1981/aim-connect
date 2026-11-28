@@ -16,7 +16,7 @@ import signal
 import errno
 import select
 import uuid
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from main import (
     AIM_CONNECT_ROOT, BACKEND_DIR, ENABLE_E2EE, E2EE_SECRET, ALLOWED_IPS, 
     auth_attempts, LOCKOUT_TIME, MAX_AUTH_ATTEMPTS, VALID_API_TOKENS,
@@ -34,6 +34,7 @@ from sandbox_smtp import (
     redact_bwrap_cmd,
     smtp_configured,
 )
+from dashboard_jwt import verify_dashboard_jwt
 from opencode_providers import (
     map_opencode_cli_model,
     opencode_bwrap_setenv,
@@ -627,36 +628,24 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                         )
                         _cleanup_admin_pty_entry(stale_entry)
             elif "." in token:
-                parts = token.split(".")
-                if len(parts) == 2:
-                    payload_b64, signature_b64 = parts
-
+                try:
+                    payload = verify_dashboard_jwt(token)
+                    email = payload["e"]
                     secret = get_gateway_signing_secret()
-                    if secret:
-                        def pad_b64(data):
-                            return data + "=" * (-len(data) % 4)
-                        try:
-                            expected_mac = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
-                            expected_b64 = base64.urlsafe_b64encode(expected_mac).decode().rstrip("=")
-                            if hmac.compare_digest(signature_b64.rstrip("="), expected_b64):
-                                payload = json.loads(base64.urlsafe_b64decode(pad_b64(payload_b64)).decode())
-                                email = payload.get("e")
-                                exp = payload.get("exp")
-                                # Require email and exp (#161)
-                                if email and exp is not None and time.time() <= float(exp):
-                                    authenticated = True
-                                    auth_attempts[client_ip] = (0, None)
-                                    jwt_operator_email = str(email).strip().lower()
-                                    public_session_e2ee_secret = derive_session_transport_key(token, secret)
-                                    sanitized_email = resolve_workspace_id_for_email(email)
-                                    if sub_session_id and re.match(r'^[a-zA-Z0-9_-]+$', sub_session_id):
-                                        target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
-                                    else:
-                                        target_session_override = f"agent-{sanitized_email}-{client_harness}"
-                                elif email and exp is None:
-                                    logger.warning(f"WS magic-link JWT missing exp for {email}")
-                        except Exception as e:
-                            logger.error(f"Failed to parse LeadDeed token: {e}")
+                    authenticated = True
+                    auth_attempts[client_ip] = (0, None)
+                    jwt_operator_email = str(email).strip().lower()
+                    public_session_e2ee_secret = derive_session_transport_key(token, secret)
+                    sanitized_email = resolve_workspace_id_for_email(email)
+                    if sub_session_id and re.match(r'^[a-zA-Z0-9_-]+$', sub_session_id):
+                        target_session_override = f"agent-{sanitized_email}-{sub_session_id}"
+                    else:
+                        target_session_override = f"agent-{sanitized_email}-{client_harness}"
+                except HTTPException as exc:
+                    if exc.detail == "Token Missing Expiry":
+                        logger.warning("WS magic-link JWT missing exp")
+                    else:
+                        logger.debug(f"WS magic-link JWT rejected: {exc.detail}")
             
             if not authenticated and not is_stale_hex_session_token:
                 attempts, _ = auth_attempts.get(client_ip, (0, None))

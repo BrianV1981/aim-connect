@@ -79,11 +79,14 @@ def webauthn_auth_verify(req: WebAuthnAuthVerifyReq, request: Request):
         
     # Generate token since WebAuthn succeeded
     new_token = secrets.token_hex(32)
-    role = "admin" if not users_db else users_db.get(user_name, {}).get("role", "user")
+    user_cfg = users_db.get(user_name, {}) if users_db else {}
+    role = "admin" if not users_db else user_cfg.get("role", "user")
+    prefix = "" if role == "admin" else (user_cfg.get("prefix") or user_cfg.get("sessions_prefix") or "")
     VALID_API_TOKENS[new_token] = {
         "expires": time.time() + TOKEN_TTL,
         "user": user_name,
-        "role": role
+        "role": role,
+        "prefix": prefix,
     }
     save_tokens()
     return {"token": new_token, "role": role, "build_id": get_frontend_build_id()}
