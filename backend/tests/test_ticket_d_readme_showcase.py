@@ -1,4 +1,5 @@
 import re
+import sys
 from pathlib import Path
 
 
@@ -164,12 +165,32 @@ def test_showcase_reflects_live_cockpit_features_260_through_281():
     assert "SWITCH NODE" in app_js
     assert "LOCK / SWITCH SERVER" in app_js
 
-    proto_dir = DEMO_DIR.parents[1] / "planning-artifacts" / "emerald-matrix-prototype"
-    if proto_dir.is_dir():
-        for fname in ("index.html", "styles.css", "app.js"):
-            assert (DEMO_DIR / fname).read_text(encoding="utf-8") == (proto_dir / fname).read_text(
-                encoding="utf-8"
-            ), f"docs/demo/{fname} and planning-artifacts/emerald-matrix-prototype/{fname} drifted"
+
+def test_showcase_pytest_ignores_gitignored_planning_artifacts_prototype(tmp_path, monkeypatch):
+    """#324 (CONN-022): Tracked docs/demo/ is the sole source of truth; gitignored prototype drift never fails pytest."""
+    fake_repo = tmp_path / "repo"
+    fake_demo = fake_repo / "docs" / "demo"
+    fake_proto = fake_repo / "planning-artifacts" / "emerald-matrix-prototype"
+    fake_demo.mkdir(parents=True)
+    fake_proto.mkdir(parents=True)
+
+    # Copy tracked docs/demo assets into fake_demo, then plant drifted ?v=307 files in fake_proto
+    for item in DEMO_DIR.iterdir():
+        target = fake_demo / item.name
+        if item.is_dir():
+            target.mkdir(exist_ok=True)
+            for child in item.iterdir():
+                if child.is_file():
+                    (target / child.name).write_bytes(child.read_bytes())
+        elif item.is_file():
+            target.write_bytes(item.read_bytes())
+
+    for fname in ("index.html", "styles.css", "app.js"):
+        (fake_proto / fname).write_text("/* stale ?v=307 gitignored prototype */", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "DEMO_DIR", fake_demo)
+    test_standalone_12_node_40_session_showcase_bundle_and_privacy_guardrails()
+    test_showcase_reflects_live_cockpit_features_260_through_281()
 
 
 def test_readme_features_interactive_ecosystem_showcase_front_and_center():
