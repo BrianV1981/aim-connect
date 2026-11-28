@@ -1673,11 +1673,13 @@ function App() {
     }
   };
 
-  const sendSessionCommand = async (sessionName, command) => {
+  const sendSessionCommand = async (sessionName, command, vessel = '') => {
+    const matched = fleet.find((f) => f.session_name === sessionName);
+    const effVessel = vessel || matched?.vessel || '';
     const res = await fetch(`/api/sessions/${encodeURIComponent(sessionName)}/command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
+      body: JSON.stringify({ command, vessel: effVessel }),
     });
     if (!res.ok) {
       throw new Error(`Command injection failed: ${res.status}`);

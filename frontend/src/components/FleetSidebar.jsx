@@ -130,13 +130,13 @@ export default function FleetSidebar({
     [items, filterText, statusFilter, unreadSessions, recentSessions]
   );
 
-  const handleTriggerSkill = async (e, sessionName, command, label) => {
+  const handleTriggerSkill = async (e, sessionName, command, label, vessel = '') => {
     e.stopPropagation();
     if (!onSendSessionCommand) return;
     const key = `${sessionName}:${label}`;
     setCommandFeedback((prev) => ({ ...prev, [key]: 'SENDING...' }));
     try {
-      await onSendSessionCommand(sessionName, command);
+      await onSendSessionCommand(sessionName, command, vessel);
       setCommandFeedback((prev) => ({ ...prev, [key]: 'SENT ✓' }));
     } catch {
       setCommandFeedback((prev) => ({ ...prev, [key]: 'FAILED' }));
@@ -523,7 +523,7 @@ export default function FleetSidebar({
                     <button
                       type="button"
                       className="fleet-action-btn wiki"
-                      onClick={(e) => handleTriggerSkill(e, item.session_name, '/aim-memory-wiki', 'wiki')}
+                      onClick={(e) => handleTriggerSkill(e, item.session_name, '/aim-memory-wiki', 'wiki', item.vessel)}
                       title="Inject /aim-memory-wiki into session"
                     >
                       {commandFeedback[wikiKey] || '/wiki'}
@@ -531,7 +531,7 @@ export default function FleetSidebar({
                     <button
                       type="button"
                       className={`fleet-action-btn handoff ${effectiveTier === 'critical' ? 'critical-pulse' : ''}`}
-                      onClick={(e) => handleTriggerSkill(e, item.session_name, '/aim-handoff', 'handoff')}
+                      onClick={(e) => handleTriggerSkill(e, item.session_name, '/aim-handoff', 'handoff', item.vessel)}
                       title="Inject /aim-handoff into session (Baton Pass)"
                     >
                       {commandFeedback[handoffKey] || '/handoff'}

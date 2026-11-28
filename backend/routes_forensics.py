@@ -21,6 +21,11 @@ from main import (
     verify_token_or_loopback,
 )
 from ws_handler import _AMAIL_AGENT_ID_RE, execute_amail_submit, resolve_amail_mailbox_dir
+from opencode_skills import (
+    discover_opencode_custom_commands,
+    find_opencode_command_wrapper,
+    sync_opencode_command_wrappers,
+)
 from routes_files import _find_repo_roots, _resolve_session_cwd, secure_path
 from routes_sessions import (
     ANSI_ESCAPE_RE,
@@ -1961,6 +1966,9 @@ def get_session_slash_commands(session_name: str, vessel: str = Query("")):
     commands: list[dict[str, str]] = []
     seen_cmds: set[str] = set()
 
+    if resolved_vessel == "opencode":
+        sync_opencode_command_wrappers(HOME_DIR)
+
     for b in _BUILTIN_SLASH_COMMANDS.get(resolved_vessel, _BUILTIN_SLASH_COMMANDS["agy"]):
         cmd_str = b["cmd"]
         key = cmd_str.lower()
@@ -1976,7 +1984,16 @@ def get_session_slash_commands(session_name: str, vessel: str = Query("")):
             }
         )
 
-    skill_entries: list[dict[str, str]] = []
+    custom_cmd_entries: list[dict[str, str]] = []
+    if resolved_vessel == "opencode":
+        for c_entry in discover_opencode_custom_commands(HOME_DIR, cwd_path):
+            key = c_entry["cmd"].lower()
+            if key in seen_cmds:
+                continue
+            seen_cmds.add(key)
+            custom_cmd_entries.append(c_entry)
+
+    skill_entries: list[dict] = []
     for skill_root in _skill_dirs_for_vessel(resolved_vessel, cwd_path):
         try:
             entries = sorted(os.scandir(skill_root), key=lambda e: e.name.lower())
@@ -1989,24 +2006,35 @@ def get_session_slash_commands(session_name: str, vessel: str = Query("")):
             if not os.path.isfile(skill_md):
                 continue
             skill_name, desc = _parse_skill_frontmatter(skill_md, entry.name)
-            cmd_str = f"/{skill_name.lstrip('/')}"
+            clean_skill_name = skill_name.lstrip("/")
+            cmd_str = f"/{clean_skill_name}"
             key = cmd_str.lower()
             if key in seen_cmds:
                 continue
             seen_cmds.add(key)
-            skill_entries.append(
-                {
-                    "cmd": cmd_str,
-                    "kind": "skill",
-                    "description": desc or "Custom skill",
-                    "source": os.path.basename(skill_root),
-                }
-            )
+            item_payload: dict = {
+                "cmd": cmd_str,
+                "kind": "skill",
+                "description": desc or "Custom skill",
+                "source": os.path.basename(skill_root),
+            }
+            if resolved_vessel == "opencode":
+                item_payload["has_command_wrapper"] = bool(
+                    find_opencode_command_wrapper(clean_skill_name, home_dir=HOME_DIR, cwd_path=cwd_path)
+                )
+            skill_entries.append(item_payload)
 
-    commands.extend(sorted(skill_entries, key=lambda x: x["cmd"].lower()))
+    merged_tail = sorted([*custom_cmd_entries, *skill_entries], key=lambda x: x["cmd"].lower())
+    commands.extend(merged_tail)
     return {
         "session": session_name,
         "vessel": resolved_vessel,
         "commands": commands,
     }
+
+
+@router.post("/api/opencode/sync-commands", dependencies=[Depends(verify_token), Depends(require_admin)])
+def sync_opencode_commands_endpoint():
+    """Idempotently generate ~/.config/opencode/commands/*.md wrappers for all installed OpenCode SKILL.md skills (#323)."""
+    return {"status": "ok", **sync_opencode_command_wrappers(HOME_DIR)}
 

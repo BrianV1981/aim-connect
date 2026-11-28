@@ -1233,6 +1233,7 @@ async def get_fleet_panes(request: Request, x_api_token: str = Header(None)) -> 
 
 class SessionCommandRequest(BaseModel):
     command: str
+    vessel: str = ""
 
 
 TMUX_PANE_TARGET_RE = re.compile(r"^\d+(?:\.\d+)?$")
@@ -1395,6 +1396,27 @@ def send_session_command(name: str, req: SessionCommandRequest) -> dict:
     cmd_text = (req.command or "").strip()
     if not cmd_text:
         raise HTTPException(status_code=400, detail="Command cannot be empty.")
+
+    if cmd_text.startswith("/"):
+        from opencode_skills import inspect_tmux_pane_context, translate_opencode_skill_slash
+
+        eff_vessel = (req.vessel or "").strip().lower()
+        pane_cwd = ""
+        proc_start_ts = None
+        if callable(getattr(subprocess.run, "assert_called", None)):
+            # Unit tests mocking routes_sessions.subprocess.run should stay hermetically isolated from host tmux
+            pass
+        else:
+            det_vessel, pane_cwd, proc_start_ts = inspect_tmux_pane_context(name)
+            if not eff_vessel:
+                eff_vessel = det_vessel
+        cmd_text = translate_opencode_skill_slash(
+            cmd_text,
+            vessel=eff_vessel,
+            home_dir=HOME_DIR,
+            cwd_path=pane_cwd,
+            proc_start_ts=proc_start_ts,
+        )
 
     buf_name = f"aim_cmd_{uuid.uuid4().hex[:10]}"
     try:

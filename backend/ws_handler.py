@@ -41,6 +41,11 @@ from opencode_providers import (
     write_opencode_auth_json,
     write_opencode_user_config,
 )
+from opencode_skills import (
+    build_opencode_bwrap_skill_binds,
+    inspect_tmux_pane_context,
+    translate_opencode_skill_slash,
+)
 import logging
 
 router = APIRouter()
@@ -431,6 +436,17 @@ async def execute_bracketed_paste(
         )
         await proc2.wait()
         return proc2.returncode == 0
+
+    if normalized.startswith("/"):
+        det_vessel, pane_cwd, proc_start_ts = inspect_tmux_pane_context(session_name)
+        if det_vessel == "opencode":
+            normalized = translate_opencode_skill_slash(
+                normalized,
+                vessel="opencode",
+                home_dir=HOME_DIR,
+                cwd_path=pane_cwd,
+                proc_start_ts=proc_start_ts,
+            )
 
     buf_name = f"aim_ws_{uuid.uuid4().hex[:10]}"
     proc1 = await asyncio.create_subprocess_exec(
@@ -832,12 +848,15 @@ async def _websocket_endpoint(websocket: WebSocket) -> None:
                     f"--bind {agent_brain_dir}/antigravity-oauth-token {HOME_DIR}/.opencode/opencode-oauth-token "
                 )
                 
+                oc_skill_binds = build_opencode_bwrap_skill_binds(HOME_DIR, oc_cfg_dir)
+
                 bwrap_cmd = (
                     f"bwrap --ro-bind / / --dev /dev --proc /proc --bind /tmp /tmp "
                     f"--tmpfs {HOME_DIR} "
                     f"{env_injections}"
                     f"--dir {HOME_DIR}/.config "
                     f"--bind {oc_cfg_dir} {HOME_DIR}/.config/opencode "
+                    f"{oc_skill_binds}"
                     f"--ro-bind {HOME_DIR}/.local {HOME_DIR}/.local "
                     f"--bind {oc_state_dir} {HOME_DIR}/.local/state/opencode "
                     f"--ro-bind {HOME_DIR}/.gemini {HOME_DIR}/.gemini "
